@@ -1,0 +1,9 @@
+*__pycache__*
+*.pyc
+*.swp
+.idea
+*.mp4
+_data
+_results_temp
+_results
+*.pkl
