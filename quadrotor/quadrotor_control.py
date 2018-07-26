@@ -69,17 +69,28 @@ class ShiftedMotorControl(object):
         dynamics.step(action, dt)
 
 class RawControl(object):
-    def __init__(self, dynamics):
+    def __init__(self, dynamics, zero_action_middle=True):
+        self.zero_action_middle = zero_action_middle
         pass
 
     def action_space(self, dynamics):
-        low = np.zeros(4)
-        high = np.ones(4)
-        return spaces.Box(low, high)
+        if not self.zero_action_middle:
+            # Range of actions 0 .. 1
+            self.low = np.zeros(4)
+            self.bias = 0
+            self.scale = 1.0
+        else:
+            # Range of actions -1 .. 1
+            self.low = -np.ones(4)
+            self.bias =  1.0
+            self.scale = 0.5
+        self.high = np.ones(4)
+        return spaces.Box(self.low, self.high)
 
     # modifies the dynamics in place.
     def step(self, dynamics, action, goal, dt):
-        action = np.clip(action, 0.0, 1.0)
+        action = self.scale * (action + self.bias)
+        action = np.clip(action, a_min=self.low, a_max=self.high)
         dynamics.step(action, dt)
 
 

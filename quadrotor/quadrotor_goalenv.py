@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from quadrotor_modular import *
+import numpy as np
+from gym_art.quadrotor.quadrotor_modular import *
 
 
 def Rdiff(P, Q):
@@ -95,7 +96,12 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         self.reset()
 
         if self.spec is None:
-            self.spec = gym_reg.EnvSpec(id='Quadrotor-v0', max_episode_steps=self.ep_len)
+            self.spec = gym_reg.EnvSpec(id='QuadrotorGoalEnv-v1', max_episode_steps=self.ep_len)
+
+        # self._max_episode_seconds = self.ep_len
+        self._max_episode_steps = self.ep_len
+        self._elapsed_steps = 0
+        # self._episode_started_at = None
 
     def action_default(self):
         return np.zeros([4,])
@@ -118,12 +124,17 @@ class QuadrotorGoalEnv(gym.GoalEnv):
                                                                   a_max=self.room_box[1]))
         self.action_last = action.copy()
         self.time_remain = self.ep_len - self.tick
-        rew_info = {}
+        #info MUST contain all current state variables
+        #since info will be passed when the goals will be recomputed
+        info = {}
+        info['crashed'] = self.crashed
+        info['time_remain'] = self.time_remain
         reward = self.compute_reward(achieved_goal=self.dynamics.state_vector(),
                                      desired_goal=self.goal,
-                                     info=rew_info)
+                                     info=info)
 
         self.tick += 1
+        self._elapsed_steps = self.tick
         done = self.tick > self.ep_len or self.crashed
         sv = self.dynamics.state_vector()
 
@@ -133,10 +144,7 @@ class QuadrotorGoalEnv(gym.GoalEnv):
             'observation': sv.copy()
         }
 
-        info = {
-            'is_success': self._is_success(obs['achieved_goal'], self.goal),
-            'rewards': rew_info,
-        }
+        info['is_success'] =  self._is_success(obs['achieved_goal'], self.goal)
 
         return obs, reward, done, info
 
@@ -158,6 +166,7 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
         self.crashed = False
         self.tick = 0
+        self._elapsed_steps = 0
         # if self.ep_len < 1000:
         #     self.ep_len += 0.01 # len 1000 after 100k episodes
 
@@ -176,21 +185,124 @@ class QuadrotorGoalEnv(gym.GoalEnv):
     def render(self, mode='human', close=False):
         self.scene.render_chase()
 
-
+    # ... allows indexing single and multi dimensional arrays
     def obs_components(self, obs):
-        return obs[0:3], obs[3:6], obs[6:15], obs[15:18]
+        return obs[..., 0:3], obs[..., 3:6], obs[..., 6:15], obs[..., 15:18]
 
 
     def compute_reward(self, achieved_goal, desired_goal, info):
+        """
+        This function must be vectorizable, i.e. it must be capable of processing batches
+        :param achieved_goal:
+        :param desired_goal:
+        :param info:
+        :return:
+        """
 
         xyz, vel, rot_mx, rot_vel = self.obs_components(achieved_goal)
         goal_xyz, goal_vel, goal_rot_mx, goal_rot_vel = self.obs_components(desired_goal)
 
-        if not self.crashed:
+
+        #####################
+        ## Loss position
+        # log to create a sharp peak at the goal
+        dist = np.linalg.norm(goal_xyz - xyz, axis=-1, keepdims=True).flatten()
+        loss_pos = np.log(dist + 0.1) + 0.1 * dist
+        # loss_pos = dist
+
+        # dynamics_pos = dynamics.pos
+        # print('dynamics.pos', dynamics.pos)
+
+        #Goal Proximity Coefficient (to have smooth influence of the axilliary distances)
+        gpc = np.clip(-(1.0 / self.hover_eps) * dist + 1.0, a_min=0, a_max=1.0)
+        #####################
+        ## Loss velocity when within eps distance to the goal
+        vel_dist = np.linalg.norm(goal_vel - vel, axis=-1, keepdims=True).flatten()
+        loss_vel_eps = gpc * 0.2 * vel_dist + (1.0 - gpc) * self.dt
+
+        #####################
+        ## Loss orientation when within eps distance to the goal
+        # rot_dist = np.fabs(Rdiff(goal_rot_mx.reshape([3,3]), rot_mx.reshape([3,3])))
+        # loss_rot_eps = gpc * 0.1 * rot_dist + (1.0 - gpc) * self.dt
+
+        #####################
+        ## Loss angular velocity when within eps distance to the goal
+        rot_vel_dist = np.linalg.norm(goal_rot_vel - rot_vel, axis=-1, keepdims=True).flatten()
+        loss_rot_vel_eps = gpc * 0.1 * rot_vel_dist + (1.0 - gpc) * self.dt
+
+        #####################
+        ## penalize altitude above this threshold
+        # max_alt = 6.0
+        # loss_alt = np.exp(2 * (achieved_goal[2] - max_alt))
+
+        #####################
+        ## penalize amount of control effort
+        # loss_effort = 0.001 * np.linalg.norm(self.action_last)
+
+        #####################
+        ## loss velocity
+        # dx = desired_goal[0:3] - achieved_goal[0:3]
+        # dx = dx / (np.linalg.norm(dx) + EPS)
+        # vel_direct = achieved_goal[3:6] / (np.linalg.norm(achieved_goal[3:6]) + EPS)
+        # vel_proj = np.dot(dx, vel_direct)
+        # loss_vel_proj = -self.dt * 0.5 * (vel_proj - 1.0)
+
+        #####################
+        # Crashing
+        loss_crash = np.zeros_like(dist)
+
+        #####################
+        # Corrections for crashed states with vectorization
+        if not isinstance(info['crashed'], np.ndarray):
+            #have to make shape (1,1) otherwise indexing will be impossible
+            #because in vector form the first dimension is batch
+            crashed_bool = np.array([info['crashed']]).astype(bool)
+            time_remain = np.array([info['time_remain']])
+        else:
+            crashed_bool = info['crashed'].astype(bool).squeeze()
+            time_remain = info['time_remain'].squeeze()
+
+        loss_pos[crashed_bool] = 0
+        loss_vel_eps[crashed_bool] = self.dt
+        loss_rot_vel_eps[crashed_bool] = self.dt
+        loss_crash[crashed_bool] = self.dt * time_remain[crashed_bool] * 100
+
+        reward_mx = np.stack([loss_pos, loss_vel_eps, loss_rot_vel_eps, loss_crash], axis=-1)
+        reward = -self.dt * np.sum(reward_mx, axis=-1).squeeze()
+
+        rew_info = {'rew_crash': -loss_crash,
+                    'rew_pos': -loss_pos,
+                    'rew_vel_eps': -loss_vel_eps,
+                    'rew_rot_vel_eps': -loss_rot_vel_eps}
+
+        # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
+        # print('pos', dynamics.pos)
+        if np.any(np.isnan(reward)) or not np.all(np.isfinite(reward)):
+            for key, value in locals().items():
+                print('%s: %s \n' % (key, str(value)))
+            raise ValueError('QuadEnv: reward is Nan')
+
+        # assert reward == env.compute_reward(ob['achieved_goal'], ob['goal'], info)
+        return reward
+
+
+    def __compute_reward(self, achieved_goal, desired_goal, info):
+        """
+        This function must be vectorizable, i.e. it must be capable of processing batches
+        :param achieved_goal:
+        :param desired_goal:
+        :param info:
+        :return:
+        """
+
+        xyz, vel, rot_mx, rot_vel = self.obs_components(achieved_goal)
+        goal_xyz, goal_vel, goal_rot_mx, goal_rot_vel = self.obs_components(desired_goal)
+
+        if not info['crashed']:
             #####################
             ## Loss position
             # log to create a sharp peak at the goal
-            dist = np.linalg.norm(goal_xyz - xyz)
+            dist = np.linalg.norm(goal_xyz - xyz, axis=-1)
             loss_pos = np.log(dist + 0.1) + 0.1 * dist
             # loss_pos = dist
 
@@ -201,7 +313,7 @@ class QuadrotorGoalEnv(gym.GoalEnv):
             gpc = np.clip(-(1.0 / self.hover_eps) * dist + 1.0, a_min=0, a_max=1.0)
             #####################
             ## Loss velocity when within eps distance to the goal
-            vel_dist = np.linalg.norm(goal_vel - vel)
+            vel_dist = np.linalg.norm(goal_vel - vel, axis=-1)
             loss_vel_eps = gpc * 0.2 * vel_dist + (1.0 - gpc) * self.dt
 
             #####################
@@ -211,7 +323,7 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
             #####################
             ## Loss angular velocity when within eps distance to the goal
-            rot_vel_dist = np.linalg.norm(goal_rot_vel - rot_vel)
+            rot_vel_dist = np.linalg.norm(goal_rot_vel - rot_vel, axis=-1)
             loss_rot_vel_eps = gpc * 0.1 * rot_vel_dist + (1.0 - gpc) * self.dt
 
             #####################
@@ -243,19 +355,18 @@ class QuadrotorGoalEnv(gym.GoalEnv):
             # loss_alt = 0
             # loss_effort = 0
             # loss_vel_proj = 0
-            loss_crash = self.dt * self.time_remain * 100
+            loss_crash = self.dt * info['time_remain'] * 100
 
-        reward = -self.dt * np.sum([loss_pos, loss_vel_eps, loss_rot_vel_eps, loss_crash])
+        reward = -self.dt * np.sum([loss_pos, loss_vel_eps, loss_rot_vel_eps, loss_crash], axis=-1)
 
         rew_info = {'rew_crash': -loss_crash,
                     'rew_pos': -loss_pos,
                     'rew_vel_eps': -loss_vel_eps,
-                    'rew_rot_eps': -loss_rot_eps,
                     'rew_rot_vel_eps': -loss_rot_vel_eps}
 
         # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
         # print('pos', dynamics.pos)
-        if np.isnan(reward) or not np.isfinite(reward):
+        if np.any(np.isnan(reward)) or not np.all(np.isfinite(reward)):
             for key, value in locals().items():
                 print('%s: %s \n' % (key, str(value)))
             raise ValueError('QuadEnv: reward is Nan')
@@ -277,7 +388,7 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         dist_vel = np.linalg.norm(vel1 - vel2)
         dist_rot_vel = np.linalg.norm(rot_vel1 - rot_vel2)
         dist_rot = np.fabs(Rdiff(rot_mx1.reshape([3,3]), rot_mx2.reshape([3,3])))
-        print('dist_rot: ', dist_rot)
+        # print('dist_rot: ', dist_rot)
 
         return np.array([dist_xyz, dist_vel, dist_rot, dist_rot_vel])
 
@@ -377,6 +488,7 @@ def test_rollout():
             s, r, done, info = env.step(action)
             observations.append(s['observation'])
             print('Step: ', t, ' Obs:', s['observation'], 'Goal: ', s['desired_goal'], 'Reached:', info['is_success'])
+            print('Reward:', r)
 
             if t % plot_step == 0:
                 plt.figure(1)

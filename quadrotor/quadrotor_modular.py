@@ -15,8 +15,8 @@ from gym import spaces
 from gym.utils import seeding
 import gym.envs.registration as gym_reg
 
-import rendering3d as r3d
-from quadrotor_control import *
+import gym_art.quadrotor.rendering3d as r3d
+from .quadrotor_control import *
 
 logger = logging.getLogger(__name__)
 
