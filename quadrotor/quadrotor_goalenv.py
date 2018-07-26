@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from quadrotor_modular import *
 
 
@@ -9,7 +11,8 @@ def Rdiff(P, Q):
     :return: float: rotation angle
     """
     R = np.matmul(P, Q.transpose())
-    return np.arccos((np.trace(R) - 1.0) / 2.0)
+    #We have to clip because in quad env we do not perform orthogonalization every time
+    return np.arccos(np.clip((np.trace(R) - 1.0) / 2.0, a_min=-1.0, a_max=1.0))
 
 
 def randrot():
@@ -24,7 +27,6 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second' : 50
     }
-
 
     def __init__(self, raw_control=True):
         np.seterr(under='ignore')
@@ -49,15 +51,18 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         # if box_scale > 1.0 then it will also growevery episode
         self.box = 2.0
         self.box_scale = 1.0 #scale the initialbox by this factor eache episode
-        self.room_box = np.array([[-10, -10, 0], [10, 10, 10]])
+        self.room_size = 3 # height, width, length
+        self.room_box = np.array([[-self.room_size, -self.room_size, 0],
+                                  [self.room_size, self.room_size, self.room_size]])
         self.wall_offset = 0.3 #how much offset from the walls to have for initilization
         self.init_box = np.array([self.room_box[0] + self.wall_offset, self.room_box[1] - self.wall_offset])
         self.hover_eps = 0.1 #the box within which quad should be penalized for not adjusting its orientation and velocities
 
         # eps-radius of the goal
-        self.goal_dist_eps = np.array([0.015,  # xyz
-                                       0.015,  # Vxyz
-                                       0.15,   # rotation angle tolerance (rad)
+        self.goal_diameter = 0.2
+        self.goal_dist_eps = np.array([self.goal_diameter,  # xyz
+                                       0.15,  # Vxyz
+                                       np.pi,   # rotation angle tolerance (rad)
                                        0.15])  # Wxyz [rad/s]
 
         # pos, vel, rot, rot vel
@@ -74,20 +79,20 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         obs_low[6:-3] = -1
 
         self.observation_space = spaces.Dict(dict(
-            desired_goal = spaces.Box(obs_low, obs_high, shape=obs_high.shape, dtype='float32'),
-            achieved_goal= spaces.Box(obs_low, obs_high, shape=obs_high.shape, dtype='float32'),
-            observation  = spaces.Box(obs_low, obs_high, shape=obs_high.shape, dtype='float32'),
+            desired_goal = spaces.Box(obs_low, obs_high, dtype='float32'),
+            achieved_goal= spaces.Box(obs_low, obs_high, dtype='float32'),
+            observation  = spaces.Box(obs_low, obs_high, dtype='float32'),
         ))
 
         # TODO get this from a wrapper
-        self.ep_len = 100
+        self.ep_len = 200
         self.tick = 0
         self.dt = 1.0 / 50.0
         self.crashed = False
         self.time_remain = self.ep_len
 
         self._seed()
-        self._reset()
+        self.reset()
 
         if self.spec is None:
             self.spec = gym_reg.EnvSpec(id='Quadrotor-v0', max_episode_steps=self.ep_len)
@@ -101,10 +106,10 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         return [seed]
 
 
-    def _step(self, action):
+    def step(self, action):
         # print('actions: ', action)
         if not self.crashed:
-            self.controller.step(self.dynamics, action, goal=self.goal[0:3], dt=self.dt)
+            self.controller.step(dynamics=self.dynamics, action=action, goal=self.goal[0:3], dt=self.dt)
             # self.oracle.step(self.dynamics, self.goal, goal=self.goal[0:3], dt=self.dt)
             self.crashed = self.scene.update_state(self.dynamics)
             self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
@@ -136,11 +141,11 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         return obs, reward, done, info
 
 
-    def _reset(self):
+    def reset(self):
         self.time_remain = self.ep_len
         if self.scene is None:
             self.scene = Quadrotor3DScene(None, self.dynamics.arm,
-                640, 480, resizable=True, obstacles=False)
+                640, 480, resizable=True, obstacles=False, goal_diameter=self.goal_diameter)
 
         # Goal and start point initilization
         self.goal = self._sample_goal()
@@ -168,16 +173,12 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         return obs
 
 
-    def _render(self, mode='human', close=False):
+    def render(self, mode='human', close=False):
         self.scene.render_chase()
 
 
     def obs_components(self, obs):
-        xyz = obs[0:3]
-        vel = obs[3:6]
-        rot_mx = obs[6:15]
-        rot_vel = obs[15:18]
-        return xyz, vel, rot_mx, rot_vel
+        return obs[0:3], obs[3:6], obs[6:15], obs[15:18]
 
 
     def compute_reward(self, achieved_goal, desired_goal, info):
@@ -205,8 +206,8 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
             #####################
             ## Loss orientation when within eps distance to the goal
-            rot_dist = np.fabs(Rdiff(goal_rot_mx, rot_mx))
-            loss_rot_eps = gpc * 0.1 * rot_dist + (1.0 - gpc) * self.dt
+            # rot_dist = np.fabs(Rdiff(goal_rot_mx.reshape([3,3]), rot_mx.reshape([3,3])))
+            # loss_rot_eps = gpc * 0.1 * rot_dist + (1.0 - gpc) * self.dt
 
             #####################
             ## Loss angular velocity when within eps distance to the goal
@@ -244,12 +245,12 @@ class QuadrotorGoalEnv(gym.GoalEnv):
             # loss_vel_proj = 0
             loss_crash = self.dt * self.time_remain * 100
 
-        reward = -self.dt * np.sum([loss_pos, loss_vel_eps, loss_rot_eps, loss_rot_vel_eps, loss_crash])
+        reward = -self.dt * np.sum([loss_pos, loss_vel_eps, loss_rot_vel_eps, loss_crash])
 
         rew_info = {'rew_crash': -loss_crash,
                     'rew_pos': -loss_pos,
                     'rew_vel_eps': -loss_vel_eps,
-                    'rew_rot_esp': -loss_rot_eps,
+                    'rew_rot_eps': -loss_rot_eps,
                     'rew_rot_vel_eps': -loss_rot_vel_eps}
 
         # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
@@ -275,7 +276,8 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         dist_xyz = np.linalg.norm(xyz1 - xyz2)
         dist_vel = np.linalg.norm(vel1 - vel2)
         dist_rot_vel = np.linalg.norm(rot_vel1 - rot_vel2)
-        dist_rot = Rdiff(rot_mx1, rot_mx2)
+        dist_rot = np.fabs(Rdiff(rot_mx1.reshape([3,3]), rot_mx2.reshape([3,3])))
+        print('dist_rot: ', dist_rot)
 
         return np.array([dist_xyz, dist_vel, dist_rot, dist_rot_vel])
 
@@ -290,9 +292,9 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         """
         Samples a new goal and returns it.
         """
-        xyz = self.np_random.uniform(-self.init_box, self.init_box)
+        xyz = np.random.uniform(low=self.init_box[0], high=self.init_box[1])
         vel = np.array([0., 0., 0.])
-        rot = np.zeros([9,])
+        rot = np.eye(3).flatten()
         rot_vel = np.array([0., 0., 0.])
 
         return np.concatenate([xyz, vel, rot, rot_vel])
@@ -300,7 +302,7 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
     def _sample_init_state(self):
 
-        xyz = self.np_random.uniform(-self.init_box, self.init_box)
+        xyz = self.np_random.uniform(self.init_box[0], self.init_box[1])
         vel = np.array([0., 0., 0.])
         rot_vel = np.array([0., 0., 0.])
 
@@ -323,6 +325,10 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
 
 def test_rollout():
+    import transforms3d as t3d
+    import seaborn as sns
+    sns.set_style('darkgrid')
+
     #############################
     # Init plottting
     fig = plt.figure(1)
@@ -345,12 +351,18 @@ def test_rollout():
         print('Observation space:', env.observation_space.low, env.observation_space.high)
         print('Action space:', env.action_space.low, env.action_space.high)
     except:
-        print('Observation space:', env.observation_space.spaces[0].low, env.observation_space[0].spaces[0].high)
-        print('Action space:', env.action_space[0].spaces[0].low, env.action_space[0].spaces[0].high)
-    input('Press any key to continue ...')
+        print('Observation space:', env.observation_space.spaces['observation'].low, env.observation_space.spaces['observation'].high)
+        print('Action space:', env.action_space.low, env.action_space.high)
+    # input('Press any key to start rollouts ...')
 
     action = [0.5, 0.5, 0.5, 0.5]
     rollouts_id = 0
+    ep_lengths = []
+
+    distances_arr = []
+    angles_arr = []
+    distances_legend = ['xyz', 'vel', 'rot', 'rot_vel']
+    angles_legend = ['roll', 'pitch', 'yaw', 'roll_des', 'pitch_des', 'yaw_des']
 
     while rollouts_id < rollouts_num:
         rollouts_id += 1
@@ -364,9 +376,10 @@ def test_rollout():
             if render and (t % render_each == 0): env.render()
             s, r, done, info = env.step(action)
             observations.append(s['observation'])
-            print('Step: ', t, ' Obs:', s)
+            print('Step: ', t, ' Obs:', s['observation'], 'Goal: ', s['desired_goal'], 'Reached:', info['is_success'])
 
             if t % plot_step == 0:
+                plt.figure(1)
                 plt.clf()
 
                 if plot_obs:
@@ -379,8 +392,32 @@ def test_rollout():
 
                 plt.pause(0.05) #have to pause otherwise does not draw
                 plt.draw()
-            if done: break
+            if done:
+                distances_arr.append(env.distances(s['observation'], s['desired_goal']))
+                angles_arr.append(t3d.euler.mat2euler(s['observation'][6:15].reshape([3,3]), 'sxyz') +
+                                  t3d.euler.mat2euler(s['desired_goal'][6:15].reshape([3,3]), 'sxyz'))
+                ep_lengths.append(t)
+                break
             t += 1
+
+    print('Average ep length:', np.mean(ep_lengths))
+    print('remaining distances at the end of the episode: ', distances_arr)
+    plt.figure(2)
+    distances_arr = np.array(distances_arr)
+    for i, dim in enumerate(distances_legend):
+        plt.plot(distances_arr[:, i])
+    plt.legend(distances_legend)
+
+    plt.figure(3)
+    angles_arr = np.array(angles_arr)
+    print('remaining angles at the end of the episode: ', angles_arr)
+    for i, dim in enumerate(angles_legend):
+        plt.plot(angles_arr[:, i])
+    plt.legend(angles_legend)
+
+    plt.pause(0.05)
+    plt.show(block=False)
+
     input("Rollouts are done. Press Enter to continue...")
 
 def main(argv):
