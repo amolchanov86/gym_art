@@ -115,9 +115,36 @@ class VerticalControl(object):
 
     # modifies the dynamics in place.
     def step(self, dynamics, action, goal, dt):
+        # print('action: ', action)
         action = self.scale * (action + self.bias)
         action = np.clip(action, a_min=self.low, a_max=self.high)
-        dynamics.step(np.array([action]*4), dt)
+        dynamics.step(np.array([action[0]]*4), dt)
+
+class VertPlaneControl(object):
+    def __init__(self, dynamics, zero_action_middle=True):
+        self.zero_action_middle = zero_action_middle
+        pass
+
+    def action_space(self, dynamics):
+        if not self.zero_action_middle:
+            # Range of actions 0 .. 1
+            self.low = np.zeros(2)
+            self.bias = 0
+            self.scale = 1.0
+        else:
+            # Range of actions -1 .. 1
+            self.low = -np.ones(2)
+            self.bias =  1.0
+            self.scale = 0.5
+        self.high = np.ones(2)
+        return spaces.Box(self.low, self.high)
+
+    # modifies the dynamics in place.
+    def step(self, dynamics, action, goal, dt):
+        # print('action: ', action)
+        action = self.scale * (action + self.bias)
+        action = np.clip(action, a_min=self.low, a_max=self.high)
+        dynamics.step(np.array([action[0], action[0], action[1], action[1]]), dt)
 
 
 # jacobian of (acceleration magnitude, angular acceleration)

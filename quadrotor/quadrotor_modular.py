@@ -103,7 +103,16 @@ class QuadrotorDynamics(object):
         # thrust_cmds = np.clip(thrust_cmds, 0.0, 1.0)
         thrusts = self.thrust * thrust_cmds
         torques = self.prop_crossproducts * thrusts[:,None]
-        torques[:,2] += self.torque * self.prop_ccw * thrust_cmds
+        try:
+            torques[:, 2] += self.torque * self.prop_ccw * thrust_cmds
+        except Exception as e:
+            print('actions: ', thrust_cmds)
+            log_error('##########################################################')
+            for key, value in locals().items():
+                log_error('%s: %s \n' % (key, str(value)))
+                print('%s: %s \n' % (key, str(value)))
+            raise ValueError("QuadrotorEnv ERROR: SVD did not converge: " + str(e))
+        # torques[:,2] += self.torque * self.prop_ccw * thrust_cmds
         torque = np.sum(torques, axis=0)
         thrust = npa(0,0,np.sum(thrusts))
         # print('thrus_cmds:', thrust_cmds, ' thrusts', thrusts, ' prop_cross', self.prop_crossproducts)
@@ -213,7 +222,7 @@ def goal_seeking_reward(dynamics, goal, action, dt, crashed, time_remain):
         vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
         vel_proj = np.dot(dx, vel_direct)
         # print('vel_proj:', vel_proj)
-        loss_vel_proj = -dt * 0.5*(vel_proj - 1.0)
+        loss_vel_proj = -dt *(vel_proj - 1.0)
         # print('loss_vel_proj:', loss_vel_proj)
         loss_crash = 0
     else:
@@ -221,7 +230,7 @@ def goal_seeking_reward(dynamics, goal, action, dt, crashed, time_remain):
         loss_alt = 0
         loss_effort = 0
         loss_vel_proj = 0
-        loss_crash = dt * time_remain * 100
+        loss_crash = dt * time_remain * 100 + 100
 
     reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
     rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
@@ -576,7 +585,7 @@ class QuadrotorEnv(gym.Env):
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, raw_control=True):
+    def __init__(self, raw_control=True, dim_mode='2D'):
         np.seterr(under='ignore')
         self.dynamics = default_dynamics()
         #self.controller = ShiftedMotorControl(self.dynamics)
@@ -584,9 +593,21 @@ class QuadrotorEnv(gym.Env):
         #self.controller = VelocityYawControl(self.dynamics)
         self.scene = None
         self.oracle = NonlinearPositionController(self.dynamics)
+        self.dim_mode = dim_mode
+        if self.dim_mode == '2D' or self.dim_mode =='1D':
+            self.viewpoint = 'side'
+        else:
+            self.viewpoint = 'chase'
 
         if raw_control:
-            self.controller = RawControl(self.dynamics)
+            if self.dim_mode == '1D':
+                self.controller = VerticalControl(self.dynamics)
+            elif self.dim_mode == '2D':
+                self.controller = VertPlaneControl(self.dynamics)
+            elif self.dim_mode == '3D':
+                self.controller = RawControl(self.dynamics)
+            else:
+                raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
         else:
             self.controller = NonlinearPositionController(self.dynamics)
 
@@ -627,7 +648,7 @@ class QuadrotorEnv(gym.Env):
     def _step(self, action):
         # print('actions: ', action)
         if not self.crashed:
-            self.controller.step(self.dynamics, action, self.dt)
+            self.controller.step(self.dynamics, action, self.goal, self.dt)
             # self.oracle.step(self.dynamics, self.goal, self.dt)
             self.crashed = self.scene.update_state(self.dynamics)
             self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
@@ -646,10 +667,15 @@ class QuadrotorEnv(gym.Env):
     def _reset(self):
         if self.scene is None:
             self.scene = Quadrotor3DScene(None, self.dynamics.arm,
-                640, 480, resizable=True, obstacles=False)
+                640, 480, resizable=True, obstacles=False, viewpoint=self.viewpoint)
 
         self.goal = npa(0, 0, 2)
         x, y, z = self.np_random.uniform(-self.box, self.box, size=(3,)) + self.goal
+        if self.dim_mode == '1D':
+            x = self.goal[0]
+            y = self.goal[1]
+        elif self.dim_mode == '2D':
+            y = self.goal[1]
         if z < 0.25 : z = 0.25
         if self.box < 10:
             # from 0.5 to 10 after 100k episodes
@@ -657,22 +683,20 @@ class QuadrotorEnv(gym.Env):
             if int(4*nextbox) > int(4*self.box):
                 print("box:", nextbox)
             self.box = nextbox
-        #z = self.np_random.uniform(1, 3)
-        #z = self.goal[2]
         pos = npa(x, y, z)
-        #pos = npa(0,0,2)
         vel = omega = npa(0, 0, 0)
-        #vel = self.np_random.uniform(-2, 2, size=3)
-        #vel[2] *= 0.1
 
         def randrot():
             rotz = np.random.uniform(-np.pi, np.pi)
             return r3d.rotz(rotz)[:3,:3]
 
-        # make sure we're sort of pointing towards goal
-        rotation = randrot()
-        while np.dot(rotation[:,0], to_xyhat(-pos)) < 0.5:
+        if self.dim_mode == '1D' or self.dim_mode == '2D':
+            rotation = np.eye(3)
+        else:
+            # make sure we're sort of pointing towards goal
             rotation = randrot()
+            while np.dot(rotation[:,0], to_xyhat(-pos)) < 0.5:
+                rotation = randrot()
 
         self.dynamics.set_state(pos, vel, rotation, omega)
 
@@ -681,8 +705,8 @@ class QuadrotorEnv(gym.Env):
 
         self.crashed = False
         self.tick = 0
-        if self.ep_len < 1000:
-            self.ep_len += 0.01 # len 1000 after 100k episodes
+        # if self.ep_len < 1000:
+        #     self.ep_len += 0.01 # len 1000 after 100k episodes
 
         state = self.dynamics.state_vector()
         # print('state', state)
