@@ -61,10 +61,14 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
         # eps-radius of the goal
         self.goal_diameter = 0.2
-        self.goal_dist_eps = np.array([self.goal_diameter,  # xyz
-                                       0.15,  # Vxyz
-                                       np.pi,   # rotation angle tolerance (rad)
-                                       0.15])  # Wxyz [rad/s]
+
+        self.goal_dist_eps = np.array([self.goal_diameter,
+                                       0.2]) #Vxyz
+
+        # self.goal_dist_eps = np.array([self.goal_diameter,  # xyz
+        #                                0.15,  # Vxyz
+        #                                np.pi,   # rotation angle tolerance (rad)
+        #                                0.15])  # Wxyz [rad/s]
 
         # pos, vel, rot, rot vel
         obs_dim = 3 + 3 + 9 + 3
@@ -111,6 +115,9 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
+    def obs2goal(self, obs):
+        xyz, vel_xyz, rot, rot_vel = self.obs_components(obs)
+        return np.concatenate([xyz, vel_xyz])
 
     def step(self, action):
         # print('actions: ', action)
@@ -139,7 +146,7 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         sv = self.dynamics.state_vector()
 
         obs = {
-            'achieved_goal': sv.copy(),
+            'achieved_goal': self.obs2goal(sv.copy()),
             'desired_goal': self.goal.copy(),
             'observation': sv.copy()
         }
@@ -174,7 +181,7 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         self.action_last = self.action_default()
 
         obs = {
-            'achieved_goal': state.copy(),
+            'achieved_goal': self.obs2goal(state.copy()),
             'desired_goal': self.goal.copy(),
             'observation': state.copy()
         }
@@ -190,6 +197,10 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         return obs[..., 0:3], obs[..., 3:6], obs[..., 6:15], obs[..., 15:18]
 
 
+    # ... allows indexing single and multi dimensional arrays
+    def goal_components(self, obs):
+        return obs[..., 0:3], obs[..., 3:6]
+
     def compute_reward(self, achieved_goal, desired_goal, info):
         """
         This function must be vectorizable, i.e. it must be capable of processing batches
@@ -199,8 +210,8 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         :return:
         """
 
-        xyz, vel, rot_mx, rot_vel = self.obs_components(achieved_goal)
-        goal_xyz, goal_vel, goal_rot_mx, goal_rot_vel = self.obs_components(desired_goal)
+        xyz, vel = self.goal_components(achieved_goal)
+        goal_xyz, goal_vel = self.goal_components(desired_goal)
 
 
         #####################
@@ -227,8 +238,8 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
         #####################
         ## Loss angular velocity when within eps distance to the goal
-        rot_vel_dist = np.linalg.norm(goal_rot_vel - rot_vel, axis=-1, keepdims=True).flatten()
-        loss_rot_vel_eps = gpc * 0.1 * rot_vel_dist + (1.0 - gpc) * self.dt
+        # rot_vel_dist = np.linalg.norm(goal_rot_vel - rot_vel, axis=-1, keepdims=True).flatten()
+        # loss_rot_vel_eps = gpc * 0.1 * rot_vel_dist + (1.0 - gpc) * self.dt
 
         #####################
         ## penalize altitude above this threshold
@@ -264,16 +275,15 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
         loss_pos[crashed_bool] = 0
         loss_vel_eps[crashed_bool] = self.dt
-        loss_rot_vel_eps[crashed_bool] = self.dt
+        # loss_rot_vel_eps[crashed_bool] = self.dt
         loss_crash[crashed_bool] = self.dt * time_remain[crashed_bool] * 100
 
-        reward_mx = np.stack([loss_pos, loss_vel_eps, loss_rot_vel_eps, loss_crash], axis=-1)
+        reward_mx = np.stack([loss_pos, loss_vel_eps, loss_crash], axis=-1)
         reward = -self.dt * np.sum(reward_mx, axis=-1).squeeze()
 
         rew_info = {'rew_crash': -loss_crash,
                     'rew_pos': -loss_pos,
-                    'rew_vel_eps': -loss_vel_eps,
-                    'rew_rot_vel_eps': -loss_rot_vel_eps}
+                    'rew_vel_eps': -loss_vel_eps}
 
         # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
         # print('pos', dynamics.pos)
@@ -286,9 +296,9 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         return reward
 
 
-    def __compute_reward(self, achieved_goal, desired_goal, info):
+    def _compute_reward_nonvector(self, achieved_goal, desired_goal, info):
         """
-        This function must be vectorizable, i.e. it must be capable of processing batches
+        Non vectorized reward
         :param achieved_goal:
         :param desired_goal:
         :param info:
@@ -323,8 +333,8 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
             #####################
             ## Loss angular velocity when within eps distance to the goal
-            rot_vel_dist = np.linalg.norm(goal_rot_vel - rot_vel, axis=-1)
-            loss_rot_vel_eps = gpc * 0.1 * rot_vel_dist + (1.0 - gpc) * self.dt
+            # rot_vel_dist = np.linalg.norm(goal_rot_vel - rot_vel, axis=-1)
+            # loss_rot_vel_eps = gpc * 0.1 * rot_vel_dist + (1.0 - gpc) * self.dt
 
             #####################
             ## penalize altitude above this threshold
@@ -349,20 +359,19 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         else:
             loss_pos = 0
             loss_vel_eps = self.dt
-            loss_rot_eps = self.dt
-            loss_rot_vel_eps = self.dt
+            # loss_rot_eps = self.dt
+            # loss_rot_vel_eps = self.dt
 
             # loss_alt = 0
             # loss_effort = 0
             # loss_vel_proj = 0
             loss_crash = self.dt * info['time_remain'] * 100
 
-        reward = -self.dt * np.sum([loss_pos, loss_vel_eps, loss_rot_vel_eps, loss_crash], axis=-1)
+        reward = -self.dt * np.sum([loss_pos, loss_vel_eps, loss_crash], axis=-1)
 
         rew_info = {'rew_crash': -loss_crash,
                     'rew_pos': -loss_pos,
-                    'rew_vel_eps': -loss_vel_eps,
-                    'rew_rot_vel_eps': -loss_rot_vel_eps}
+                    'rew_vel_eps': -loss_vel_eps}
 
         # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
         # print('pos', dynamics.pos)
@@ -374,7 +383,24 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         # assert reward == env.compute_reward(ob['achieved_goal'], ob['goal'], info)
         return reward
 
-    def distances(self, obs1, obs2):
+    def distances(self, goal1, goal2):
+        """
+        Spits out vector of distances by components (xyz, vel, rot, rot_vel)
+        :param goal1:
+        :param goal2:
+        :return: vector of distances
+        """
+        xyz1, vel1 = self.goal_components(goal1)
+        xyz2, vel2 = self.goal_components(goal2)
+
+        dist_xyz = np.linalg.norm(xyz1 - xyz2)
+        dist_vel = np.linalg.norm(vel1 - vel2)
+        # print('dist_rot: ', dist_rot)
+
+        return np.array([dist_xyz, dist_vel])
+
+
+    def distances_obs(self, obs1, obs2):
         """
         Spits out vector of distances by components (xyz, vel, rot, rot_vel)
         :param obs1:
@@ -398,8 +424,17 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         """
         return np.all(self.goal_dist_eps > self.distances(achieved_goal, desired_goal))
 
-
     def _sample_goal(self):
+        """
+        Samples a new goal and returns it.
+        """
+        xyz = np.random.uniform(low=self.init_box[0], high=self.init_box[1])
+        vel = np.array([0., 0., 0.])
+
+        return np.concatenate([xyz, vel])
+
+
+    def _sample_goal_full(self):
         """
         Samples a new goal and returns it.
         """
@@ -472,7 +507,7 @@ def test_rollout():
 
     distances_arr = []
     angles_arr = []
-    distances_legend = ['xyz', 'vel', 'rot', 'rot_vel']
+    distances_legend = ['xyz', 'vel']
     angles_legend = ['roll', 'pitch', 'yaw', 'roll_des', 'pitch_des', 'yaw_des']
 
     while rollouts_id < rollouts_num:
@@ -505,9 +540,9 @@ def test_rollout():
                 plt.pause(0.05) #have to pause otherwise does not draw
                 plt.draw()
             if done:
-                distances_arr.append(env.distances(s['observation'], s['desired_goal']))
+                distances_arr.append(env.distances(s['achieved_goal'], s['desired_goal']))
                 angles_arr.append(t3d.euler.mat2euler(s['observation'][6:15].reshape([3,3]), 'sxyz') +
-                                  t3d.euler.mat2euler(s['desired_goal'][6:15].reshape([3,3]), 'sxyz'))
+                                  t3d.euler.mat2euler(np.eye(3), 'sxyz'))
                 ep_lengths.append(t)
                 break
             t += 1
