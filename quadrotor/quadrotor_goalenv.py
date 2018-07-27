@@ -29,7 +29,7 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, raw_control=True):
+    def __init__(self, raw_control=True, vertical_only=False):
         np.seterr(under='ignore')
         self.dynamics = default_dynamics()
         #self.controller = ShiftedMotorControl(self.dynamics)
@@ -37,9 +37,13 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         #self.controller = VelocityYawControl(self.dynamics)
         self.scene = None
         self.oracle = NonlinearPositionController(self.dynamics)
+        self.vertical_only = vertical_only
 
         if raw_control:
-            self.controller = RawControl(self.dynamics)
+            if vertical_only:
+                self.controller = VerticalControl(self.dynamics)
+            else:
+                self.controller = RawControl(self.dynamics)
         else:
             # Mellinger controller
             self.controller = NonlinearPositionController(self.dynamics)
@@ -142,7 +146,7 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
         self.tick += 1
         self._elapsed_steps = self.tick
-        done = self.tick > self.ep_len or self.crashed
+        done = self.tick > self.ep_len #or self.crashed
         sv = self.dynamics.state_vector()
 
         obs = {
@@ -428,7 +432,11 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         """
         Samples a new goal and returns it.
         """
-        xyz = np.random.uniform(low=self.init_box[0], high=self.init_box[1])
+        if self.vertical_only:
+            xyz = np.array([0., 0., 0.])
+            xyz[2] = self.np_random.uniform(self.init_box[0][2], self.init_box[1][2])
+        else:
+            xyz = np.random.uniform(low=self.init_box[0], high=self.init_box[1])
         vel = np.array([0., 0., 0.])
 
         return np.concatenate([xyz, vel])
@@ -438,7 +446,11 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         """
         Samples a new goal and returns it.
         """
-        xyz = np.random.uniform(low=self.init_box[0], high=self.init_box[1])
+        if self.vertical_only:
+            xyz = np.array([0., 0., 0.])
+            xyz[2] = self.np_random.uniform(self.init_box[0][2], self.init_box[1][2])
+        else:
+            xyz = np.random.uniform(low=self.init_box[0], high=self.init_box[1])
         vel = np.array([0., 0., 0.])
         rot = np.eye(3).flatten()
         rot_vel = np.array([0., 0., 0.])
@@ -447,23 +459,30 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
 
     def _sample_init_state(self):
+        if self.vertical_only:
+            xyz = self.goal.copy()
+            xyz[2] = self.np_random.uniform(self.init_box[0][2], self.init_box[1][2])
+            vel = np.array([0., 0., 0.])
+            rot_vel = np.array([0., 0., 0.])
+            rotation = np.eye(3)
 
-        xyz = self.np_random.uniform(self.init_box[0], self.init_box[1])
-        vel = np.array([0., 0., 0.])
-        rot_vel = np.array([0., 0., 0.])
+        else:
+            xyz = self.np_random.uniform(self.init_box[0], self.init_box[1])
+            vel = np.array([0., 0., 0.])
+            rot_vel = np.array([0., 0., 0.])
 
-        # Increase box size as a form of curriculum
-        if self.box < 10:
-            # from 0.5 to 10 after 100k episodes
-            nextbox = self.box * self.box_scale
-            if int(4 * nextbox) > int(4 * self.box):
-                print("box:", nextbox)
-            self.box = nextbox
+            # Increase box size as a form of curriculum
+            if self.box < 10:
+                # from 0.5 to 10 after 100k episodes
+                nextbox = self.box * self.box_scale
+                if int(4 * nextbox) > int(4 * self.box):
+                    print("box:", nextbox)
+                self.box = nextbox
 
-        # make sure we're sort of pointing towards goal
-        rotation = randrot()
-        while np.dot(rotation[:, 0], to_xyhat(-xyz)) < 0.5:
+            # make sure we're sort of pointing towards goal
             rotation = randrot()
+            while np.dot(rotation[:, 0], to_xyhat(-xyz)) < 0.5:
+                rotation = randrot()
 
         return xyz, vel, rotation, rot_vel
 
@@ -488,7 +507,7 @@ def test_rollout():
     rollouts_num = 10
     plot_obs = False
 
-    env = QuadrotorGoalEnv(raw_control=False)
+    env = QuadrotorGoalEnv(raw_control=False, vertical_only=True)
 
     env.max_episode_steps = time_limit
     print('Reseting env ...')
