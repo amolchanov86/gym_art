@@ -38,6 +38,10 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         self.scene = None
         self.oracle = NonlinearPositionController(self.dynamics)
         self.vertical_only = vertical_only
+        if self.vertical_only:
+            self.viewpoint = 'side'
+        else:
+            self.viewpoint = 'chase'
 
         if raw_control:
             if vertical_only:
@@ -164,7 +168,9 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         self.time_remain = self.ep_len
         if self.scene is None:
             self.scene = Quadrotor3DScene(None, self.dynamics.arm,
-                640, 480, resizable=True, obstacles=False, goal_diameter=self.goal_diameter)
+                640, 480, resizable=True, obstacles=False,
+                                          goal_diameter=self.goal_diameter,
+                                          viewpoint=self.viewpoint)
 
         # Goal and start point initilization
         self.goal = self._sample_goal()
@@ -460,12 +466,11 @@ class QuadrotorGoalEnv(gym.GoalEnv):
 
     def _sample_init_state(self):
         if self.vertical_only:
-            xyz = self.goal.copy()
+            xyz = self.goal.copy()[0:3]
             xyz[2] = self.np_random.uniform(self.init_box[0][2], self.init_box[1][2])
             vel = np.array([0., 0., 0.])
             rot_vel = np.array([0., 0., 0.])
             rotation = np.eye(3)
-
         else:
             xyz = self.np_random.uniform(self.init_box[0], self.init_box[1])
             vel = np.array([0., 0., 0.])
