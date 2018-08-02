@@ -16,7 +16,7 @@ from gym.utils import seeding
 import gym.envs.registration as gym_reg
 
 import gym_art.quadrotor.rendering3d as r3d
-from .quadrotor_control import *
+from gym_art.quadrotor.quadrotor_control import *
 
 logger = logging.getLogger(__name__)
 
@@ -585,16 +585,16 @@ class QuadrotorEnv(gym.Env):
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, raw_control=True, dim_mode='2D'):
+    def __init__(self, raw_control=True, dim_mode='3D'):
         np.seterr(under='ignore')
         self.dynamics = default_dynamics()
         #self.controller = ShiftedMotorControl(self.dynamics)
         # self.controller = OmegaThrustControl(self.dynamics) ## The last one used
         #self.controller = VelocityYawControl(self.dynamics)
         self.scene = None
-        self.oracle = NonlinearPositionController(self.dynamics)
+        # self.oracle = NonlinearPositionController(self.dynamics)
         self.dim_mode = dim_mode
-        if self.dim_mode == '2D' or self.dim_mode =='1D':
+        if self.dim_mode =='1D':
             self.viewpoint = 'side'
         else:
             self.viewpoint = 'chase'
@@ -648,7 +648,11 @@ class QuadrotorEnv(gym.Env):
     def _step(self, action):
         # print('actions: ', action)
         if not self.crashed:
-            self.controller.step(self.dynamics, action, self.goal, self.dt)
+            # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
+            self.controller.step_tf(dynamics=self.dynamics,
+                                    action=action,
+                                    goal=self.goal,
+                                    dt=self.dt)
             # self.oracle.step(self.dynamics, self.goal, self.dt)
             self.crashed = self.scene.update_state(self.dynamics)
             self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
@@ -669,7 +673,8 @@ class QuadrotorEnv(gym.Env):
             self.scene = Quadrotor3DScene(None, self.dynamics.arm,
                 640, 480, resizable=True, obstacles=False, viewpoint=self.viewpoint)
 
-        self.goal = npa(0, 0, 2)
+        self.goal = np.array([0., 0., 2.])
+        # print('reset goal: ', self.goal)
         x, y, z = self.np_random.uniform(-self.box, self.box, size=(3,)) + self.goal
         if self.dim_mode == '1D':
             x = self.goal[0]
@@ -847,7 +852,7 @@ def test_rollout():
     rollouts_num = 10
     plot_obs = False
 
-    env = QuadrotorEnv()
+    env = QuadrotorEnv(raw_control=False)
 
     env.max_episode_steps = time_limit
     print('Reseting env ...')
@@ -858,7 +863,7 @@ def test_rollout():
     except:
         print('Observation space:', env.observation_space.spaces[0].low, env.observation_space[0].spaces[0].high)
         print('Action space:', env.action_space[0].spaces[0].low, env.action_space[0].spaces[0].high)
-    input('Press any key to continue ...')
+    # input('Press any key to continue ...')
 
     action = [0.5, 0.5, 0.5, 0.5]
     rollouts_id = 0
@@ -875,7 +880,7 @@ def test_rollout():
             if render and (t % render_each == 0): env.render()
             s, r, done, info = env.step(action)
             observations.append(s)
-            print('Step: ', t, ' Obs:', s)
+            # print('Step: ', t, ' Obs:', s)
 
             if t % plot_step == 0:
                 plt.clf()
