@@ -652,7 +652,8 @@ class QuadrotorEnv(gym.Env):
             self.controller.step_tf(dynamics=self.dynamics,
                                     action=action,
                                     goal=self.goal,
-                                    dt=self.dt)
+                                    dt=self.dt,
+                                    observation=np.expand_dims(self.dynamics.state_vector(), axis=0))
             # self.oracle.step(self.dynamics, self.goal, self.dt)
             self.crashed = self.scene.update_state(self.dynamics)
             self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,

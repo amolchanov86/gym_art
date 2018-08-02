@@ -244,7 +244,7 @@ class NonlinearPositionController(object):
         self.Jinv = np.linalg.inv(jacobian)
 
         self.sess = tf.Session()
-        self.thrusts_tf = self.step_graph_construct(Jinv_=self.Jinv)
+        self.thrusts_tf = self.step_graph_construct(Jinv_=self.Jinv, observation_provided=True)
         self.sess.run(tf.global_variables_initializer())
 
     # modifies the dynamics in place.
@@ -293,28 +293,47 @@ class NonlinearPositionController(object):
         thrusts[thrusts > 1] = 1
         dynamics.step(thrusts, dt)
 
-    def step_tf(self, dynamics, goal, dt, action=None):
-        xyz = np.expand_dims(dynamics.pos.astype(np.float32), axis=0)
-        Vxyz = np.expand_dims(dynamics.vel.astype(np.float32), axis=0)
-        Omega = np.expand_dims(dynamics.omega.astype(np.float32), axis=0)
-        R = np.expand_dims(dynamics.rot.astype(np.float32), axis=0)
-        # print('step_tf: goal type: ', type(goal), goal[:3])
-        goal_xyz = np.expand_dims(goal[:3].astype(np.float32), axis=0)
+    def step_tf(self, dynamics, goal, dt, action=None, observation=None):
+        # print('step tf')
+        if not self.observation_provided:
+            xyz = np.expand_dims(dynamics.pos.astype(np.float32), axis=0)
+            Vxyz = np.expand_dims(dynamics.vel.astype(np.float32), axis=0)
+            Omega = np.expand_dims(dynamics.omega.astype(np.float32), axis=0)
+            R = np.expand_dims(dynamics.rot.astype(np.float32), axis=0)
+            # print('step_tf: goal type: ', type(goal), goal[:3])
+            goal_xyz = np.expand_dims(goal[:3].astype(np.float32), axis=0)
 
-        result = self.sess.run([self.thrusts_tf], feed_dict={self.xyz_tf: xyz,
-                                                             self.Vxyz_tf: Vxyz,
-                                                             self.Omega_tf: Omega,
-                                                             self.R_tf: R,
-                                                             self.goal_xyz_tf: goal_xyz})
+            result = self.sess.run([self.thrusts_tf], feed_dict={self.xyz_tf: xyz,
+                                                                 self.Vxyz_tf: Vxyz,
+                                                                 self.Omega_tf: Omega,
+                                                                 self.R_tf: R,
+                                                                 self.goal_xyz_tf: goal_xyz})
+
+        else:
+            print('obs fed: ', observation)
+            goal_xyz = np.expand_dims(goal[:3].astype(np.float32), axis=0)
+            result = self.sess.run([self.thrusts_tf], feed_dict={self.observation: observation,
+                                                                 self.goal_xyz_tf: goal_xyz})
+
         dynamics.step(result[0].squeeze(), dt)
 
-    def step_graph_construct(self, Jinv_=None):
+    def step_graph_construct(self, Jinv_=None, observation_provided=False):
         # import tensorflow as tf
+        self.observation_provided = observation_provided
         with tf.variable_scope('MellingerControl'):
-            self.xyz_tf = tf.placeholder(name='xyz', dtype=tf.float32, shape=(None, 3))
-            self.Vxyz_tf = tf.placeholder(name='Vxyz', dtype=tf.float32, shape=(None, 3))
-            self.Omega_tf = tf.placeholder(name='Omega', dtype=tf.float32, shape=(None, 3))
-            self.R_tf = tf.placeholder(name='R', dtype=tf.float32, shape=(None, 3, 3))
+
+            if not observation_provided:
+                #Here we will provide all components independently
+                self.xyz_tf = tf.placeholder(name='xyz', dtype=tf.float32, shape=(None, 3))
+                self.Vxyz_tf = tf.placeholder(name='Vxyz', dtype=tf.float32, shape=(None, 3))
+                self.Omega_tf = tf.placeholder(name='Omega', dtype=tf.float32, shape=(None, 3))
+                self.R_tf = tf.placeholder(name='R', dtype=tf.float32, shape=(None, 3, 3))
+            else:
+                #Here we will provide observations directly and split them
+                self.observation = tf.placeholder(name='obs', dtype=tf.float32, shape=(None, 3 + 3 + 9 + 3))
+                self.xyz_tf, self.Vxyz_tf, self.R_flat, self.Omega_tf = tf.split(self.observation, [3,3,9,3], axis=1)
+                self.R_tf = tf.reshape(self.R_flat, shape=[-1, 3, 3], name='R')
+
             R = self.R_tf
             # R_flat = tf.placeholder(name='R_flat', type=tf.float32, shape=(None, 9))
             # R = tf.reshape(R_flat, shape=(-1, 3, 3), name='R')
@@ -361,15 +380,15 @@ class NonlinearPositionController(object):
             def transpose(x):
                 return tf.transpose(x, perm=[0, 2, 1])
 
+            # Rotational difference
             Rdiff = tf.matmul(transpose(R_des), R) - tf.matmul(transpose(R), R_des, name='Rdiff')
             print('Rdiff shape: ', Rdiff.get_shape().as_list())
 
             def tf_vee(R, name='vee'):
                 return tf.squeeze( tf.stack([
-                tf.squeeze(tf.slice(R, [0, 2, 1], [-1, 1, 1]), axis=2),
-                tf.squeeze(tf.slice(R, [0, 0, 2], [-1, 1, 1]), axis=2),
-                tf.squeeze(tf.slice(R, [0, 1, 0], [-1, 1, 1]), axis=2)], axis=1, name=name), axis=2)
-
+                    tf.squeeze(tf.slice(R, [0, 2, 1], [-1, 1, 1]), axis=2),
+                    tf.squeeze(tf.slice(R, [0, 0, 2], [-1, 1, 1]), axis=2),
+                    tf.squeeze(tf.slice(R, [0, 1, 0], [-1, 1, 1]), axis=2)], axis=1, name=name), axis=2)
             # def vee(R):
             #     return np.array([R[2, 1], R[0, 2], R[1, 0]])
 
@@ -399,11 +418,17 @@ class NonlinearPositionController(object):
 
             # thrusts = np.matmul(self.Jinv, des)
             if Jinv_ is None:
-                Jinv = tf.get_variable('Jinv', shape=[4,4], initializer=tf.constant_initializer(np.eye(4)), trainable=True)
+                Jinv = tf.get_variable('Jinv', shape=[4,4], initializer=tf.random_normal(shape=[4,4], mean=0.0, stddev=0.25), trainable=True)
             else:
                 Jinv = tf.constant(Jinv_.astype(np.float32), name='Jinv')
                 # Jinv = tf.get_variable('Jinv', shape=[4,4], initializer=tf.constant_initializer())
             print('Jinv shape: ', Jinv.get_shape().as_list())
+            ## For our quadrotor ground truth
+            # Jinv: [[0.0509684   0.0043685 - 0.0043685   0.02038736]
+            #        [0.0509684 - 0.0043685 - 0.0043685 - 0.02038736]
+            #        [0.0509684 - 0.0043685   0.0043685   0.02038736]
+            #        [0.0509684  0.0043685  0.0043685 - 0.02038736]]
+
 
             thrusts = tf.matmul(des, tf.transpose(Jinv), name='thrust')
             thrusts = tf.clip_by_value(thrusts, clip_value_min=0.0, clip_value_max=1.0, name='thrust_clipped')
