@@ -614,15 +614,15 @@ class QuadrotorEnv(gym.Env):
         self.action_space = self.controller.action_space(self.dynamics)
 
         # pos, vel, rot, rot vel
-        obs_dim = 3 + 3 + 9 + 3
+        obs_dim = 3 + 3 + 9 + 3 + 3 # xyz, Vxyz, R, Omega, goal_xyz
         # TODO tighter bounds on some variables
         obs_high = 100 * np.ones(obs_dim)
         # rotation mtx guaranteed to be orthogonal
-        obs_high[6:-3] = 1
+        obs_high[6:6+9] = 1
         self.observation_space = spaces.Box(-obs_high, obs_high)
 
         # TODO get this from a wrapper
-        self.ep_len = 100
+        self.ep_len = 150
         self.tick = 0
         self.dt = 1.0 / 50.0
         self.crashed = False
@@ -663,8 +663,10 @@ class QuadrotorEnv(gym.Env):
         self.time_remain = self.ep_len - self.tick
         reward, rew_info = goal_seeking_reward(self.dynamics, self.goal, action, self.dt, self.crashed, self.time_remain)
         self.tick += 1
-        done = self.tick > self.ep_len or self.crashed
+        done = self.tick > self.ep_len #or self.crashed
         sv = self.dynamics.state_vector()
+        sv = np.append(sv, self.goal[:3])
+
         # print('state', sv, 'goal', self.goal)
         # print('vel', sv[3], sv[4], sv[5])
         return sv, reward, done, {'rewards': rew_info}
@@ -715,6 +717,8 @@ class QuadrotorEnv(gym.Env):
         #     self.ep_len += 0.01 # len 1000 after 100k episodes
 
         state = self.dynamics.state_vector()
+        #That helps to avoid including goals xyz into the observation space
+        state = np.append(state, self.goal[:3])
         # print('state', state)
         return state
 

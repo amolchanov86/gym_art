@@ -69,9 +69,8 @@ class ShiftedMotorControl(object):
         dynamics.step(action, dt)
 
 class RawControl(object):
-    def __init__(self, dynamics, zero_action_middle=True):
+    def __init__(self, dynamics, zero_action_middle=False):
         self.zero_action_middle = zero_action_middle
-        pass
 
     def action_space(self, dynamics):
         if not self.zero_action_middle:
@@ -89,6 +88,12 @@ class RawControl(object):
 
     # modifies the dynamics in place.
     def step(self, dynamics, action, goal, dt):
+        action = self.scale * (action + self.bias)
+        action = np.clip(action, a_min=self.low, a_max=self.high)
+        dynamics.step(action, dt)
+
+    def step_tf(self, dynamics, action, goal, dt, observation=None):
+        # print('bias/scale: ', self.scale, self.bias)
         action = self.scale * (action + self.bias)
         action = np.clip(action, a_min=self.low, a_max=self.high)
         dynamics.step(action, dt)
@@ -342,11 +347,17 @@ class NonlinearPositionController(object):
             self.goal_xyz_tf = tf.placeholder(name='goal_xyz', dtype=tf.float32, shape=(None, 3))
             # goal_Vxyz = tf.placeholder(name='goal_Vxyz', type=tf.float32, shape=(None, 3))
 
-            # Learnable gains
-            kp_p = tf.get_variable('kp_p', shape=[1], initializer=tf.constant_initializer(4.5), trainable=True) # 4.5
-            kd_p = tf.get_variable('kd_p', shape=[1], initializer=tf.constant_initializer(3.5), trainable=True) # 3.5
-            kp_a = tf.get_variable('kp_a', shape=[1], initializer=tf.constant_initializer(200.0), trainable=True) # 200.
-            kd_a = tf.get_variable('kd_a', shape=[1], initializer=tf.constant_initializer(50.0), trainable=True) # 50.
+            # Learnable gains with static initialization
+            kp_p = tf.get_variable('kp_p', shape=[], initializer=tf.constant_initializer(4.5), trainable=True) # 4.5
+            kd_p = tf.get_variable('kd_p', shape=[], initializer=tf.constant_initializer(3.5), trainable=True) # 3.5
+            kp_a = tf.get_variable('kp_a', shape=[], initializer=tf.constant_initializer(200.0), trainable=True) # 200.
+            kd_a = tf.get_variable('kd_a', shape=[], initializer=tf.constant_initializer(50.0), trainable=True) # 50.
+
+            ## IN case you want to optimize them from random values
+            # kp_p = tf.get_variable('kp_p', initializer=tf.random_uniform(shape=[1], minval=0.0, maxval=10.0), trainable=True)  # 4.5
+            # kd_p = tf.get_variable('kd_p', initializer=tf.random_uniform(shape=[1], minval=0.0, maxval=10.0), trainable=True)  # 3.5
+            # kp_a = tf.get_variable('kp_a', initializer=tf.random_uniform(shape=[1], minval=0.0, maxval=100.0), trainable=True)  # 200.
+            # kd_a = tf.get_variable('kd_a', initializer=tf.random_uniform(shape=[1], minval=0.0, maxval=100.0), trainable=True)  # 50.
 
             to_goal = self.goal_xyz_tf - self.xyz_tf
             e_p = -tf.clip_by_norm(to_goal, 4.0, name='e_p')
@@ -416,20 +427,22 @@ class NonlinearPositionController(object):
             des = tf.concat([thrust_mag, dw_des], axis=1, name='des')
             print('des shape: ', des.get_shape().as_list())
 
-            # thrusts = np.matmul(self.Jinv, des)
             if Jinv_ is None:
-                Jinv = tf.get_variable('Jinv', shape=[4,4], initializer=tf.random_normal(shape=[4,4], mean=0.0, stddev=0.25), trainable=True)
+                # Learn the jacobian inverse
+                Jinv = tf.get_variable('Jinv', initializer=tf.random_normal(shape=[4,4], mean=0.0, stddev=0.1), trainable=True)
             else:
+                # Jacobian inverse is provided
                 Jinv = tf.constant(Jinv_.astype(np.float32), name='Jinv')
                 # Jinv = tf.get_variable('Jinv', shape=[4,4], initializer=tf.constant_initializer())
+
             print('Jinv shape: ', Jinv.get_shape().as_list())
-            ## For our quadrotor ground truth
-            # Jinv: [[0.0509684   0.0043685 - 0.0043685   0.02038736]
-            #        [0.0509684 - 0.0043685 - 0.0043685 - 0.02038736]
-            #        [0.0509684 - 0.0043685   0.0043685   0.02038736]
-            #        [0.0509684  0.0043685  0.0043685 - 0.02038736]]
+            ## Jacobian inverse for our quadrotor
+            # Jinv = np.array([[0.0509684, 0.0043685, -0.0043685, 0.02038736],
+            #                 [0.0509684, -0.0043685, -0.0043685, -0.02038736],
+            #                 [0.0509684, -0.0043685,  0.0043685,  0.02038736],
+            #                 [0.0509684,  0.0043685,  0.0043685, -0.02038736]])
 
-
+            # thrusts = np.matmul(self.Jinv, des)
             thrusts = tf.matmul(des, tf.transpose(Jinv), name='thrust')
             thrusts = tf.clip_by_value(thrusts, clip_value_min=0.0, clip_value_max=1.0, name='thrust_clipped')
             return thrusts
