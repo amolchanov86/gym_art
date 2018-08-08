@@ -7,3 +7,4 @@ _data
 _results_temp
 _results
 *.pkl
+*.ipynb

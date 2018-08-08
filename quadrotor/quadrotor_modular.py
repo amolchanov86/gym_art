@@ -47,25 +47,34 @@ class QuadrotorDynamics(object):
     # inertia unit: kg * m^2, 3-element vector representing diagonal matrix
     # thrust_to_weight is the total, it will be divided among the 4 props
     # torque_to_thrust is ratio of torque produced by prop to thrust
-    def __init__(self, mass, arm_length, inertia, thrust_to_weight=2.0, torque_to_thrust=0.05):
+    def __init__(self, mass, arm_length, inertia, thrust_to_weight=2.0, torque_to_thrust=0.05, dynamics_steps_num=1, room_box=None):
         assert np.isscalar(mass)
         assert np.isscalar(arm_length)
         assert inertia.shape == (3,)
+        # This hack allows parametrize calling dynamics multiple times
+        # without expensive for-loops
+        self.step = getattr(self, 'step%d' % dynamics_steps_num)
+        if room_box is None:
+            self.room_box = np.array([[-10., -10., 0.], [10., 10., 10.]])
+        else:
+            self.room_box = np.array(room_box).copy()
+
         self.mass = mass
         self.arm = arm_length
         self.inertia = inertia
         self.thrust_to_weight = thrust_to_weight
         self.thrust = GRAV * mass * thrust_to_weight / 4.0
         self.torque = torque_to_thrust * self.thrust
-        scl = arm_length / norm([1,1,0])
+        self.torque = torque_to_thrust * self.thrust
+        scl = arm_length / norm([1.,1.,0.])
         self.prop_pos = scl * np.array([
-            [1,  1, -1, -1],
-            [1, -1, -1,  1],
-            [0,  0,  0,  0]]).T # row-wise easier with np
+            [1.,  1., -1., -1.],
+            [1., -1., -1.,  1.],
+            [0.,  0.,  0.,  0.]]).T # row-wise easier with np
         # unit: meters^2 ??? maybe wrong
-        self.prop_crossproducts = np.cross(self.prop_pos, [0, 0, 1])
+        self.prop_crossproducts = np.cross(self.prop_pos, [0., 0., 1.])
         # 1 for props turning CCW, -1 for CW
-        self.prop_ccw = np.array([1, -1, 1, -1])
+        self.prop_ccw = np.array([1., -1., 1., -1.])
         self.since_last_svd = 0
 
     # pos, vel, in world coords (meters)
@@ -81,7 +90,7 @@ class QuadrotorDynamics(object):
         self.acc = np.zeros(3)
         self.accelerometer = np.array([0, 0, GRAV])
         self.rot = deepcopy(rotation)
-        self.omega = deepcopy(omega)
+        self.omega = deepcopy(omega.astype(np.float32))
         self.thrusts = deepcopy(thrusts)
 
     # generate a random state (meters, meters/sec, radians/sec)
@@ -92,17 +101,44 @@ class QuadrotorDynamics(object):
         rot = rand_uniform_rot3d(np_random)
         self.set_state(pos, vel, rot, omega)
 
+    # multiple dynamics steps
+    def step2(self, thrust_cmds, dt):
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+
+
+    # multiple dynamics steps
+    def step4(self, thrust_cmds, dt):
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
+
+    # multiple dynamics steps
+    def step8(self, thrust_cmds, dt):
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+
     # thrust_cmds is motor thrusts given in normalized range [0, 1].
     # 1 represents the max possible thrust of the motor.
-    def step(self, thrust_cmds, dt):
+    def step1(self, thrust_cmds, dt):
+        # import pdb; pdb.set_trace()
         # uncomment for debugging. they are slow
         #assert np.all(thrust_cmds >= 0)
         #assert np.all(thrust_cmds <= 1)
 
         # convert the motor commands to a force and moment on the body
-        # thrust_cmds = np.clip(thrust_cmds, 0.0, 1.0)
+        thrust_cmds = np.clip(thrust_cmds, 0.0, 1.0)
         thrusts = self.thrust * thrust_cmds
         torques = self.prop_crossproducts * thrusts[:,None]
+        print('DYN: torques:', torques, self.prop_crossproducts)
         try:
             torques[:, 2] += self.torque * self.prop_ccw * thrust_cmds
         except Exception as e:
@@ -113,7 +149,14 @@ class QuadrotorDynamics(object):
                 print('%s: %s \n' % (key, str(value)))
             raise ValueError("QuadrotorEnv ERROR: SVD did not converge: " + str(e))
         # torques[:,2] += self.torque * self.prop_ccw * thrust_cmds
-        torque = np.sum(torques, axis=0)
+
+        thrust_torque = np.sum(torques, axis=0)
+
+        ## Dampling torque
+        # damping_torque = - 0.3 * self.omega * np.fabs(self.omega)
+        damping_torque = 0.0
+        print('DYN: thrust torque: ', thrust_torque, 'damp_torque', damping_torque, 'omega', self.omega)
+        torque =  thrust_torque + damping_torque
         thrust = npa(0,0,np.sum(thrusts))
         # print('thrus_cmds:', thrust_cmds, ' thrusts', thrusts, ' prop_cross', self.prop_crossproducts)
 
@@ -125,7 +168,17 @@ class QuadrotorDynamics(object):
         # rotational dynamics
         omega_dot = ((1.0 / self.inertia) *
             (cross(-self.omega, self.inertia * self.omega) + torque))
-        self.omega = omega_damp * self.omega + dt * omega_dot
+
+        ## Linear damping
+        # self.omega = omega_damp * self.omega + dt * omega_dot
+
+        ## Quadratic damping
+        # 0.03 corresponds to roughly 1 revolution per sec
+        omega_damp_quadratic = np.clip(0.015 * self.omega ** 2, a_min=0.0, a_max=1.0)
+        self.omega = self.omega + (1.0 - omega_damp_quadratic) * dt * omega_dot
+
+        ## When use square damping on torques - use simple integration
+        # self.omega += dt * omega_dot
 
         omega_vec = np.matmul(self.rot, self.omega)
         x, y, z = omega_vec
@@ -136,7 +189,7 @@ class QuadrotorDynamics(object):
 
         # occasionally orthogonalize the rotation matrix
         self.since_last_svd += 1
-        if self.since_last_svd > 60:
+        if self.since_last_svd > 25:
             try:
                 u, s, v = np.linalg.svd(self.rot)
                 self.rot = np.matmul(u, v)
@@ -151,11 +204,15 @@ class QuadrotorDynamics(object):
                 # log_error('QuadrotorEnv: ' + str(e) + ': ' + 'Rotation matrix: ' + str(self.rot))
 
         # translational dynamics
+        # Room constraints
+        mask = np.logical_or(self.pos <= self.room_box[0], self.pos >= self.room_box[1])
         acc = [0, 0, -GRAV] + (1.0 / self.mass) * np.matmul(self.rot, thrust)
+        # acc[mask] = 0.
         self.acc = acc
         self.vel = vel_damp * self.vel + dt * acc
+        # self.vel[mask] = 0.
         self.pos = self.pos + dt * self.vel
-        #In case quad flies too far it will stop it
+        # self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
 
         self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, GRAV])
 
@@ -187,7 +244,7 @@ class QuadrotorDynamics(object):
         return spaces.Box(low, high)
 
 
-def default_dynamics():
+def default_dynamics(sim_steps, room_box):
     # similar to AscTec Hummingbird
     # TODO: dictionary of dynamics of real quadrotors
     mass = 0.5
@@ -195,7 +252,7 @@ def default_dynamics():
     inertia = mass * npa(0.01, 0.01, 0.02)
     thrust_to_weight = 2.0
     return QuadrotorDynamics(mass, arm_length, inertia,
-        thrust_to_weight=thrust_to_weight)
+        thrust_to_weight=thrust_to_weight, dynamics_steps_num=sim_steps, room_box=room_box)
 
 
 # reasonable reward function for hovering at a goal and not flying too high
@@ -585,12 +642,13 @@ class QuadrotorEnv(gym.Env):
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, raw_control=True, dim_mode='3D'):
+    def __init__(self, raw_control=True, dim_mode='3D', tf_control=True, sim_steps=4):
         np.seterr(under='ignore')
-        self.dynamics = default_dynamics()
-        #self.controller = ShiftedMotorControl(self.dynamics)
+        self.room_box = np.array([[-10, -10, 0], [10, 10, 10]])
+        self.dynamics = default_dynamics(sim_steps, room_box=self.room_box)
+        # self.controller = ShiftedMotorControl(self.dynamics)
         # self.controller = OmegaThrustControl(self.dynamics) ## The last one used
-        #self.controller = VelocityYawControl(self.dynamics)
+        # self.controller = VelocityYawControl(self.dynamics)
         self.scene = None
         # self.oracle = NonlinearPositionController(self.dynamics)
         self.dim_mode = dim_mode
@@ -609,7 +667,7 @@ class QuadrotorEnv(gym.Env):
             else:
                 raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
         else:
-            self.controller = NonlinearPositionController(self.dynamics)
+            self.controller = NonlinearPositionController(self.dynamics, tf_control=tf_control)
 
         self.action_space = self.controller.action_space(self.dynamics)
 
@@ -622,9 +680,10 @@ class QuadrotorEnv(gym.Env):
         self.observation_space = spaces.Box(-obs_high, obs_high)
 
         # TODO get this from a wrapper
-        self.ep_len = 150
+        self.ep_len = 300
         self.tick = 0
-        self.dt = 1.0 / 50.0
+        # self.dt = 1.0 / 50.0
+        self.dt = 1.0 / 100.0
         self.crashed = False
 
         self._seed()
@@ -633,7 +692,6 @@ class QuadrotorEnv(gym.Env):
         # if box_scale > 1.0 then it will also growevery episode
         self.box = 2.0
         self.box_scale = 1.0 #scale the initialbox by this factor eache episode
-        self.room_box = np.array([[-10, -10, 0], [10, 10, 10]])
 
         self._reset()
 
@@ -649,7 +707,7 @@ class QuadrotorEnv(gym.Env):
         # print('actions: ', action)
         if not self.crashed:
             # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
-            self.controller.step_tf(dynamics=self.dynamics,
+            self.controller.step_func(dynamics=self.dynamics,
                                     action=action,
                                     goal=self.goal,
                                     dt=self.dt,
