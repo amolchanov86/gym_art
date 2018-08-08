@@ -680,10 +680,12 @@ class QuadrotorEnv(gym.Env):
         self.observation_space = spaces.Box(-obs_high, obs_high)
 
         # TODO get this from a wrapper
-        self.ep_len = 300
+        self.ep_time = 3.0 #In seconds
+        self.dt = 1.0 / 100.0
+        self.sim_steps = sim_steps
+        self.ep_len = self.ep_time / (self.dt * self.sim_steps)
         self.tick = 0
         # self.dt = 1.0 / 50.0
-        self.dt = 1.0 / 100.0
         self.crashed = False
 
         self._seed()
@@ -915,7 +917,7 @@ def test_rollout():
     rollouts_num = 10
     plot_obs = False
 
-    env = QuadrotorEnv(raw_control=False)
+    env = QuadrotorEnv(raw_control=False, sim_steps=4)
 
     env.max_episode_steps = time_limit
     print('Reseting env ...')
