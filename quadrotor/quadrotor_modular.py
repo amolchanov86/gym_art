@@ -113,7 +113,7 @@ class QuadrotorDynamics(object):
         self.step1(thrust_cmds, dt)
         self.step1(thrust_cmds, dt)
         self.step1(thrust_cmds, dt)
-        print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
+        # print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
 
     # multiple dynamics steps
     def step8(self, thrust_cmds, dt):
@@ -155,7 +155,7 @@ class QuadrotorDynamics(object):
         ## Dampling torque
         # damping_torque = - 0.3 * self.omega * np.fabs(self.omega)
         damping_torque = 0.0
-        print('DYN: thrust torque: ', thrust_torque, 'damp_torque', damping_torque, 'omega', self.omega)
+        # print('DYN: thrust torque: ', thrust_torque, 'damp_torque', damping_torque, 'omega', self.omega)
         torque =  thrust_torque + damping_torque
         thrust = npa(0,0,np.sum(thrusts))
         # print('thrus_cmds:', thrust_cmds, ' thrusts', thrusts, ' prop_cross', self.prop_crossproducts)
@@ -163,7 +163,7 @@ class QuadrotorDynamics(object):
         # TODO add noise
 
         vel_damp = 0.999
-        omega_damp = 0.999
+        # omega_damp = 0.999 # This is only for linear dampling of angular velocity. Currently use quadratic damping
 
         # rotational dynamics
         omega_dot = ((1.0 / self.inertia) *
