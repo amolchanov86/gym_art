@@ -69,7 +69,7 @@ class ShiftedMotorControl(object):
         dynamics.step(action, dt)
 
 class RawControl(object):
-    def __init__(self, dynamics, zero_action_middle=False):
+    def __init__(self, dynamics, zero_action_middle=True):
         self.zero_action_middle = zero_action_middle
         self.action = None
         self.step_func = self.step

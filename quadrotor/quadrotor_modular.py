@@ -138,7 +138,7 @@ class QuadrotorDynamics(object):
         thrust_cmds = np.clip(thrust_cmds, 0.0, 1.0)
         thrusts = self.thrust * thrust_cmds
         torques = self.prop_crossproducts * thrusts[:,None]
-        print('DYN: torques:', torques, self.prop_crossproducts)
+        # print('DYN: torques:', torques, self.prop_crossproducts)
         try:
             torques[:, 2] += self.torque * self.prop_ccw * thrust_cmds
         except Exception as e:
@@ -642,7 +642,7 @@ class QuadrotorEnv(gym.Env):
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, raw_control=True, dim_mode='3D', tf_control=True, sim_steps=4):
+    def __init__(self, raw_control=True, raw_control_zero_middle=False, dim_mode='3D', tf_control=False, sim_steps=4):
         np.seterr(under='ignore')
         self.room_box = np.array([[-10, -10, 0], [10, 10, 10]])
         self.dynamics = default_dynamics(sim_steps, room_box=self.room_box)
@@ -663,7 +663,7 @@ class QuadrotorEnv(gym.Env):
             elif self.dim_mode == '2D':
                 self.controller = VertPlaneControl(self.dynamics)
             elif self.dim_mode == '3D':
-                self.controller = RawControl(self.dynamics)
+                self.controller = RawControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
             else:
                 raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
         else:
@@ -683,7 +683,7 @@ class QuadrotorEnv(gym.Env):
         self.ep_time = 3.0 #In seconds
         self.dt = 1.0 / 100.0
         self.sim_steps = sim_steps
-        self.ep_len = self.ep_time / (self.dt * self.sim_steps)
+        self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
         self.tick = 0
         # self.dt = 1.0 / 50.0
         self.crashed = False

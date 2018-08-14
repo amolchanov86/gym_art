@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 import numpy as np
-from gym_art.quadrotor.quadrotor_modular import *
+#from gym_art.quadrotor.quadrotor_modular import *
+from quadrotor_modular import *
 
 
 def Rdiff(P, Q):
@@ -23,20 +24,16 @@ def randrot():
 
 # Gym environment for quadrotor seeking the origin
 # with no obstacles and full state observations
-class QuadrotorGoalEnv(gym.GoalEnv):
+class QuadrotorGazeboEnv(gym.Env):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second' : 50
+        'video.frames_per_second': 50
     }
 
     def __init__(self, raw_control=True, vertical_only=False):
         np.seterr(under='ignore')
         self.dynamics = default_dynamics()
-        #self.controller = ShiftedMotorControl(self.dynamics)
-        # self.controller = OmegaThrustControl(self.dynamics) ## The last one used
-        #self.controller = VelocityYawControl(self.dynamics)
         self.scene = None
-        self.oracle = NonlinearPositionController(self.dynamics)
         self.vertical_only = vertical_only
         if self.vertical_only:
             self.viewpoint = 'side'
@@ -59,13 +56,13 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         # size of the box from which initial position will be randomly sampled
         # if box_scale > 1.0 then it will also growevery episode
         self.box = 2.0
-        self.box_scale = 1.0 #scale the initialbox by this factor eache episode
-        self.room_size = 3 # height, width, length
+        self.box_scale = 1.0  #scale the initialbox by this factor eache episode
+        self.room_size = 3  #height, width, length
         self.room_box = np.array([[-self.room_size, -self.room_size, 0],
                                   [self.room_size, self.room_size, self.room_size]])
-        self.wall_offset = 0.3 #how much offset from the walls to have for initilization
+        self.wall_offset = 0.3  #how much offset from the walls to have for initilization
         self.init_box = np.array([self.room_box[0] + self.wall_offset, self.room_box[1] - self.wall_offset])
-        self.hover_eps = 0.1 #the box within which quad should be penalized for not adjusting its orientation and velocities
+        self.hover_eps = 0.1  #the box within which quad should be penalized for not adjusting its orientation and velocities
 
         # eps-radius of the goal
         self.goal_diameter = 0.2
@@ -139,8 +136,8 @@ class QuadrotorGoalEnv(gym.GoalEnv):
                                                                   a_max=self.room_box[1]))
         self.action_last = action.copy()
         self.time_remain = self.ep_len - self.tick
-        #info MUST contain all current state variables
-        #since info will be passed when the goals will be recomputed
+        # info MUST contain all current state variables
+        # since info will be passed when the goals will be recomputed
         info = {}
         info['crashed'] = self.crashed
         info['time_remain'] = self.time_remain
@@ -492,6 +489,154 @@ class QuadrotorGoalEnv(gym.GoalEnv):
         return xyz, vel, rotation, rot_vel
 
 
+#topics = [
+ #"imu", 
+ #"motor_speed",
+#"motor_position",
+#"motor_force",
+#"magnetic_field",
+#"gps",
+#"rc",
+#"status",
+#"filtered_sensor_data",
+#"air_speed",
+#"ground_speed",
+# "command/motor_speed", # COMMAND_ACTUATORS
+#"command/rate_thrust",
+#"command/roll_pitch_yawrate_thrust",
+#"command/attitude_thrust",
+#"command/trajectory",
+#"command/pose",
+#"command/gps_waypoint",
+#"pose",
+#"pose_with_covariance",
+#"transform",
+#"odometry",
+#"position",
+#"wrench",
+#"wind_speed",
+#"external_force",
+#"ground_truth/pose",
+#"ground_truth/twist",
+#"command/trajectory"
+#]
+
+
+# string model_name
+# geometry_msgs/Pose pose
+#   geometry_msgs/Point position
+#     float64 x
+#     float64 y
+#     float64 z
+#   geometry_msgs/Quaternion orientation
+#     float64 x
+#     float64 y
+#     float64 z
+#     float64 w
+# geometry_msgs/Twist twist
+#   geometry_msgs/Vector3 linear
+#     float64 x
+#     float64 y
+#     float64 z
+#   geometry_msgs/Vector3 angular
+#     float64 x
+#     float64 y
+#     float64 z
+# string reference_frame
+
+
+def test_gazeobo(thrust_val):
+    """
+    THe simple test for gazebo with hummingbird
+    First, launch
+    roslaunch rotors_gazebo humminbird_raw_control.launch
+    """
+    import rospy
+    import rospy.rostime
+    from nav_msgs.msg import Odometry
+    from mav_msgs.msg import Actuators
+    from trajectory_msgs.msg import MultiDOFJointTrajectoryPoint
+    from gazebo_msgs.srv import SetModelState
+    from gazebo_msgs.msg import ModelState
+    
+    quadrotor = "hummingbird"
+    # That is for us to command a new trajectory
+    trajectory_topic = "command_trajectory"
+    # Topic to get feedback from the quadrotor
+    odometry_topic = "odometry_sensor1/odometry"
+    # Topic to send commands to quadrotor
+    actuators_topic = "command/motor_speed"
+    # Resettting quadrotor
+    reset_topic = "/gazebo/set_model_state"
+
+
+    #Initializing the node
+    rospy.init_node('quadrotor_env', anonymous=True)
+    
+    def odometry_callback(msg):
+        # print("Odometry received", msg)
+        pass
+    
+    def traj_callback(msg):
+        # print("Trajectory received", msg)
+        pass
+
+    def reset(reset_service, pos=[0,0,0], orientation=[0,0,0,1], pos_vel=[0,0,0], angle_vel=[0,0,0]):
+        print("Sending reset request ...")
+        req = ModelState()
+        req.model_name = "hummingbird"
+
+        req.pose.position.x = pos[0]
+        req.pose.position.y = pos[1]
+        req.pose.position.z = pos[2]
+
+        req.pose.orientation.x = orientation[0]
+        req.pose.orientation.y = orientation[1]
+        req.pose.orientation.z = orientation[2]
+        req.pose.orientation.w = orientation[3]
+
+        req.twist.linear.x = pos_vel[0]
+        req.twist.linear.y = pos_vel[1]
+        req.twist.linear.z = pos_vel[2]
+
+        req.twist.angular.x = angle_vel[0]
+        req.twist.angular.y = angle_vel[1]
+        req.twist.angular.z = angle_vel[2]
+
+        print('Sending request: ', req)
+
+        try:
+            resp = reset_service(req)
+            print('RESET response: ', resp)
+            return resp
+        except rospy.ServiceException as e:
+            print('Reset failed: ', str(e))
+        
+
+    # Setting subscribers and publishers    
+    rospy.Subscriber(quadrotor + "/" + odometry_topic, Odometry, odometry_callback)
+    rospy.Subscriber(quadrotor + "/" + trajectory_topic, MultiDOFJointTrajectoryPoint, traj_callback)
+    action_publisher = rospy.Publisher(quadrotor + "/" + actuators_topic, Actuators, queue_size=1)
+    
+    # Waiting for reset service to appear
+    rospy.wait_for_service(reset_topic)
+    reset_service = rospy.ServiceProxy(reset_topic, SetModelState)
+
+    # Resetting
+    reset(reset_service)
+
+    # Looping
+    while True:
+        actuator_msg = Actuators()
+        actuator_msg.angular_velocities = thrust_val*np.array([1, 1, 1, 1])
+        action_publisher.publish(actuator_msg)
+        rospy.sleep(0.1)
+        
+
+
+    # Just prevent exiting
+    # rospy.spin()
+   
 
 
 def test_rollout():
@@ -599,13 +744,24 @@ def main(argv):
         type=int,
         default=0,
         help="Test mode: "
-             "0 - rollout with default controller"
+             "0 - gazebo simple test"
+             "1 - rollout test with mellenger controller"
     )
+    parser.add_argument(
+        "-a", "--action",
+        type=int,
+        default=450,
+        help="Thrust value. Max: 838. Hower: ~450"
+        )
     args = parser.parse_args()
 
-    if args.mode == 0:
+    if args.mode == 1:
         print('Running test rollout ...')
         test_rollout()
+    
+    if args.mode == 0:
+        print('Running simple gazebo test ...')
+        test_gazeobo(args.action)
 
 if __name__ == '__main__':
     main(sys.argv)
