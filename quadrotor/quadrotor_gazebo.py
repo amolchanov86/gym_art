@@ -21,6 +21,16 @@ def randrot():
     rotz = np.random.uniform(-np.pi, np.pi)
     return r3d.rotz(rotz)[:3, :3]
 
+def quat2R(qw, qx, qy, qz):
+    
+    R = \
+    [[1.0 - 2*qy**2 - 2*qz**2,         2*qx*qy - 2*qz*qw,         2*qx*qz + 2*qy*qw],
+     [      2*qx*qy + 2*qz*qw,   1.0 - 2*qx**2 - 2*qz**2,         2*qy*qz - 2*qx*qw],
+     [      2*qx*qz - 2*qy*qw,         2*qy*qz + 2*qx*qw,   1.0 - 2*qx**2 - 2*qy**2]]
+    return R
+
+def qwxyz2R(quat):
+    return quat2R(qw=quat[0], qx=quat[1], qy=quat[2], qz=quat[3])
 
 # Gym environment for quadrotor seeking the origin
 # with no obstacles and full state observations
@@ -490,8 +500,8 @@ class QuadrotorGazeboEnv(gym.Env):
 
 
 #topics = [
- #"imu", 
- #"motor_speed",
+#"imu", 
+#"motor_speed",
 #"motor_position",
 #"motor_force",
 #"magnetic_field",
@@ -573,9 +583,23 @@ def test_gazeobo(thrust_val):
     #Initializing the node
     rospy.init_node('quadrotor_env', anonymous=True)
     
+
+    def repackOdometry(msg):
+        xyz = [msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z]
+        quat = [msg.pose.pose.orientation.w, msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z]
+        vel_xyz = [msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.linear.z]
+        vel_angular = [msg.twist.twist.angular.x, msg.twist.twist.angular.y, msg.twist.twist.angular.z]      
+        return (xyz, quat, vel_xyz, vel_angular)
+
     def odometry_callback(msg):
         # print("Odometry received", msg)
-        pass
+        xyz, quat, vel_xyz, vel_angular = repackOdometry(msg)
+        print('Odometry:')
+        print('xyz:',xyz)
+        print('quat:', quat)
+        print('vel_xyz:', vel_xyz)
+        print('vel_angular:', vel_angular)
+        print('R:', quat2R(qw=quat[0], qx=quat[1], qy=quat[2], qz=quat[3]))
     
     def traj_callback(msg):
         # print("Trajectory received", msg)
@@ -631,11 +655,6 @@ def test_gazeobo(thrust_val):
         actuator_msg.angular_velocities = thrust_val*np.array([1, 1, 1, 1])
         action_publisher.publish(actuator_msg)
         rospy.sleep(0.1)
-        
-
-
-    # Just prevent exiting
-    # rospy.spin()
    
 
 
