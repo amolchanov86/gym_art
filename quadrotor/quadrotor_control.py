@@ -261,6 +261,8 @@ class NonlinearPositionController(object):
         self.kp_p, self.kd_p = 4.5, 3.5
         self.kp_a, self.kd_a = 200.0, 50.0
 
+        self.rot_des = np.eye(3)
+
         self.tf_control = tf_control
         if tf_control:
             self.step_func = self.step_tf
@@ -280,12 +282,15 @@ class NonlinearPositionController(object):
         acc_des = -self.kp_p * e_p - self.kd_p * e_v + np.array([0, 0, GRAV])
 
         # I don't need to control yaw
-        if goal_dist > 2.0 * dynamics.arm:
-            # point towards goal
-            xc_des = to_xyhat(to_goal)
-        else:
-            # keep current
-            xc_des = to_xyhat(dynamics.rot[:,0])
+        # if goal_dist > 2.0 * dynamics.arm:
+        #     # point towards goal
+        #     xc_des = to_xyhat(to_goal)
+        # else:
+        #     # keep current
+        #     xc_des = to_xyhat(dynamics.rot[:,0])
+
+        xc_des = self.rot_des[:, 0]
+        # xc_des = np.array([1.0, 0.0, 0.0])
 
         # rotation towards the ideal thrust direction
         # see Mellinger and Kumar 2011

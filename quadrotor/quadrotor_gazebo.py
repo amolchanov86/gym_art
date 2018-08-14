@@ -85,17 +85,24 @@ class QuadrotorGazeboDynamics(object):
         self.thrust_to_weight = thrust_to_weight
         self.thrust = GRAV * mass * thrust_to_weight / 4.0
         self.torque = torque_to_thrust * self.thrust
-        scl = arm_length / norm([1.,1.,0.])
+        # scl = arm_length / norm([1.,1.,0.])
+        # self.prop_pos = scl * np.array([
+        #     [1.,  1., -1., -1.],
+        #     [1., -1., -1.,  1.],
+        #     [0.,  0.,  0.,  0.]]).T # row-wise easier with np
+
+        scl = arm_length
         self.prop_pos = scl * np.array([
-            [1.,  1., -1., -1.],
-            [1., -1., -1.,  1.],
+            [1.,  0., -1.,  0.],
+            [0.,  1.,  0.,  -1.],
             [0.,  0.,  0.,  0.]]).T # row-wise easier with np
+
         # unit: meters^2 ??? maybe wrong
         self.prop_crossproducts = np.cross(self.prop_pos, [0., 0., 1.])
-        # 1 for props turning CCW, -1 for CW
+        # 1 for props turning CCW, -1 for CW # the comment is probably
         self.prop_ccw = np.array([1., -1., 1., -1.])
         # self.prop_ccw = np.array([-1., 1., -1., 1.])
-        self.thrust_scale = 838.
+        self.max_angular_val = 838. #rad/s
 
 
         ##########################################
@@ -137,14 +144,20 @@ class QuadrotorGazeboDynamics(object):
 
     
     def step1(self, thrust_cmds, dt):
+        # thrust_cmds = np.array([0., 0., 0., 0.])
         # print("DYN: step1: wait_for_message: odometry")
+
         odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
         self.odometry_callback(msg=odom_msg)
 
         # Publish the action
         actuator_msg = Actuators()
-        angular_velocities = (self.thrust_scale*np.array(thrust_cmds)).astype(dtype=np.int)
-        print('Rotor commands: ', angular_velocities)
+        
+        # angular_velocities = (self.thrust_scale*np.array(thrust_cmds)).astype(dtype=np.int)
+        angular_velocities = np.clip(np.sqrt((thrust_cmds * self.thrust) / 8.54858e-06), 
+            a_min=0., a_max=self.max_angular_val)
+
+        # print('Rotor commands: ', angular_velocities)
         actuator_msg.angular_velocities = angular_velocities
         self.action_publisher.publish(actuator_msg)
 
@@ -171,8 +184,11 @@ class QuadrotorGazeboDynamics(object):
 
     def odometry_callback(self, msg):
         # print("Odometry received", msg)
-        self.pos, self.quat, self.vel, self.omega = self.repackOdometry(msg)
+        self.pos, self.quat, self.vel_body, self.omega = self.repackOdometry(msg)
         self.rot = quat2R(qw=self.quat[0], qx=self.quat[1], qy=self.quat[2], qz=self.quat[3])
+        self.vel = np.matmul(self.rot, self.vel_body)
+        
+        # self.omega = np.matmul(self.rot.T, self.omega_glob)
         # print('Odometry:')
         # print('xyz:',self.pos)
         # print('quat:', self.quat)
@@ -248,7 +264,7 @@ class QuadrotorGazeboEnv(gym_env_parent):
         'video.frames_per_second': 50
     }
 
-    def __init__(self, raw_control=True, vertical_only=False, goal=None):
+    def __init__(self, raw_control=True, vertical_only=True, goal=None):
         np.seterr(under='ignore')
 
         self.room_box = 3. * np.array([[-1., -1., 0], [1., 1., 1.]])
@@ -267,9 +283,15 @@ class QuadrotorGazeboEnv(gym_env_parent):
                 self.controller = RawControl(self.dynamics)
         else:
             # Mellinger controller
-            self.controller = NonlinearPositionController(self.dynamics, tf_control=False)         
-            self.controller.kp_p, self.controller.kd_p = 4.5, 3.5 #4.5, 3.5
-            self.controller.kp_a, self.controller.kd_a = 0.0, 0.0 #200., 50.
+            self.controller = NonlinearPositionController(self.dynamics, tf_control=False)     
+
+            # Awesome gains    
+            self.controller.kp_p, self.controller.kd_p = 3.5, 2.9 # 2.0, 2.0 # 
+            self.controller.kp_a, self.controller.kd_a = 50., 11. # 50.0, 12.# 
+
+            # Lowgains
+            # self.controller.kp_p, self.controller.kd_p = 2.0, 2.0 # 
+            # self.controller.kp_a, self.controller.kd_a = 50.0, 12.# 
 
         
         self.rotors_num = 4
@@ -323,7 +345,7 @@ class QuadrotorGazeboEnv(gym_env_parent):
 
 
         # TODO get this from a wrapper
-        self.ep_time = 3.0 #In seconds
+        self.ep_time = 1.5 #In seconds
         self.dt = 1.0 / 100.0
         self.sim_steps = 1
         self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
@@ -693,7 +715,19 @@ class QuadrotorGazeboEnv(gym_env_parent):
         return np.concatenate([xyz, vel, rot, rot_vel])
 
 
+    def randrot(self):
+        rotz = np.random.uniform(-np.pi, np.pi)
+        return r3d.rotz(rotz)[:3,:3]
+
+
     def _sample_init_state(self):
+        xyz = self.np_random.uniform(1.5*np.array([-1, -1, -1]), 1.5*np.array([1, 1, 1]) )  + self.goal_static
+        vel = np.array([0., 0., 0.])
+        # return xyz, vel, np.array([[0, -1, 0],[1, 0, 0],[0, 0 ,1]]), vel.copy()
+        rot = self.randrot()
+        self.controller.rot_des = rot.copy()
+        return xyz, vel, rot, vel.copy()
+
         if self.vertical_only:
             xyz = self.goal.copy()[0:3]
             xyz[2] = self.np_random.uniform(self.init_box[0][2], self.init_box[1][2])
