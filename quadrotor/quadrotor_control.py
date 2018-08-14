@@ -258,6 +258,9 @@ class NonlinearPositionController(object):
         #                 [0.0509684,  0.0043685,  0.0043685, -0.02038736]])
         self.action = None
 
+        self.kp_p, self.kd_p = 4.5, 3.5
+        self.kp_a, self.kd_a = 200.0, 50.0
+
         self.tf_control = tf_control
         if tf_control:
             self.step_func = self.step_tf
@@ -269,18 +272,14 @@ class NonlinearPositionController(object):
 
     # modifies the dynamics in place.
     def step(self, dynamics, goal, dt, action=None, observation=None):
-        kp_p, kd_p = 4.5, 3.5
-        kp_a, kd_a = 200.0, 50.0
-
         to_goal = goal - dynamics.pos
         goal_dist = norm(to_goal)
         e_p = -clamp_norm(to_goal, 4.0)
         e_v = dynamics.vel
-        acc_des = -kp_p * e_p - kd_p * e_v + np.array([0, 0, GRAV])
+        # print('Mellinger: ', e_p, e_v, type(e_p), type(e_v))
+        acc_des = -self.kp_p * e_p - self.kd_p * e_v + np.array([0, 0, GRAV])
 
         # I don't need to control yaw
-
-
         if goal_dist > 2.0 * dynamics.arm:
             # point towards goal
             xc_des = to_xyhat(to_goal)
@@ -302,7 +301,7 @@ class NonlinearPositionController(object):
         e_R[2] *= 0.2 # slow down yaw dynamics
         e_w = dynamics.omega
 
-        dw_des = -kp_a * e_R - kd_a * e_w
+        dw_des = -self.kp_a * e_R - self.kd_a * e_w
         # we want this acceleration, but we can only accelerate in one direction!
         thrust_mag = np.dot(acc_des, R[:,2])
 

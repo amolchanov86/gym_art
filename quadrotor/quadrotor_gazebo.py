@@ -27,28 +27,238 @@ def quat2R(qw, qx, qy, qz):
     [[1.0 - 2*qy**2 - 2*qz**2,         2*qx*qy - 2*qz*qw,         2*qx*qz + 2*qy*qw],
      [      2*qx*qy + 2*qz*qw,   1.0 - 2*qx**2 - 2*qz**2,         2*qy*qz - 2*qx*qw],
      [      2*qx*qz - 2*qy*qw,         2*qy*qz + 2*qx*qw,   1.0 - 2*qx**2 - 2*qy**2]]
-    return R
+    return np.array(R)
 
 def qwxyz2R(quat):
     return quat2R(qw=quat[0], qx=quat[1], qy=quat[2], qz=quat[3])
 
+def R2quat(rot):
+    # print('R2quat: ', rot, type(rot))
+    R = rot.reshape([3,3])
+    w = np.sqrt(1.0 + R[0,0] + R[1,1] + R[2,2]) / 2.0;
+    w4 = (4.0 * w);
+    x = (R[2,1] - R[1,2]) / w4
+    y = (R[0,2] - R[2,0]) / w4
+    z = (R[1,0] - R[0,1]) / w4
+    return np.array([w,x,y,z])
+
+def default_hummingbird_dynamics(sim_steps=1, room_box=None):
+    ## For hummingbird parameters see:
+    # https://github.com/TaoChenOSU/rotors_simulator/blob/gazebo_step_control/rotors_description/urdf/hummingbird.xacro
+
+    # similar to AscTec Hummingbird
+    # TODO: dictionary of dynamics of real quadrotors
+    mass = 0.68 # 0.009 * 4 #body + rotors
+    arm_length = 0.34 / 2.0
+    # inertia = mass * npa(0.01, 0.01, 0.02)
+    inertia = npa(0.007, 0.007, 0.012)
+    thrust_to_weight = 2.0
+    return QuadrotorGazeboDynamics(mass, arm_length, inertia,
+        thrust_to_weight=thrust_to_weight, dynamics_steps_num=sim_steps, room_box=room_box)
+
+import rospy
+import rospy.rostime
+from nav_msgs.msg import Odometry
+from mav_msgs.msg import Actuators
+from trajectory_msgs.msg import MultiDOFJointTrajectoryPoint
+from gazebo_msgs.srv import SetModelState
+from gazebo_msgs.msg import ModelState
+
+
+# simple simulation of quadrotor dynamics.
+class QuadrotorGazeboDynamics(object):
+    def __init__(self, mass, arm_length, inertia, thrust_to_weight=2.0, torque_to_thrust=0.05, dynamics_steps_num=1, room_box=None):
+        assert np.isscalar(mass)
+        assert np.isscalar(arm_length)
+        assert inertia.shape == (3,)
+        # This hack allows parametrize calling dynamics multiple times
+        # without expensive for-loops
+        self.step = getattr(self, 'step%d' % dynamics_steps_num)
+        if room_box is None:
+            self.room_box = np.array([[-3., -3., 0.], [3., 3., 3.]])
+        else:
+            self.room_box = np.array(room_box).copy()
+
+        self.mass = mass
+        self.arm = arm_length
+        self.inertia = inertia
+        self.thrust_to_weight = thrust_to_weight
+        self.thrust = GRAV * mass * thrust_to_weight / 4.0
+        self.torque = torque_to_thrust * self.thrust
+        scl = arm_length / norm([1.,1.,0.])
+        self.prop_pos = scl * np.array([
+            [1.,  1., -1., -1.],
+            [1., -1., -1.,  1.],
+            [0.,  0.,  0.,  0.]]).T # row-wise easier with np
+        # unit: meters^2 ??? maybe wrong
+        self.prop_crossproducts = np.cross(self.prop_pos, [0., 0., 1.])
+        # 1 for props turning CCW, -1 for CW
+        # self.prop_ccw = np.array([1., -1., 1., -1.])
+        self.prop_ccw = np.array([-1., 1., -1., 1.])
+        self.thrust_scale = 838.
+
+
+        ##########################################
+        ### ROS stuff
+        self.quadrotor = "hummingbird"
+        # That is for us to command a new trajectory
+        self.trajectory_topic = self.quadrotor + "/" + "command_trajectory"
+        # Topic to get feedback from the quadrotor
+        self.odometry_topic = self.quadrotor + "/" + "odometry_sensor1/odometry"
+        # Topic to send commands to quadrotor
+        self.actuators_topic = self.quadrotor + "/" + "command/motor_speed"
+        # Resettting quadrotor
+        self.reset_topic = "/gazebo/set_model_state"
+        # Sync publisher (send syncing messages)
+        # self.sync_topic = "/world_control"
+
+        #Initializing the node
+        print("DYN: initilization of the ROS node ...") 
+        rospy.init_node('quadrotor_env', anonymous=True)
+
+        # Setting subscribers and publishers
+        print("DYN: setting publishers and subscribers ...")    
+        # rospy.Subscriber(self.quadrotor + "/" + self.odometry_topic, Odometry, self.odometry_callback)
+        # rospy.Subscriber(self.quadrotor + "/" + self.trajectory_topic, MultiDOFJointTrajectoryPoint, self.traj_callback)
+        self.action_publisher = rospy.Publisher(self.actuators_topic, Actuators, queue_size=1)
+
+        # Waiting for reset service to appear
+        print("DYN: waiting for service:", self.reset_topic)
+        rospy.wait_for_service(self.reset_topic)
+        self.reset_service = rospy.ServiceProxy(self.reset_topic, SetModelState)
+
+        # Reseting gazebo (defaults)
+        self.set_state(pos=[0., 0., self.arm + 0.2], vel=[0.,0.,0.], rot=np.eye(3), omega=[0.,0.,0.])
+
+        # Waiting for the first message
+        # print("DYN: __init__: wait_for_message: odometry")
+        odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
+        self.odometry_callback(msg=odom_msg)
+
+    
+    def step1(self, thrust_cmds, dt):
+        # print("DYN: step1: wait_for_message: odometry")
+        odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
+        self.odometry_callback(msg=odom_msg)
+
+        # Publish the action
+        actuator_msg = Actuators()
+        angular_velocities = (self.thrust_scale*np.array(thrust_cmds)).astype(dtype=np.int)
+        print('Rotor commands: ', angular_velocities)
+        actuator_msg.angular_velocities = angular_velocities
+        self.action_publisher.publish(actuator_msg)
+
+        # Sleep for the simulation to do its job
+        # print('dt: ', dt)
+        rospy.sleep(dt)
+
+
+    def update_state(self):
+        # Receive the fedback
+        # print("DYN: update_state: wait_for_message: odometry")
+        odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
+        self.odometry_callback(msg=odom_msg)
+
+        return self.pos[2] <= self.arm
+
+
+    def repackOdometry(self, msg):
+        xyz = np.array([msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z])
+        quat = np.array([msg.pose.pose.orientation.w, msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z])
+        vel_xyz = np.array([msg.twist.twist.linear.x, msg.twist.twist.linear.y, msg.twist.twist.linear.z])
+        vel_angular = np.array([msg.twist.twist.angular.x, msg.twist.twist.angular.y, msg.twist.twist.angular.z])
+        return (xyz, quat, vel_xyz, vel_angular)
+
+    def odometry_callback(self, msg):
+        # print("Odometry received", msg)
+        self.pos, self.quat, self.vel, self.omega = self.repackOdometry(msg)
+        self.rot = quat2R(qw=self.quat[0], qx=self.quat[1], qy=self.quat[2], qz=self.quat[3])
+        # print('Odometry:')
+        # print('xyz:',self.pos)
+        # print('quat:', self.quat)
+        # print('vel_xyz:', self.vel)
+        # print('vel_angular:', self.omega)
+
+    
+    def traj_callback(self, msg):
+        print("Trajectory received:\n", msg)
+
+
+    def set_state(self, pos, vel, rot, omega):
+        print('ENV: set_state: pos, rot, vel, omega', pos, rot, vel, omega, type(rot), rot.shape)
+        req = ModelState()
+        req.model_name = "hummingbird"
+
+        quat = R2quat(rot)
+
+        req.pose.position.x = pos[0]
+        req.pose.position.y = pos[1]
+        req.pose.position.z = pos[2]
+
+        req.pose.orientation.x = quat[1]
+        req.pose.orientation.y = quat[2]
+        req.pose.orientation.z = quat[3]
+        req.pose.orientation.w = quat[0]
+
+        req.twist.linear.x = vel[0]
+        req.twist.linear.y = vel[1]
+        req.twist.linear.z = vel[2]
+
+        req.twist.angular.x = omega[0]
+        req.twist.angular.y = omega[1]
+        req.twist.angular.z = omega[2]
+
+        print('DYN: Sending RESET request: ', req)
+
+        try:
+            resp = self.reset_service(req)
+            print('DYN: RESET response: ', resp)
+            return resp
+        except rospy.ServiceException as e:
+            print('ERROR: DYN: Reset failed: ', str(e))
+
+        self.pos = np.array(pos)
+        self.rot = np.array(rot)
+        self.vel = np.array(vel)
+        self.omega = np.array(omega)
+
+        return self.state_vector()
+
+    def state_vector(self):
+        return np.concatenate([
+            self.pos, self.vel, self.rot.flatten(), self.omega])
+
+    def action_space(self):
+        low = np.zeros(4)
+        high = np.ones(4)
+        return spaces.Box(low, high)
+
+
+
 # Gym environment for quadrotor seeking the origin
 # with no obstacles and full state observations
-class QuadrotorGazeboEnv(gym.Env):
+try: 
+    gym_env_parent = gym.GoalEnv
+except:
+    gym_env_parent = gym.Env
+
+class QuadrotorGazeboEnv(gym_env_parent):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second': 50
     }
 
-    def __init__(self, raw_control=True, vertical_only=False):
+    def __init__(self, raw_control=True, vertical_only=False, goal=None):
         np.seterr(under='ignore')
-        self.dynamics = default_dynamics()
-        self.scene = None
+
+        self.room_box = 3. * np.array([[-1., -1., 0], [1., 1., 1.]])
+        self.dynamics = default_hummingbird_dynamics(sim_steps=1, room_box=self.room_box)
         self.vertical_only = vertical_only
-        if self.vertical_only:
-            self.viewpoint = 'side'
+
+        if goal is not None:
+            self.goal_static = np.array(goal)
         else:
-            self.viewpoint = 'chase'
+            self.goal_static = None
 
         if raw_control:
             if vertical_only:
@@ -57,9 +267,13 @@ class QuadrotorGazeboEnv(gym.Env):
                 self.controller = RawControl(self.dynamics)
         else:
             # Mellinger controller
-            self.controller = NonlinearPositionController(self.dynamics)
+            self.controller = NonlinearPositionController(self.dynamics, tf_control=False)         
+            self.controller.kp_p, self.controller.kd_p = 4.5, 3.5 #4.5, 3.5
+            self.controller.kp_a, self.controller.kd_a = 0.0, 0.0 #200., 50.
 
-        self.action_space = self.controller.action_space(self.dynamics)
+        
+        self.rotors_num = 4
+        self.action_space = self.dynamics.action_space()
         self.action_last = self.action_default()
 
 
@@ -67,9 +281,9 @@ class QuadrotorGazeboEnv(gym.Env):
         # if box_scale > 1.0 then it will also growevery episode
         self.box = 2.0
         self.box_scale = 1.0  #scale the initialbox by this factor eache episode
-        self.room_size = 3  #height, width, length
-        self.room_box = np.array([[-self.room_size, -self.room_size, 0],
-                                  [self.room_size, self.room_size, self.room_size]])
+        # self.room_size = 3  #height, width, length
+        # self.room_box = np.array([[-self.room_size, -self.room_size, 0],
+        #                           [self.room_size, self.room_size, self.room_size]])
         self.wall_offset = 0.3  #how much offset from the walls to have for initilization
         self.init_box = np.array([self.room_box[0] + self.wall_offset, self.room_box[1] - self.wall_offset])
         self.hover_eps = 0.1  #the box within which quad should be penalized for not adjusting its orientation and velocities
@@ -98,16 +312,23 @@ class QuadrotorGazeboEnv(gym.Env):
         obs_high[6:-3] = 1
         obs_low[6:-3] = -1
 
-        self.observation_space = spaces.Dict(dict(
-            desired_goal = spaces.Box(obs_low, obs_high, dtype='float32'),
-            achieved_goal= spaces.Box(obs_low, obs_high, dtype='float32'),
-            observation  = spaces.Box(obs_low, obs_high, dtype='float32'),
-        ))
+        try:
+            self.observation_space = spaces.Dict(dict(
+                desired_goal = spaces.Box(obs_low, obs_high, dtype='float32'),
+                achieved_goal= spaces.Box(obs_low, obs_high, dtype='float32'),
+                observation  = spaces.Box(obs_low, obs_high, dtype='float32'),
+            ))
+        except Exception as e:
+            self.observation_space = spaces.Box(-obs_high, obs_high)
+
 
         # TODO get this from a wrapper
-        self.ep_len = 200
+        self.ep_time = 3.0 #In seconds
+        self.dt = 1.0 / 100.0
+        self.sim_steps = 1
+        self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
         self.tick = 0
-        self.dt = 1.0 / 50.0
+
         self.crashed = False
         self.time_remain = self.ep_len
 
@@ -115,7 +336,7 @@ class QuadrotorGazeboEnv(gym.Env):
         self.reset()
 
         if self.spec is None:
-            self.spec = gym_reg.EnvSpec(id='QuadrotorGoalEnv-v1', max_episode_steps=self.ep_len)
+            self.spec = gym_reg.EnvSpec(id='QuadrotorGazeboEnv-v1', max_episode_steps=self.ep_len)
 
         # self._max_episode_seconds = self.ep_len
         self._max_episode_steps = self.ep_len
@@ -123,7 +344,7 @@ class QuadrotorGazeboEnv(gym.Env):
         # self._episode_started_at = None
 
     def action_default(self):
-        return np.zeros([4,])
+        return np.zeros([self.rotors_num,])
 
 
     def _seed(self, seed=None):
@@ -139,7 +360,7 @@ class QuadrotorGazeboEnv(gym.Env):
         if not self.crashed:
             self.controller.step(dynamics=self.dynamics, action=action, goal=self.goal[0:3], dt=self.dt)
             # self.oracle.step(self.dynamics, self.goal, goal=self.goal[0:3], dt=self.dt)
-            self.crashed = self.scene.update_state(self.dynamics)
+            self.crashed = self.dynamics.update_state()
             self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
                                                           np.clip(self.dynamics.pos,
                                                                   a_min=self.room_box[0],
@@ -172,21 +393,18 @@ class QuadrotorGazeboEnv(gym.Env):
 
 
     def reset(self):
+        print('ENV: resetting env ...')
         self.time_remain = self.ep_len
-        if self.scene is None:
-            self.scene = Quadrotor3DScene(None, self.dynamics.arm,
-                640, 480, resizable=True, obstacles=False,
-                                          goal_diameter=self.goal_diameter,
-                                          viewpoint=self.viewpoint)
 
         # Goal and start point initilization
         self.goal = self._sample_goal()
         xyz_init, vel_init, rot_init, rot_vel_init = self._sample_init_state()
-        self.dynamics.set_state(xyz_init, vel_init, rot_init, rot_vel_init)
+        # print('ENV: reset: pos, vel, rot, omega: ', xyz_init, vel_init, rot_init, rot_vel_init, rot_init.shape)
+        self.dynamics.set_state(pos=xyz_init, vel=vel_init, rot=rot_init, omega=rot_vel_init)
 
         # Scene initilization
-        self.scene.reset(self.goal[0:3], self.dynamics)
-        self.scene.update_state(self.dynamics)
+        # self.scene.reset(self.goal[0:3], self.dynamics)
+        self.dynamics.update_state()
 
         self.crashed = False
         self.tick = 0
@@ -207,7 +425,8 @@ class QuadrotorGazeboEnv(gym.Env):
 
 
     def render(self, mode='human', close=False):
-        self.scene.render_chase()
+        # self.scene.render_chase()
+        pass
 
     # ... allows indexing single and multi dimensional arrays
     def obs_components(self, obs):
@@ -445,11 +664,14 @@ class QuadrotorGazeboEnv(gym.Env):
         """
         Samples a new goal and returns it.
         """
-        if self.vertical_only:
-            xyz = np.array([0., 0., 0.])
-            xyz[2] = self.np_random.uniform(self.init_box[0][2], self.init_box[1][2])
+        if self.goal_static is not None:
+            xyz = self.goal_static.copy()
         else:
-            xyz = np.random.uniform(low=self.init_box[0], high=self.init_box[1])
+            if self.vertical_only:
+                xyz = np.array([0., 0., 0.])
+                xyz[2] = self.np_random.uniform(self.init_box[0][2], self.init_box[1][2])
+            else:
+                xyz = np.random.uniform(low=self.init_box[0], high=self.init_box[1])
         vel = np.array([0., 0., 0.])
 
         return np.concatenate([xyz, vel])
@@ -496,6 +718,7 @@ class QuadrotorGazeboEnv(gym.Env):
             while np.dot(rotation[:, 0], to_xyhat(-xyz)) < 0.5:
                 rotation = randrot()
 
+        # print('ENV: _sample_init_state: rot', rotation, type(rotation))
         return xyz, vel, rotation, rot_vel
 
 
@@ -555,7 +778,7 @@ class QuadrotorGazeboEnv(gym.Env):
 # string reference_frame
 
 
-def test_gazeobo(thrust_val):
+def test_gazeobo(thrust_val, freq=10.0):
     """
     THe simple test for gazebo with hummingbird
     First, launch
@@ -578,6 +801,8 @@ def test_gazeobo(thrust_val):
     actuators_topic = "command/motor_speed"
     # Resettting quadrotor
     reset_topic = "/gazebo/set_model_state"
+    # Sync publisher (send syncing messages)
+    sync_topic = "/world_control"
 
 
     #Initializing the node
@@ -641,6 +866,7 @@ def test_gazeobo(thrust_val):
     rospy.Subscriber(quadrotor + "/" + odometry_topic, Odometry, odometry_callback)
     rospy.Subscriber(quadrotor + "/" + trajectory_topic, MultiDOFJointTrajectoryPoint, traj_callback)
     action_publisher = rospy.Publisher(quadrotor + "/" + actuators_topic, Actuators, queue_size=1)
+    action_publisher = rospy.Publisher(quadrotor + "/" + actuators_topic, Actuators, queue_size=1)
     
     # Waiting for reset service to appear
     rospy.wait_for_service(reset_topic)
@@ -654,7 +880,7 @@ def test_gazeobo(thrust_val):
         actuator_msg = Actuators()
         actuator_msg.angular_velocities = thrust_val*np.array([1, 1, 1, 1])
         action_publisher.publish(actuator_msg)
-        rospy.sleep(0.1)
+        rospy.sleep(1.0/freq)
    
 
 
@@ -676,7 +902,7 @@ def test_rollout():
     rollouts_num = 10
     plot_obs = False
 
-    env = QuadrotorGoalEnv(raw_control=False, vertical_only=True)
+    env = QuadrotorGazeboEnv(raw_control=False, vertical_only=False, goal=[0.,0.,2.])
 
     env.max_episode_steps = time_limit
     print('Reseting env ...')
@@ -710,8 +936,8 @@ def test_rollout():
             if render and (t % render_each == 0): env.render()
             s, r, done, info = env.step(action)
             observations.append(s['observation'])
-            print('Step: ', t, ' Obs:', s['observation'], 'Goal: ', s['desired_goal'], 'Reached:', info['is_success'])
-            print('Reward:', r)
+            # print('Step: ', t, ' Obs:', s['observation'], 'Goal: ', s['desired_goal'], 'Reached:', info['is_success'])
+            # print('Reward:', r)
 
             if t % plot_step == 0:
                 plt.figure(1)
