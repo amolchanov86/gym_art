@@ -56,6 +56,9 @@ def default_hummingbird_dynamics(sim_steps=1, room_box=None):
     return QuadrotorGazeboDynamics(mass, arm_length, inertia,
         thrust_to_weight=thrust_to_weight, dynamics_steps_num=sim_steps, room_box=room_box)
 
+import time
+current_time_ms = lambda: int(round(time.time() * 1000))
+
 import rospy
 import rospy.rostime
 from nav_msgs.msg import Odometry
@@ -107,6 +110,8 @@ class QuadrotorGazeboDynamics(object):
 
         ##########################################
         ### ROS stuff
+        self.step_delay = 0.02
+
         self.quadrotor = "hummingbird"
         # That is for us to command a new trajectory
         self.trajectory_topic = self.quadrotor + "/" + "command_trajectory"
@@ -146,9 +151,13 @@ class QuadrotorGazeboDynamics(object):
     def step1(self, thrust_cmds, dt):
         # thrust_cmds = np.array([0., 0., 0., 0.])
         # print("DYN: step1: wait_for_message: odometry")
+        time_start = current_time_ms()
 
-        odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
-        self.odometry_callback(msg=odom_msg)
+        # odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
+        # self.odometry_callback(msg=odom_msg)
+        # time_end = current_time_ms()
+        # print('DYN: wait odometry delay: ', (time_end - time_start))
+
 
         # Publish the action
         actuator_msg = Actuators()
@@ -161,12 +170,18 @@ class QuadrotorGazeboDynamics(object):
         actuator_msg.angular_velocities = angular_velocities
         self.action_publisher.publish(actuator_msg)
 
-        # Sleep for the simulation to do its job
-        # print('dt: ', dt)
-        rospy.sleep(dt)
+        time_end = current_time_ms()
+        self.step_delay = 2*(time_end - time_start) # *2 because afterwards we will wait for the state again
+
+        ## Sleep to match desired frequency if delay is not enough
+        sleep_time =  np.clip(dt - self.step_delay, a_min=0, a_max=1.0)
+        # print("Sleep time ms: ", sleep_time)
+        rospy.sleep(sleep_time)
+
 
 
     def update_state(self):
+        # print('Odometry requested ...')
         # Receive the fedback
         # print("DYN: update_state: wait_for_message: odometry")
         odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
@@ -253,9 +268,11 @@ class QuadrotorGazeboDynamics(object):
 
 # Gym environment for quadrotor seeking the origin
 # with no obstacles and full state observations
-try: 
+try:
+    # For latest gym we could use GoalEnv 
     gym_env_parent = gym.GoalEnv
 except:
+    # For older gym it is just Env
     gym_env_parent = gym.Env
 
 class QuadrotorGazeboEnv(gym_env_parent):
@@ -345,8 +362,8 @@ class QuadrotorGazeboEnv(gym_env_parent):
 
 
         # TODO get this from a wrapper
-        self.ep_time = 1.5 #In seconds
-        self.dt = 1.0 / 100.0
+        self.ep_time = 1.0 #In seconds
+        self.dt = 1.0 / 100.
         self.sim_steps = 1
         self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
         self.tick = 0
@@ -361,7 +378,7 @@ class QuadrotorGazeboEnv(gym_env_parent):
             self.spec = gym_reg.EnvSpec(id='QuadrotorGazeboEnv-v1', max_episode_steps=self.ep_len)
 
         # self._max_episode_seconds = self.ep_len
-        self._max_episode_steps = self.ep_len
+        # self._max_episode_steps = self.ep_len
         self._elapsed_steps = 0
         # self._episode_started_at = None
 
@@ -721,19 +738,26 @@ class QuadrotorGazeboEnv(gym_env_parent):
 
 
     def _sample_init_state(self):
-        xyz = self.np_random.uniform(1.5*np.array([-1, -1, -1]), 1.5*np.array([1, 1, 1]) )  + self.goal_static
-        vel = np.array([0., 0., 0.])
+        
+        ## This is to set some random independently of the type of init (just debugging)
+        # xyz = self.np_random.uniform(3*np.array([-1, -1, -0.1]), 3*np.array([1, 1, 0.1]) )  + self.goal_static
+        # vel = np.array([0., 0., 0.])
         # return xyz, vel, np.array([[0, -1, 0],[1, 0, 0],[0, 0 ,1]]), vel.copy()
-        rot = self.randrot()
-        self.controller.rot_des = rot.copy()
-        return xyz, vel, rot, vel.copy()
+        
+        # rot = self.randrot()
+        
+        ## This is to set desired rotation to controller. By default it is just along x axis
+        # self.controller.rot_des = rot.copy()
+
+        # return xyz, vel, rot, vel.copy()
 
         if self.vertical_only:
             xyz = self.goal.copy()[0:3]
+            #Only vertical coord is random
             xyz[2] = self.np_random.uniform(self.init_box[0][2], self.init_box[1][2])
             vel = np.array([0., 0., 0.])
             rot_vel = np.array([0., 0., 0.])
-            rotation = np.eye(3)
+            rot = np.eye(3)
         else:
             xyz = self.np_random.uniform(self.init_box[0], self.init_box[1])
             vel = np.array([0., 0., 0.])
@@ -748,12 +772,12 @@ class QuadrotorGazeboEnv(gym_env_parent):
                 self.box = nextbox
 
             # make sure we're sort of pointing towards goal
-            rotation = randrot()
-            while np.dot(rotation[:, 0], to_xyhat(-xyz)) < 0.5:
-                rotation = randrot()
+            rot = self.randrot()
+            while np.dot(rot[:, 0], to_xyhat(-xyz)) < 0.5:
+                rot = self.randrot()
 
-        # print('ENV: _sample_init_state: rot', rotation, type(rotation))
-        return xyz, vel, rotation, rot_vel
+        # print('ENV: _sample_init_state: rot', rot, type(rotation))
+        return xyz, vel, rot, rot_vel
 
 
 #topics = [
@@ -925,20 +949,22 @@ def test_rollout():
 
     #############################
     # Init plottting
-    fig = plt.figure(1)
-    # ax = plt.subplot(111)
-    plt.show(block=False)
+    plot_obs = False
+    if plot_obs:
+        fig = plt.figure(1)
+        # ax = plt.subplot(111)
+        plt.show(block=False)
 
     render = True
-    plot_step = 50
-    time_limit = 25
+    plot_step = 100
+   
     render_each = 2
     rollouts_num = 10
-    plot_obs = False
+
 
     env = QuadrotorGazeboEnv(raw_control=False, vertical_only=False, goal=[0.,0.,2.])
 
-    env.max_episode_steps = time_limit
+    time_limit = env.spec.max_episode_steps
     print('Reseting env ...')
 
     try:
