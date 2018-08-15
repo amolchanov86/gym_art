@@ -1,5 +1,20 @@
 #!/usr/bin/env python
 
+"""
+OpenAI gym wrapper for the Gazebo Rotors.Gazebo Hummingbird quadrotor
+Notes:
+- make sure that you run in unpased mode, since the scripts does not ask to unpause
+
+
+Important files:
+- hummingbird physics params: 
+https://github.com/TaoChenOSU/rotors_simulator/blob/gazebo_step_control/rotors_description/urdf/hummingbird.xacro
+- Lee position controller:
+https://github.com/TaoChenOSU/rotors_simulator/blob/gazebo_step_control/rotors_control/src/library/lee_position_controller.cpp
+
+
+"""
+
 import numpy as np
 #from gym_art.quadrotor.quadrotor_modular import *
 from quadrotor_modular import *
@@ -151,6 +166,7 @@ class QuadrotorGazeboDynamics(object):
     def step1(self, thrust_cmds, dt):
         # thrust_cmds = np.array([0., 0., 0., 0.])
         # print("DYN: step1: wait_for_message: odometry")
+        # print('DYN: thrust: ', thrust_cmds)
         time_start = current_time_ms()
 
         # odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
@@ -160,8 +176,11 @@ class QuadrotorGazeboDynamics(object):
 
         # Publish the action
         actuator_msg = Actuators()
+
+        ## Direct angular velocity control        
+        # angular_velocities = (self.max_angular_val*np.array(thrust_cmds)).astype(dtype=np.int)
         
-        # angular_velocities = (self.thrust_scale*np.array(thrust_cmds)).astype(dtype=np.int)
+        ## Approximate torque control (converting torque to angular velocity for quad input)
         angular_velocities = np.clip(np.sqrt((thrust_cmds * self.thrust) / 8.54858e-06), 
             a_min=0., a_max=self.max_angular_val)
 
@@ -200,9 +219,14 @@ class QuadrotorGazeboDynamics(object):
         # print("Odometry received", msg)
         self.pos, self.quat, self.vel_body, self.omega = self.repackOdometry(msg)
         self.rot = quat2R(qw=self.quat[0], qx=self.quat[1], qy=self.quat[2], qz=self.quat[3])
+        # Gazebo publishes in the body frame (both vel and omega)
+        # converting to the world frame for the controller (policy)
         self.vel = np.matmul(self.rot, self.vel_body)
-        
+
+        ## The way to convert omega to the world frame:        
         # self.omega = np.matmul(self.rot.T, self.omega_glob)
+
+        ## Debug printing
         # print('Odometry:')
         # print('xyz:',self.pos)
         # print('quat:', self.quat)
@@ -238,11 +262,11 @@ class QuadrotorGazeboDynamics(object):
         req.twist.angular.y = omega[1]
         req.twist.angular.z = omega[2]
 
-        print('DYN: Sending RESET request: ', req)
+        # print('DYN: Sending RESET request: ', req)
 
         try:
             resp = self.reset_service(req)
-            print('DYN: RESET response: ', resp)
+            # print('DYN: RESET response: ', resp)
             return resp
         except rospy.ServiceException as e:
             print('ERROR: DYN: Reset failed: ', str(e))
@@ -311,7 +335,7 @@ class QuadrotorGazeboEnv(gym_env_parent):
 
         
         self.rotors_num = 4
-        self.action_space = self.dynamics.action_space()
+        self.action_space = self.controller.action_space(self.dynamics)
         self.action_last = self.action_default()
 
 
@@ -362,7 +386,10 @@ class QuadrotorGazeboEnv(gym_env_parent):
 
         # TODO get this from a wrapper
         self.ep_time = 4.0 #In seconds - this is just preference.  
-        self.dt = 1.0 / 50. #At best it runs at 40Hz
+        
+        # At best it runs at 50Hz when real time factor in Gazebo is 1.0
+        # Set 25Hz when factor is 2
+        self.dt = 1.0 / 25. 
         self.sim_steps = 1
         self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
         self.tick = 0
@@ -974,7 +1001,8 @@ def test_rollout():
         print('Action space:', env.action_space.low, env.action_space.high)
     # input('Press any key to start rollouts ...')
 
-    action = [0.5, 0.5, 0.5, 0.5]
+    #Since raw control by default creates bias 0.5 it should have some gravity compensation effect 
+    action = np.array([0.0, 0.0, 0.0, 0.0]) 
     rollouts_id = 0
     ep_lengths = []
 
