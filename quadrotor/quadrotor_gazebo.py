@@ -158,7 +158,6 @@ class QuadrotorGazeboDynamics(object):
         # time_end = current_time_ms()
         # print('DYN: wait odometry delay: ', (time_end - time_start))
 
-
         # Publish the action
         actuator_msg = Actuators()
         
@@ -174,9 +173,9 @@ class QuadrotorGazeboDynamics(object):
         self.step_delay = 2*(time_end - time_start) # *2 because afterwards we will wait for the state again
 
         ## Sleep to match desired frequency if delay is not enough
-        sleep_time =  np.clip(dt - self.step_delay, a_min=0, a_max=1.0)
+        # sleep_time =  np.clip(dt - self.step_delay, a_min=0, a_max=1.0)
         # print("Sleep time ms: ", sleep_time)
-        rospy.sleep(sleep_time)
+        # rospy.sleep(sleep_time)
 
 
 
@@ -362,8 +361,8 @@ class QuadrotorGazeboEnv(gym_env_parent):
 
 
         # TODO get this from a wrapper
-        self.ep_time = 1.0 #In seconds
-        self.dt = 1.0 / 100.
+        self.ep_time = 4.0 #In seconds - this is just preference.  
+        self.dt = 1.0 / 50. #At best it runs at 40Hz
         self.sim_steps = 1
         self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
         self.tick = 0
