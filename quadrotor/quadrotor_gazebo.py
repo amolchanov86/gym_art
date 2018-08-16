@@ -176,11 +176,6 @@ class QuadrotorGazeboDynamics(object):
         # print('DYN: thrust: ', thrust_cmds)
         # time_start = current_time_ms()
 
-        # odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
-        # self.odometry_callback(msg=odom_msg)
-        # time_end = current_time_ms()
-        # print('DYN: wait odometry delay: ', (time_end - time_start))
-
         # Publish the action
         actuator_msg = Actuators()
 
@@ -198,16 +193,7 @@ class QuadrotorGazeboDynamics(object):
         ## Delay monitoring
         self.step_delay = (current_time_ms() - self.time_last) / 1000.
         self.time_last = current_time_ms()
-        
-        ## Sleep to match desired frequency if delay is not enough
-        # sleep_time =  np.clip(dt - self.step_delay, a_min=0, a_max=1.0)
-        # print("Sleep time ms: ", sleep_time)
-        # rospy.sleep(sleep_time)
 
-        # before_sleep = time.time()
-        # time.sleep(.01)
-        # after_sleep = time.time()
-        # print('Slept: ', after_sleep - before_sleep)
 
     def update_state(self):
         """
@@ -259,8 +245,6 @@ class QuadrotorGazeboDynamics(object):
         self.odo_freq = 1./ (odo_dt + 1e-6)
         # print('odo freq: ', self.odo_freq)
         self.odo_start_time = time_cur
-
-        # self.update_state()
 
         ## The way to convert omega to the world frame:        
         # self.omega = np.matmul(self.rot.T, self.omega_glob)
