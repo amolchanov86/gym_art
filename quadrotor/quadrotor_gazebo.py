@@ -129,7 +129,6 @@ class QuadrotorGazeboDynamics(object):
 
         ##########################################
         ### ROS stuff
-        self.step_delay = 0.02
 
         self.quadrotor = "hummingbird"
         # That is for us to command a new trajectory
@@ -145,10 +144,7 @@ class QuadrotorGazeboDynamics(object):
 
 
         self.init_ros()
-
-        # while True:
-        #     time.sleep(1)
-        #     self.set_state(pos=[0., 0., self.arm + 0.2], vel=[0.,0.,0.], rot=np.eye(3), omega=[0.,0.,0.])
+        self.time_last = current_time_ms()
             
         # Reseting gazebo (defaults)
         self.set_state(pos=[0., 0., self.arm + 0.2], vel=[0.,0.,0.], rot=np.eye(3), omega=[0.,0.,0.])
@@ -160,18 +156,9 @@ class QuadrotorGazeboDynamics(object):
         print("DYN: initilization of the ROS node ...") 
         rospy.init_node('quadrotor_env', anonymous=True)
 
-        ## Waiting for the first odometry message to update state
-        # print("DYN: __init__: wait_for_message: odometry")
-        # try:
-        #     odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry, timeout=1)
-        #     self.odometry_callback(msg=odom_msg)
-        # except Exception as e:
-        #     print('ERROR: ', str(e))
-        #     raise e
-
         # Setting subscribers and publishers
         print("DYN: setting publishers and subscribers ...")    
-        rospy.Subscriber(self.odometry_topic, Odometry, self.odometry_callback, queue_size=20)
+        rospy.Subscriber(self.odometry_topic, Odometry, self.odometry_callback, queue_size=1)
         # rospy.Subscriber(self.quadrotor + "/" + self.trajectory_topic, MultiDOFJointTrajectoryPoint, self.traj_callback)
         self.action_publisher = rospy.Publisher(self.actuators_topic, Actuators, queue_size=1)
 
@@ -180,14 +167,14 @@ class QuadrotorGazeboDynamics(object):
         rospy.wait_for_service(self.reset_topic)
         self.reset_service = rospy.ServiceProxy(self.reset_topic, SetModelState)
 
-        # rospy.sleep(10.)
+        rospy.sleep(0.2)
 
 
     def step1(self, thrust_cmds, dt):
         # thrust_cmds = np.array([0., 0., 0., 0.])
         # print("DYN: step1: wait_for_message: odometry")
         # print('DYN: thrust: ', thrust_cmds)
-        time_start = current_time_ms()
+        # time_start = current_time_ms()
 
         # odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
         # self.odometry_callback(msg=odom_msg)
@@ -208,13 +195,14 @@ class QuadrotorGazeboDynamics(object):
         actuator_msg.angular_velocities = angular_velocities
         self.action_publisher.publish(actuator_msg)
 
-        time_end = current_time_ms()
-        self.step_delay = (time_end - time_start) / 1000. # *2 because afterwards we will wait for the state again
-
+        ## Delay monitoring
+        self.step_delay = (current_time_ms() - self.time_last) / 1000.
+        self.time_last = current_time_ms()
+        
         ## Sleep to match desired frequency if delay is not enough
-        sleep_time =  np.clip(dt - self.step_delay, a_min=0, a_max=1.0)
+        # sleep_time =  np.clip(dt - self.step_delay, a_min=0, a_max=1.0)
         # print("Sleep time ms: ", sleep_time)
-        rospy.sleep(sleep_time)
+        # rospy.sleep(sleep_time)
 
         # before_sleep = time.time()
         # time.sleep(.01)
@@ -444,6 +432,7 @@ class QuadrotorGazeboEnv(gym_env_parent):
         # At best it runs at 50Hz when real time factor in Gazebo is 1.0
         # Set 25Hz when factor is 2
         self.control_freq = 50.
+        self.rosrate = rospy.Rate(self.control_freq)
         self.dt = 1.0 / self.control_freq
         self.sim_steps = 1
         self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
@@ -484,6 +473,7 @@ class QuadrotorGazeboEnv(gym_env_parent):
         if not self.crashed:
             self.controller.step(dynamics=self.dynamics, action=action, goal=self.goal[0:3], dt=self.dt)
             # self.oracle.step(self.dynamics, self.goal, goal=self.goal[0:3], dt=self.dt)
+            self.rosrate.sleep() #Allows maintain frequency relative to simulation
             self.crashed = self.dynamics.update_state()
             self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
                                                           np.clip(self.dynamics.pos,
