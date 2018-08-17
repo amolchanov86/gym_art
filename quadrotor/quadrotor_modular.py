@@ -642,7 +642,7 @@ class QuadrotorEnv(gym.Env):
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, raw_control=True, raw_control_zero_middle=False, dim_mode='3D', tf_control=False, sim_steps=4):
+    def __init__(self, raw_control=True, raw_control_zero_middle=False, dim_mode='1D', tf_control=False, sim_steps=4):
         np.seterr(under='ignore')
         self.room_box = np.array([[-10, -10, 0], [10, 10, 10]])
         self.dynamics = default_dynamics(sim_steps, room_box=self.room_box)

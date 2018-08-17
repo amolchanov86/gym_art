@@ -106,7 +106,7 @@ class RawControl(object):
 class VerticalControl(object):
     def __init__(self, dynamics, zero_action_middle=True):
         self.zero_action_middle = zero_action_middle
-        pass
+        self.step_func = self.step
 
     def action_space(self, dynamics):
         if not self.zero_action_middle:
@@ -123,7 +123,7 @@ class VerticalControl(object):
         return spaces.Box(self.low, self.high)
 
     # modifies the dynamics in place.
-    def step(self, dynamics, action, goal, dt):
+    def step(self, dynamics, action, goal, dt, observation=None):
         # print('action: ', action)
         action = self.scale * (action + self.bias)
         action = np.clip(action, a_min=self.low, a_max=self.high)
@@ -132,7 +132,7 @@ class VerticalControl(object):
 class VertPlaneControl(object):
     def __init__(self, dynamics, zero_action_middle=True):
         self.zero_action_middle = zero_action_middle
-        pass
+        self.step_func = self.step
 
     def action_space(self, dynamics):
         if not self.zero_action_middle:
@@ -149,7 +149,7 @@ class VertPlaneControl(object):
         return spaces.Box(self.low, self.high)
 
     # modifies the dynamics in place.
-    def step(self, dynamics, action, goal, dt):
+    def step(self, dynamics, action, goal, dt, observation=None):
         # print('action: ', action)
         action = self.scale * (action + self.bias)
         action = np.clip(action, a_min=self.low, a_max=self.high)
