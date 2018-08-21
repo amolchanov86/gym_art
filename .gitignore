@@ -9,3 +9,4 @@ _results
 *.pkl
 *.ipynb
 *.wpr
+*.cprof

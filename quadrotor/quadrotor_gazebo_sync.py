@@ -32,6 +32,9 @@ from gazebo_msgs.srv import SetModelState
 from gazebo_msgs.msg import ModelState
 from rotors_step_simulation_plugin.srv import RequestToTakeNSteps
 
+import transforms3d as t3d
+# from transforms3d.euler import mat2euler
+
 current_time_ms = lambda: int(round(time.time() * 1000))
 
 def Rdiff(P, Q):
@@ -92,8 +95,9 @@ def default_hummingbird_dynamics(sim_steps=1, room_box=None):
 # simple simulation of quadrotor dynamics.
 class QuadrotorGazeboSyncDynamics(object):
     def __init__(self, mass, arm_length, inertia, 
-        thrust_to_weight=2.0, torque_to_thrust=0.05, dynamics_steps_num=1, thrust2motorspeed=8.54858e-06, 
-        room_box=None):
+        thrust_to_weight=2.0, torque_to_thrust=0.05, 
+        dynamics_steps_num=1, thrust2motorspeed=8.54858e-06, 
+        room_box=None, obs_repr="state_xyz_vxyz_euler_omega"):
         assert np.isscalar(mass)
         assert np.isscalar(arm_length)
         assert inertia.shape == (3,)
@@ -101,10 +105,19 @@ class QuadrotorGazeboSyncDynamics(object):
         # without expensive for-loops
         self.dynamics_steps_num = dynamics_steps_num
 
+        ## Obs representations:
+        # state_xyz_vxyz_rot_omega
+        # state_xyz_vxyz_euler_omega
+        # state_xyz_vxyz_quat_omega
+        self.obs_repr = obs_repr
+        self.state_vector = getattr(self, obs_repr)
+
         if room_box is None:
             self.room_box = np.array([[-3., -3., 0.], [3., 3., 3.]])
         else:
             self.room_box = np.array(room_box).copy()
+
+        self.get_observation_space()
 
         # Measuring odometry frequency
         self.odo_start_time = current_time_ms() / 1000.
@@ -168,12 +181,67 @@ class QuadrotorGazeboSyncDynamics(object):
         self.time_last = current_time_ms()
         print("DYN: Ready to run simulation ...")
 
+    def get_observation_space(self):
+        if self.obs_repr == "state_xyz_vxyz_rot_omega":
+            ## Creating observation space
+            # pos, vel, rot, rot vel
+            obs_dim = 3 + 3 + 9 + 3
+            # TODO tighter bounds on some variables
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1]
+            obs_low[0:3]  = self.room_box[0]
+
+
+        elif self.obs_repr == "state_xyz_vxyz_euler_omega":
+             ## Creating observation space
+            # pos, vel, rot, rot vel
+            obs_dim = 3 + 3 + 3 + 3
+            # TODO tighter bounds on some variables
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1]
+            obs_low[0:3]  = self.room_box[0]
+
+            # Euler angles
+            obs_high[6:9] = np.pi*obs_high[6:9] 
+            obs_low[6:9]  = np.pi*obs_low[6:9]           
+
+        elif self.obs_repr == "state_xyz_vxyz_quat_omega":
+             ## Creating observation space
+            # pos, vel, rot, rot vel
+            obs_dim = 3 + 3 + 4 + 3
+            # TODO tighter bounds on some variables
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1]
+            obs_low[0:3]  = self.room_box[0]
+
+
+        self.observation_space = spaces.Box(obs_low, obs_high)
+        return self.observation_space
+        ## This stuff for GoalEnv (later marked simply as GoalEnv)
+        # try:
+        #     self.observation_space = spaces.Dict(dict(
+        #         desired_goal = spaces.Box(obs_low, obs_high, dtype='float32'),
+        #         achieved_goal= spaces.Box(obs_low, obs_high, dtype='float32'),
+        #         observation  = spaces.Box(obs_low, obs_high, dtype='float32'),
+        #     ))
+        # except Exception as e:
+        #     self.observation_space = spaces.Box(-obs_high, obs_high)
+    
+
         
     def def_state(self):
         self.pos = np.array([0.,0.,0.])
         self.vel = np.array([0.,0.,0.])
         self.rot = np.eye(3)
         self.omega = np.array([0.,0.,0.])
+        self.quat = R2quat(self.rot)
+        self.euler = t3d.euler.mat2euler(self.rot)
 
 
     def init_ros(self):
@@ -255,6 +323,7 @@ class QuadrotorGazeboSyncDynamics(object):
         # Gazebo publishes in the body frame (both vel and omega)
         # converting to the world frame for the controller (policy)
         self.vel = np.matmul(self.rot, self.vel_body)
+        self.euler = t3d.euler.mat2euler(self.rot)
 
         time_cur = current_time_ms() / 1000.
         odo_dt = time_cur - self.odo_start_time
@@ -275,7 +344,7 @@ class QuadrotorGazeboSyncDynamics(object):
     def set_state(self, pos, vel, rot, omega):
         # print('DYN: set_state: pos, rot, vel, omega', pos, rot, vel, omega)
         req = ModelState()
-        print("DYN: ModelState: ", req)
+        # print("DYN: ModelState: ", req)
         req.model_name = "hummingbird"
 
         quat = R2quat(rot)
@@ -311,6 +380,8 @@ class QuadrotorGazeboSyncDynamics(object):
         self.rot = np.array(rot)
         self.vel = np.array(vel)
         self.omega = np.array(omega)
+        self.quat = R2quat(self.rot)
+        self.euler = t3d.euler.mat2euler(self.rot)
 
         self.check_collisions()
         if self.crashed:
@@ -318,9 +389,17 @@ class QuadrotorGazeboSyncDynamics(object):
 
         return self.state_vector()
 
-    def state_vector(self):
+    def state_xyz_vxyz_rot_omega(self):
         return np.concatenate([
             self.pos, self.vel, self.rot.flatten(), self.omega])
+
+    def state_xyz_vxyz_quat_omega(self):
+        return np.concatenate([
+            self.pos, self.vel, self.quat, self.omega])
+
+    def state_xyz_vxyz_euler_omega(self):
+        return np.concatenate([
+            self.pos, self.vel, self.euler, self.omega])
 
     def action_space(self):
         low = np.zeros(4)
@@ -372,11 +451,11 @@ class QuadrotorGazeboSyncEnv(gym.Env):
         'video.frames_per_second': 50
     }
 
-    def __init__(self, raw_control=True, vertical_only=True, goal=[0.,0.,2.]):
+    def __init__(self, raw_control=True, vertical_only=False, goal=[0.,0.,2.]):
         np.seterr(under='ignore')
 
         self.room_box = 5. * np.array([[-1., -1., 0], [1., 1., 1.]])
-        self.sim_steps = 4
+        self.sim_steps = 1
         self.dynamics = default_hummingbird_dynamics(sim_steps=self.sim_steps, room_box=self.room_box)
         self.vertical_only = vertical_only
 
@@ -422,34 +501,11 @@ class QuadrotorGazeboSyncEnv(gym.Env):
         self.goal_dist_eps = np.array([self.goal_diameter,
                                        0.2]) #Vxyz
 
-        # pos, vel, rot, rot vel
-        obs_dim = 3 + 3 + 9 + 3
-        # TODO tighter bounds on some variables
-        obs_high =  np.ones(obs_dim)
-        obs_low  = -np.ones(obs_dim)
-        # xyz room constraints
-        obs_high[0:3] = self.room_box[1]
-        obs_low[0:3]  = self.room_box[0]
-
-        # rotation mtx guaranteed to be orthogonal
-        obs_high[6:-3] = 1
-        obs_low[6:-3] = -1
-
-
-        self.observation_space = spaces.Box(-obs_high, obs_high)
-        ## This stuff for GoalEnv (later marked simply as GoalEnv)
-        # try:
-        #     self.observation_space = spaces.Dict(dict(
-        #         desired_goal = spaces.Box(obs_low, obs_high, dtype='float32'),
-        #         achieved_goal= spaces.Box(obs_low, obs_high, dtype='float32'),
-        #         observation  = spaces.Box(obs_low, obs_high, dtype='float32'),
-        #     ))
-        # except Exception as e:
-        #     self.observation_space = spaces.Box(-obs_high, obs_high)
+        self.observation_space = self.dynamics.observation_space
 
 
         # TODO get this from a wrapper
-        self.ep_time = 5.0 #In seconds - this is just preference.  
+        self.ep_time = 4.0 #In seconds - this is just preference.  
         
         self.control_freq = 100. / self.sim_steps #0.01 integration step
         # self.rosrate = rospy.Rate(self.control_freq)
@@ -467,12 +523,18 @@ class QuadrotorGazeboSyncEnv(gym.Env):
             self.spec = gym_reg.EnvSpec(id='QuadrotorGazeboEnv-v1', max_episode_steps=self.ep_len)
 
         self._elapsed_steps = 0
+        self.add_goal_marker()
 
         ################################################################
         ## Activate logger when necessary
         # for handler in logging.root.handlers[:]:
         #     logging.root.removeHandler(handler)
         # logging.basicConfig(filename='/tmp/quadrotor_gazebo.log', level=logging.DEBUG)
+
+
+    def add_goal_marker(self):
+        self.add_marker(self.goal, self.goal_dist_eps[0])
+
 
     @staticmethod
     def add_marker(pos, size):
@@ -685,7 +747,72 @@ class QuadrotorGazeboSyncEnv(gym.Env):
         # assert reward == env.compute_reward(ob['achieved_goal'], ob['goal'], info)
         return reward
 
+
     def compute_reward(self, achieved_goal, desired_goal, info):
+        xyz, vel, rot_mx, rot_vel = self.obs_components(achieved_goal)
+        goal_xyz, goal_vel, goal_rot_mx, goal_rot_vel = self.obs_components(desired_goal)
+        
+        ###############################################
+        ## Distance based reward
+        dist = np.linalg.norm(goal_xyz - xyz, axis=-1)
+        loss_pos = np.log(dist + 0.1) + 0.1 * dist
+        # loss_vert_pos = np.abs(goal_xyz[2] - xyz[2])
+        # loss_hor_pos = 0.25 * np.linalg.norm(goal_xyz[0:2] - xyz[0:2])
+        # loss_pos = loss_vert_pos + loss_hor_pos
+
+        ###############################################
+        # gpc = np.clip(-(1.0 / self.hover_eps) * dist + 1.0, a_min=0, a_max=1.0)
+        #Goal Proximity Coefficient (to have smooth influence of the axilliary distances)
+        
+        ###############################################
+        ## Loss orientation
+        loss_orient = -self.dynamics.rot[2,2] #Projection of the z-body axis to z-world axis
+        
+
+        ###############################################
+        ## Loss velocity when within eps distance to the goal
+        # vel_dist = np.linalg.norm(goal_vel - vel, axis=-1)
+        # loss_vel_eps = gpc * 0.2 * vel_dist + (1.0 - gpc) * self.dt
+
+        ###############################################
+        ## Crashing
+        loss_crash =  float(self.crashed)
+
+
+        #####################
+        ## loss velocity direction
+        # dx = desired_goal[0:3] - achieved_goal[0:3]
+        # dx = dx / (np.linalg.norm(dx) + EPS)
+        # vel_direct = achieved_goal[3:6] / (np.linalg.norm(achieved_goal[3:6]) + EPS)
+        # vel_proj = np.dot(dx, vel_direct)
+        # loss_vel_proj = - 0.5 * (vel_proj - 1.0)
+
+        ###############################################
+        ## Total
+        # reward = -self.dt * np.sum([loss_pos, loss_vel_eps, loss_crash, loss_vel_proj], axis=-1)
+        reward = -self.dt * np.sum([loss_pos, loss_crash, loss_orient], axis=-1)
+        # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
+
+        ## Reporting
+        # rew_info = {'rew_crash': -loss_crash,
+        #             'rew_pos': -loss_pos,
+        #             'rew_vel_eps': -loss_vel_eps,
+        #             'rew_vel_proj': -loss_vel_proj}
+        rew_info = {'rew_crash': -loss_crash,
+                    'rew_pos': -loss_pos,
+                    "rew_orient": -loss_orient}
+
+        info["rewards"] = rew_info
+        if np.any(np.isnan(reward)) or not np.all(np.isfinite(reward)):
+            for key, value in locals().items():
+                print('%s: %s \n' % (key, str(value)))
+            raise ValueError('QuadEnv: reward is Nan')
+
+        # assert reward == env.compute_reward(ob['achieved_goal'], ob['goal'], info)
+        return reward
+
+
+    def compute_reward_full(self, achieved_goal, desired_goal, info):
         xyz, vel, rot_mx, rot_vel = self.obs_components(achieved_goal)
         goal_xyz, goal_vel, goal_rot_mx, goal_rot_vel = self.obs_components(desired_goal)
         
@@ -912,7 +1039,11 @@ class QuadrotorGazeboSyncEnv(gym.Env):
         ## This is to set desired rotation to controller. By default it is just along x axis
         # self.controller.rot_des = rot.copy()
 
-        # return xyz, vel, rot, vel.copy()
+        # xyz = self.goal[0:3]
+        # vel = self.goal[3:6]
+        # rot = np.eye(3)
+        # rot_vel = np.array([0,0,0])
+        # return xyz, vel, rot, rot_vel
 
         if self.vertical_only:
             xyz = self.goal.copy()[0:3]
@@ -1016,7 +1147,7 @@ def test_rollout():
     plot_step = 100
    
     render_each = 2
-    rollouts_num = 100
+    rollouts_num = 10
 
 
     env = QuadrotorGazeboSyncEnv(raw_control=False, vertical_only=False, goal=[0.,0.,2.])
@@ -1042,6 +1173,8 @@ def test_rollout():
     distances_legend = ['xyz', 'vel']
     angles_legend = ['roll', 'pitch', 'yaw', 'roll_des', 'pitch_des', 'yaw_des']
 
+
+    exp_start_time = time.time()
     while rollouts_id < rollouts_num:
         rollouts_id += 1
         s = env.reset()
@@ -1101,6 +1234,8 @@ def test_rollout():
     # plt.legend(angles_legend)
 
     # plt.pause(0.05)
+
+    print("Exp time: ", time.time() - exp_start_time)
     plt.show(block=False)
 
     input("Rollouts are done. Press Enter to continue...")

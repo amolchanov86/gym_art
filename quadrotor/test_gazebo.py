@@ -102,4 +102,5 @@ def test_gazeobo(thrust_val, freq=10.0):
         actuator_msg = Actuators()
         actuator_msg.angular_velocities = thrust_val*np.array([1, 1, 1, 1])
         action_publisher.publish(actuator_msg)
+        # reset(reset_service)
         rospy.sleep(1.0/freq)
