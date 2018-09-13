@@ -212,7 +212,12 @@ class QuadrotorDynamics(object):
         self.vel = vel_damp * self.vel + dt * acc
         # self.vel[mask] = 0.
         self.pos = self.pos + dt * self.vel
-        # self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
+
+        # Clipping if met the obstacle and nullify velocities (not sure what to do about accelerations)
+        self.pos_before_clip = self.pos.copy()
+        self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
+        # self.vel[np.equal(self.pos, self.pos_before_clip)] = 0.
+
 
         self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, GRAV])
 
@@ -253,6 +258,89 @@ def default_dynamics(sim_steps, room_box):
     thrust_to_weight = 2.0
     return QuadrotorDynamics(mass, arm_length, inertia,
         thrust_to_weight=thrust_to_weight, dynamics_steps_num=sim_steps, room_box=room_box)
+
+
+
+# reasonable reward function for hovering at a goal and not flying too high
+def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
+    ##################################################
+    ## log to create a sharp peak at the goal
+    dist = np.linalg.norm(goal - dynamics.pos)
+    loss_pos = np.log(dist + 0.1) + 0.1 * dist
+    # loss_pos = dist
+
+    # dynamics_pos = dynamics.pos
+    # print('dynamics.pos', dynamics.pos)
+
+    ##################################################
+    ## penalize altitude above this threshold
+    # max_alt = 6.0
+    # loss_alt = np.exp(2*(dynamics.pos[2] - max_alt))
+
+    ##################################################
+    # penalize amount of control effort
+    loss_effort = 0.01 * np.linalg.norm(action)
+
+    ##################################################
+    ## loss velocity
+    dx = goal - dynamics.pos
+    dx = dx / (np.linalg.norm(dx) + EPS)
+    
+    ## normalized
+    # vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
+    # vel_proj = np.dot(dx, vel_direct)
+    
+    vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
+    vel_magn = np.clip(np.linalg.norm(dynamics.vel),-1, 1)
+    vel_clipped = vel_magn * vel_direct 
+    vel_proj = np.dot(dx, vel_clipped)
+
+    loss_vel_proj = - dist * vel_proj
+    # print('vel_proj:', vel_proj)
+    # print('loss_vel_proj:', loss_vel_proj)
+
+    ##################################################
+    ## Loss orientation
+    loss_orient = -dynamics.rot[2,2] #Projection of the z-body axis to z-world axis
+
+
+    ##################################################
+    ## loss crash
+    loss_crash = float(crashed)
+
+
+    # reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
+    # rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
+
+
+    reward = -dt * np.sum([
+        loss_pos, 
+        loss_effort, 
+        loss_crash, 
+        loss_vel_proj,
+        loss_orient
+        ])
+    
+
+    rew_info = {
+    'rew_pos': -loss_pos, 
+    'rew_action': -loss_effort, 
+    'rew_crash': -loss_crash, 
+    #'rew_altitude': -loss_alt, 
+    'rew_vel_proj': -loss_vel_proj,
+    "rew_orient": -loss_orient
+    }
+
+
+
+    # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
+    # print('pos', dynamics.pos)
+    if np.isnan(reward) or not np.isfinite(reward):
+        for key, value in locals().items():
+            print('%s: %s \n' % (key, str(value)))
+        raise ValueError('QuadEnv: reward is Nan')
+
+    return reward, rew_info
 
 
 # reasonable reward function for hovering at a goal and not flying too high
@@ -642,7 +730,7 @@ class QuadrotorEnv(gym.Env):
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, raw_control=True, raw_control_zero_middle=False, dim_mode='1D', tf_control=False, sim_steps=4):
+    def __init__(self, raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4):
         np.seterr(under='ignore')
         self.room_box = np.array([[-10, -10, 0], [10, 10, 10]])
         self.dynamics = default_dynamics(sim_steps, room_box=self.room_box)
@@ -707,21 +795,22 @@ class QuadrotorEnv(gym.Env):
 
     def _step(self, action):
         # print('actions: ', action)
-        if not self.crashed:
-            # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
-            self.controller.step_func(dynamics=self.dynamics,
-                                    action=action,
-                                    goal=self.goal,
-                                    dt=self.dt,
-                                    observation=np.expand_dims(self.dynamics.state_vector(), axis=0))
-            # self.oracle.step(self.dynamics, self.goal, self.dt)
-            self.crashed = self.scene.update_state(self.dynamics)
-            self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
-                                                          np.clip(self.dynamics.pos,
-                                                                  a_min=self.room_box[0],
-                                                                  a_max=self.room_box[1]))
+        # if not self.crashed:
+        # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
+        self.controller.step_func(dynamics=self.dynamics,
+                                action=action,
+                                goal=self.goal,
+                                dt=self.dt,
+                                observation=np.expand_dims(self.dynamics.state_vector(), axis=0))
+        # self.oracle.step(self.dynamics, self.goal, self.dt)
+        self.crashed = self.scene.update_state(self.dynamics)
+        self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
+                                                      np.clip(self.dynamics.pos,
+                                                              a_min=self.room_box[0],
+                                                              a_max=self.room_box[1]))
+
         self.time_remain = self.ep_len - self.tick
-        reward, rew_info = goal_seeking_reward(self.dynamics, self.goal, action, self.dt, self.crashed, self.time_remain)
+        reward, rew_info = compute_reward(self.dynamics, self.goal, action, self.dt, self.crashed, self.time_remain)
         self.tick += 1
         done = self.tick > self.ep_len #or self.crashed
         sv = self.dynamics.state_vector()
@@ -836,7 +925,7 @@ class QuadrotorVisionEnv(gym.Env):
             self.crashed = self.scene.update_state(self.dynamics)
         reward, rew_info = goal_seeking_reward(self.dynamics, self.goal, action, self.dt, self.crashed)
         self.tick += 1
-        done = self.crashed or (self.tick > self.ep_len)
+        done = (self.tick > self.ep_len)
 
         rgb = self.scene.render_obs()
         # for debugging:

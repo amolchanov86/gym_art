@@ -97,7 +97,7 @@ class QuadrotorGazeboSyncDynamics(object):
     def __init__(self, mass, arm_length, inertia, 
         thrust_to_weight=2.0, torque_to_thrust=0.05, 
         dynamics_steps_num=1, thrust2motorspeed=8.54858e-06, 
-        room_box=None, obs_repr="state_xyz_vxyz_euler_omega"):
+        room_box=None, obs_repr="state_xyz_vxyz_rot_omega"):
         assert np.isscalar(mass)
         assert np.isscalar(arm_length)
         assert inertia.shape == (3,)
