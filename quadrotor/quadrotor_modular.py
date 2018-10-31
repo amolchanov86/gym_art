@@ -17,6 +17,7 @@ import gym.envs.registration as gym_reg
 
 import gym_art.quadrotor.rendering3d as r3d
 from gym_art.quadrotor.quadrotor_control import *
+import transforms3d as t3d
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,27 @@ def log_error(err_str, ):
         # myfile.write('###############################################')
 
 
+def quat2R(qw, qx, qy, qz):
+    
+    R = \
+    [[1.0 - 2*qy**2 - 2*qz**2,         2*qx*qy - 2*qz*qw,         2*qx*qz + 2*qy*qw],
+     [      2*qx*qy + 2*qz*qw,   1.0 - 2*qx**2 - 2*qz**2,         2*qy*qz - 2*qx*qw],
+     [      2*qx*qz - 2*qy*qw,         2*qy*qz + 2*qx*qw,   1.0 - 2*qx**2 - 2*qy**2]]
+    return np.array(R)
+
+def qwxyz2R(quat):
+    return quat2R(qw=quat[0], qx=quat[1], qy=quat[2], qz=quat[3])
+
+def R2quat(rot):
+    # print('R2quat: ', rot, type(rot))
+    R = rot.reshape([3,3])
+    w = np.sqrt(1.0 + R[0,0] + R[1,1] + R[2,2]) / 2.0;
+    w4 = (4.0 * w);
+    x = (R[2,1] - R[1,2]) / w4
+    y = (R[0,2] - R[2,0]) / w4
+    z = (R[1,0] - R[0,1]) / w4
+    return np.array([w,x,y,z])
+
 # simple simulation of quadrotor dynamics.
 class QuadrotorDynamics(object):
     # mass unit: kilogram
@@ -53,6 +75,7 @@ class QuadrotorDynamics(object):
         assert inertia.shape == (3,)
         # This hack allows parametrize calling dynamics multiple times
         # without expensive for-loops
+
         self.step = getattr(self, 'step%d' % dynamics_steps_num)
         if room_box is None:
             self.room_box = np.array([[-10., -10., 0.], [10., 10., 10.]])
@@ -730,9 +753,16 @@ class QuadrotorEnv(gym.Env):
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4):
+    def __init__(self, raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
+                obs_repr="state_xyz_vxyz_rot_omega"):
         np.seterr(under='ignore')
+        """
+        @param obs_repr: options: state_xyz_vxyz_rot_omega, state_xyz_vxyz_quat_omega
+        """
         self.room_box = np.array([[-10, -10, 0], [10, 10, 10]])
+        self.obs_repr = obs_repr
+        self.state_vector = getattr(self, obs_repr)
+
         self.dynamics = default_dynamics(sim_steps, room_box=self.room_box)
         # self.controller = ShiftedMotorControl(self.dynamics)
         # self.controller = OmegaThrustControl(self.dynamics) ## The last one used
@@ -759,13 +789,17 @@ class QuadrotorEnv(gym.Env):
 
         self.action_space = self.controller.action_space(self.dynamics)
 
-        # pos, vel, rot, rot vel
-        obs_dim = 3 + 3 + 9 + 3 + 3 # xyz, Vxyz, R, Omega, goal_xyz
-        # TODO tighter bounds on some variables
-        obs_high = 100 * np.ones(obs_dim)
-        # rotation mtx guaranteed to be orthogonal
-        obs_high[6:6+9] = 1
-        self.observation_space = spaces.Box(-obs_high, obs_high)
+        ## Former way to get obs space
+        # # pos, vel, rot, rot vel
+        # obs_dim = 3 + 3 + 9 + 3 + 3 # xyz, Vxyz, R, Omega, goal_xyz
+        # # TODO tighter bounds on some variables
+        # obs_high = 100 * np.ones(obs_dim)
+        # # rotation mtx guaranteed to be orthogonal
+        # obs_high[6:6+9] = 1
+        # self.observation_space = spaces.Box(-obs_high, obs_high)
+
+        self.observation_space = self.get_observation_space()
+
 
         # TODO get this from a wrapper
         self.ep_time = 3.0 #In seconds
@@ -788,6 +822,78 @@ class QuadrotorEnv(gym.Env):
         if self.spec is None:
             self.spec = gym_reg.EnvSpec(id='Quadrotor-v0', max_episode_steps=self.ep_len)
 
+    def state_xyz_vxyz_rot_omega(self):
+        return np.concatenate([self.dynamics.state_vector(), self.goal[:3]])
+
+    def state_xyz_vxyz_quat_omega(self):
+        self.quat = R2quat(self.dynamics.rot)
+        return np.concatenate([self.dynamics.pos, self.dynamics.vel, self.quat, self.dynamics.omega, self.goal[:3]])
+
+    def state_xyz_vxyz_euler_omega(self):
+        self.euler = t3d.euler.mat2euler(self.dynamics.rot)
+        return np.concatenate([self.dynamics.pos, self.dynamics.vel, self.euler, self.dynamics.omega, self.goal[:3]])
+
+    def get_observation_space(self):
+        self.wall_offset = 0.3
+        if self.obs_repr == "state_xyz_vxyz_rot_omega":
+            ## Creating observation space
+            # pos, vel, rot, rot vel
+            self.obs_comp_sizes = [3, 3, 9, 3, 3]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "goal_xyz"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            # TODO tighter bounds on some variables
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1]
+            obs_low[0:3]  = self.room_box[0]
+
+            # xyz room constraints
+            obs_high[18:21] = self.room_box[1] - self.wall_offset
+            obs_low[18:21]  = self.room_box[0] + self.wall_offset
+
+
+        elif self.obs_repr == "state_xyz_vxyz_euler_omega":
+             ## Creating observation space
+            # pos, vel, rot, rot vel
+            self.obs_comp_sizes = [3, 3, 3, 3, 3]
+            self.obs_comp_names = ["xyz", "Vxyz", "euler", "Omega", "goal_xyz"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            # TODO tighter bounds on some variables
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1]
+            obs_low[0:3]  = self.room_box[0]
+
+            # Euler angles
+            obs_high[6:9] = np.pi*obs_high[6:9] 
+            obs_low[6:9]  = np.pi*obs_low[6:9]
+
+            # goal xyz room offseted
+            obs_high[12:15] = self.room_box[1] - self.wall_offset
+            obs_low[12:15]  = self.room_box[0] + self.wall_offset           
+
+        elif self.obs_repr == "state_xyz_vxyz_quat_omega":
+             ## Creating observation space
+            # pos, vel, rot, rot vel
+            self.obs_comp_sizes = [3, 3, 4, 3, 3]
+            self.obs_comp_names = ["xyz", "Vxyz", "quat", "Omega", "goal_xyz"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            # TODO tighter bounds on some variables
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1]
+            obs_low[0:3]  = self.room_box[0]
+
+            # goal xyz room offseted
+            obs_high[13:16] = self.room_box[1] - self.wall_offset
+            obs_low[13:16]  = self.room_box[0] + self.wall_offset  
+
+
+        self.observation_space = spaces.Box(obs_low, obs_high)
+        return self.observation_space
 
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -801,7 +907,7 @@ class QuadrotorEnv(gym.Env):
                                 action=action,
                                 goal=self.goal,
                                 dt=self.dt,
-                                observation=np.expand_dims(self.dynamics.state_vector(), axis=0))
+                                observation=np.expand_dims(self.state_vector(), axis=0))
         # self.oracle.step(self.dynamics, self.goal, self.dt)
         self.crashed = self.scene.update_state(self.dynamics)
         self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
@@ -813,8 +919,7 @@ class QuadrotorEnv(gym.Env):
         reward, rew_info = compute_reward(self.dynamics, self.goal, action, self.dt, self.crashed, self.time_remain)
         self.tick += 1
         done = self.tick > self.ep_len #or self.crashed
-        sv = self.dynamics.state_vector()
-        sv = np.append(sv, self.goal[:3])
+        sv = self.state_vector()
 
         # print('state', sv, 'goal', self.goal)
         # print('vel', sv[3], sv[4], sv[5])
@@ -865,128 +970,10 @@ class QuadrotorEnv(gym.Env):
         # if self.ep_len < 1000:
         #     self.ep_len += 0.01 # len 1000 after 100k episodes
 
-        state = self.dynamics.state_vector()
+        state = self.state_vector()
         #That helps to avoid including goals xyz into the observation space
-        state = np.append(state, self.goal[:3])
         # print('state', state)
         return state
-
-    def _render(self, mode='human', close=False):
-        self.scene.render_chase()
-
-
-
-# Gym environment for quadrotor seeking a given goal
-# with obstacles and vision + IMU observations
-class QuadrotorVisionEnv(gym.Env):
-    metadata = {
-        'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second' : 50
-    }
-
-    def __init__(self):
-        np.seterr(under='ignore')
-        self.dynamics = default_dynamics()
-        #self.controller = ShiftedMotorControl(self.dynamics)
-        self.controller = OmegaThrustControl(self.dynamics)
-        self.action_space = self.controller.action_space(self.dynamics)
-        self.scene = None
-        self.crashed = False
-        self.oracle = NonlinearPositionController(self.dynamics)
-
-        seq_len = 4
-        img_w, img_h = 64, 64
-        img_space = spaces.Box(-1, 1, (img_h, img_w, seq_len))
-        imu_space = spaces.Box(-100, 100, (6, seq_len))
-        # vector from us to goal projected onto world plane and rotated into
-        # our "looking forward" coordinates, and clamped to a maximal length
-        dir_space = spaces.Box(-4, 4, (2, seq_len))
-        self.observation_space = spaces.Tuple([img_space, imu_space, dir_space])
-        self.img_buf = np.zeros((img_w, img_h, seq_len))
-        self.imu_buf = np.zeros((6, seq_len))
-        self.dir_buf = np.zeros((2, seq_len))
-
-        # TODO get this from a wrapper
-        self.ep_len = 500
-        self.tick = 0
-        self.dt = 1.0 / 50.0
-
-        self._seed()
-
-    def _seed(self, seed=None):
-        self.np_random, seed = seeding.np_random(seed)
-        return [seed]
-
-    def _step(self, action):
-        if not self.crashed:
-            #self.controller.step(self.dynamics, action, self.dt)
-            # print("oracle step")
-            self.oracle.step(self.dynamics, self.goal, self.dt)
-            self.crashed = self.scene.update_state(self.dynamics)
-        reward, rew_info = goal_seeking_reward(self.dynamics, self.goal, action, self.dt, self.crashed)
-        self.tick += 1
-        done = (self.tick > self.ep_len)
-
-        rgb = self.scene.render_obs()
-        # for debugging:
-        #rgb = np.flip(rgb, axis=0)
-        #plt.imshow(rgb)
-        #plt.show()
-
-        grey = (2.0 / 255.0) * np.mean(rgb, axis=2) - 1.0
-        #self.img_buf = np.roll(self.img_buf, -1, axis=2)
-        self.img_buf[:,:,:-1] = self.img_buf[:,:,1:]
-        self.img_buf[:,:,-1] = grey
-
-        imu = np.concatenate([self.dynamics.omega, self.dynamics.accelerometer])
-        #self.imu_buf = np.roll(self.imu_buf, -1, axis=1)
-        self.imu_buf[:,:-1] = self.imu_buf[:,1:]
-        self.imu_buf[:,-1] = imu
-
-        # heading measurement - simplified, #95489c has a more nuanced version
-        our_gps = self.dynamics.pos[:2]
-        goal_gps = self.goal[:2]
-        dir = clamp_norm(goal_gps - our_gps, 4.0)
-        #self.dir_buf = np.roll(self.dir_buf, -1, axis=1)
-        self.dir_buf[:,:-1] = self.dir_buf[:,1:]
-        self.dir_buf[:,-1] = dir
-
-        return (self.img_buf, self.imu_buf, self.dir_buf), reward, done, {'rewards': rew_info}
-
-    def _reset(self):
-        if self.scene is None:
-            self.scene = Quadrotor3DScene(self.np_random, self.dynamics.arm,
-                640, 480, resizable=True)
-
-        self.goal = self.scene.map.sample_goal(self.np_random)
-        pos = self.scene.map.sample_start(self.np_random)
-        vel = omega = npa(0, 0, 0)
-        # for debugging collisions w/ no policy:
-        #vel = self.np_random.uniform(-20, 20, size=3)
-        #vel[2] = 0
-
-        # make us point towards the goal
-        xb = to_xyhat(self.goal - pos)
-        zb = npa(0, 0, 1)
-        yb = cross(zb, xb)
-        rotation = np.column_stack([xb, yb, zb])
-        self.dynamics.set_state(pos, vel, rotation, omega)
-        self.crashed = False
-
-        self.scene.reset(self.goal, self.dynamics)
-        collided = self.scene.update_state(self.dynamics)
-        assert not collided
-
-        # fill the buffers with copies of initial state
-        w, h, seq_len = self.img_buf.shape
-        rgb = self.scene.render_obs()
-        grey = (2.0 / 255.0) * np.mean(rgb, axis=2) - 1.0
-        self.img_buf = np.tile(grey[:,:,None], (1,1,seq_len))
-        imu = np.concatenate([self.dynamics.omega, self.dynamics.accelerometer])
-        self.imu_buf = np.tile(imu[:,None], (1,seq_len))
-
-        self.tick = 0
-        return (self.img_buf, self.imu_buf)
 
     def _render(self, mode='human', close=False):
         self.scene.render_chase()
