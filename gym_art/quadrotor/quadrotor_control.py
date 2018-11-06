@@ -159,9 +159,9 @@ class VertPlaneControl(object):
 # jacobian of (acceleration magnitude, angular acceleration)
 #       w.r.t (normalized motor thrusts) in range [0, 1]
 def quadrotor_jacobian(dynamics):
-    torque = dynamics.thrust * dynamics.prop_crossproducts.T
-    torque[2,:] = dynamics.torque * dynamics.prop_ccw
-    thrust = dynamics.thrust * np.ones((1,4))
+    torque = dynamics.thrust_max * dynamics.prop_crossproducts.T
+    torque[2,:] = dynamics.torque_max * dynamics.prop_ccw
+    thrust = dynamics.thrust_max * np.ones((1,4))
     dw = (1.0 / dynamics.inertia)[:,None] * torque
     dv = thrust / dynamics.mass
     J = np.vstack([dv, dw])

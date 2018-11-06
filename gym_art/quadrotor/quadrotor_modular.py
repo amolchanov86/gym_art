@@ -85,12 +85,14 @@ class QuadrotorDynamics(object):
         else:
             self.room_box = np.array(room_box).copy()
 
+        self.vel_damp = 0.999
+        self.damp_omega = 0.015
         self.mass = mass
         self.arm = arm_length
         self.inertia = inertia
         self.thrust_to_weight = thrust_to_weight
-        self.thrust = GRAV * mass * thrust_to_weight / 4.0
-        self.torque = torque_to_thrust * self.thrust # propeller torque scales
+        self.thrust_max = GRAV * mass * thrust_to_weight / 4.0
+        self.torque_max = torque_to_thrust * self.thrust_max # propeller torque scales
         scl = arm_length / norm([1.,1.,0.])
 
         # Unscaled (normalized) propeller positions
@@ -102,7 +104,20 @@ class QuadrotorDynamics(object):
         self.prop_crossproducts = np.cross(self.prop_pos, [0., 0., 1.])
         # 1 for props turning CCW, -1 for CW
         self.prop_ccw = np.array([1., -1., 1., -1.])
+        self.prop_ccw_mx = np.zeros([3,4]) # Matrix allows using matrix multiplication
+        self.prop_ccw_mx[2,:] = self.prop_ccw 
         self.since_last_svd = 0
+
+        ## Forced dynamics auxiliary matrices
+        #Prop crossproduct give torque directions
+        self.G_omega_thrust = self.thrust_max * self.prop_crossproducts.T # [3,4] @ [4,1]
+        # additional torques along z-axis caused by propeller rotations
+        self.C_omega_prop = self.torque_max * self.prop_ccw_mx  # [3,4] @ [4,1] = [3,1]
+        self.G_omega = (1.0 / self.inertia)[:,None] * (self.G_omega_thrust + self.C_omega_prop)
+
+        # Allows to sum-up thrusts as a linear matrix operation
+        self.thrust_sum_mx = np.zeros([3,4]) # [0,0,F_sum].T
+        self.thrust_sum_mx[2,:] = 1# [0,0,F_sum].T
 
     # pos, vel, in world coords (meters)
     # rotation is 3x3 matrix (body coords) -> (world coords)
@@ -153,116 +168,7 @@ class QuadrotorDynamics(object):
         self.step1(thrust_cmds, dt)
         self.step1(thrust_cmds, dt)
 
-    ## Step function based on predicted derivative values
-    # thrust_cmds is motor thrusts given in normalized range [0, 1].
-    # 1 represents the max possible thrust of the motor.
-    def step1_integrate_prediction(self, thrust_cmds, dt):
-        # import pdb; pdb.set_trace()
-        # uncomment for debugging. they are slow
-        #assert np.all(thrust_cmds >= 0)
-        #assert np.all(thrust_cmds <= 1)
-
-        ###################################
-        ## Convert the motor commands to a force and moment on the body
-        thrust_cmds = np.clip(thrust_cmds, 0.0, 1.0)
-        thrusts = self.thrust * thrust_cmds
-        #Prop crossproduct give torque directions
-        torques = self.prop_crossproducts * thrusts[:,None] # (4,3)=(props, xyz)
-
-        # additional torques along z-axis caused by propeller rotations
-        torques[:, 2] += self.torque * self.prop_ccw * thrust_cmds 
-
-        # net torque: sum over propellers
-        thrust_torque = np.sum(torques, axis=0) 
-
-        ###################################
-        ## (Square) Damping using torques (in case we would like to add damping using torques)
-        # damping_torque = - 0.3 * self.omega * np.fabs(self.omega)
-        damping_torque = 0.0
-        torque =  thrust_torque + damping_torque
-        thrust = npa(0,0,np.sum(thrusts))
-
-        #########################################################
-        ## ROTATIONAL DYNAMICS
-        omega_dot = ((1.0 / self.inertia) *
-            (cross(-self.omega, self.inertia * self.omega) + torque))
-
-        ###################################
-        ## Damping using velocities (I find it more stable numerically)
-        ## Linear damping
-
-        # This is only for linear dampling of angular velocity.
-        # omega_damp = 0.999   
-        # self.omega = omega_damp * self.omega + dt * omega_dot
-
-        ## Quadratic damping
-        # 0.03 corresponds to roughly 1 revolution per sec
-        omega_damp_quadratic = np.clip(0.015 * self.omega ** 2, a_min=0.0, a_max=1.0)
-        self.omega = self.omega + (1.0 - omega_damp_quadratic) * dt * omega_dot
-
-        ## When use square damping on torques - use simple integration
-        ## since damping is accounted as part of the net torque
-        # self.omega += dt * omega_dot
-
-        ###################################
-        ## Integrating rotations
-        omega_vec = np.matmul(self.rot, self.omega) # Change from body2world frame
-        x, y, z = omega_vec
-        omega_mat_deriv = np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
-
-        # ROtation matrix derivative
-        dRdt = np.matmul(omega_mat_deriv, self.rot)
-        self.rot += dt * dRdt
-
-        # Occasionally orthogonalize the rotation matrix
-        # It is necessary, since integration falls apart over time, thus
-        # R matrix becomes non orthogonal (inconsistent)
-        self.since_last_svd += 1
-        if self.since_last_svd > 25:
-            try:
-                u, s, v = np.linalg.svd(self.rot)
-                self.rot = np.matmul(u, v)
-                self.since_last_svd = 0
-            except Exception as e:
-                print('Rotation Matrix: ', self.rot, ' actions: ', thrust_cmds)
-                log_error('##########################################################')
-                for key, value in locals().items():
-                    log_error('%s: %s \n' %(key, str(value)))
-                    print('%s: %s \n' %(key, str(value)))
-                raise ValueError("QuadrotorEnv ERROR: SVD did not converge: " + str(e))
-                # log_error('QuadrotorEnv: ' + str(e) + ': ' + 'Rotation matrix: ' + str(self.rot))
-
-        #########################################################
-        # TRANSLATIONAL DYNAMICS
-
-        ## Room constraints
-        mask = np.logical_or(self.pos <= self.room_box[0], self.pos >= self.room_box[1])
-        
-        ## Computing accelerations
-        acc = [0, 0, -GRAV] + (1.0 / self.mass) * np.matmul(self.rot, thrust)
-        # acc[mask] = 0. #If we leave the room - stop accelerating
-        self.acc = acc
-        
-        ## Computing velocities
-        vel_damp = 0.999
-        self.vel = vel_damp * self.vel + dt * acc
-        # self.vel[mask] = 0. #If we leave the room - stop flying
-        
-        ## Computing position
-        self.pos = self.pos + dt * self.vel
-
-        # Clipping if met the obstacle and nullify velocities (not sure what to do about accelerations)
-        self.pos_before_clip = self.pos.copy()
-        self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
-        # self.vel[np.equal(self.pos, self.pos_before_clip)] = 0.
-
-        ## Accelerometer measures so called "proper acceleration" 
-        # that includes gravity with the opposite sign
-        self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, GRAV])
-
-
-
-    ## Step function based on current derivative values (best fits affine dynamics)
+    ## Step function integrates based on current derivative values (best fits affine dynamics model)
     # thrust_cmds is motor thrusts given in normalized range [0, 1].
     # 1 represents the max possible thrust of the motor.
     def step1(self, thrust_cmds, dt):
@@ -274,12 +180,12 @@ class QuadrotorDynamics(object):
         ###################################
         ## Convert the motor commands to a force and moment on the body
         thrust_cmds = np.clip(thrust_cmds, 0.0, 1.0)
-        thrusts = self.thrust * thrust_cmds
+        thrusts = self.thrust_max * thrust_cmds
         #Prop crossproduct give torque directions
         torques = self.prop_crossproducts * thrusts[:,None] # (4,3)=(props, xyz)
 
         # additional torques along z-axis caused by propeller rotations
-        torques[:, 2] += self.torque * self.prop_ccw * thrust_cmds 
+        torques[:, 2] += self.torque_max * self.prop_ccw * thrust_cmds 
 
         # net torque: sum over propellers
         thrust_torque = np.sum(torques, axis=0) 
@@ -364,13 +270,75 @@ class QuadrotorDynamics(object):
         self.acc = acc
 
         ## Computing velocities
-        vel_damp = 0.999
-        self.vel = vel_damp * self.vel + dt * acc
+        self.vel = self.vel_damp * self.vel + dt * acc
         # self.vel[mask] = 0. #If we leave the room - stop flying
 
         ## Accelerometer measures so called "proper acceleration" 
         # that includes gravity with the opposite sign
         self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, GRAV])
+
+    #######################################################
+    ## AFFINE DYNAMICS REPRESENTATION:
+    # s = dt*(F(s) + G(s)*u)
+    # unforced dynamics (integrator, damping_deceleration)
+    def F(self, s, dt):
+        xyz  = s[0:3]
+        Vxyz = s[3:6]
+        rot = s[6:15].reshape([3,3])
+        omega = s[15:18]
+        goal = s[18:21]
+
+        ###############################
+        ## Linear position change
+        dx = deepcopy(Vxyz)
+
+        ###############################
+        ## Linear velocity change
+        dV = (self.vel_damp * Vxyz - Vxyz) / dt + np.array([0, 0, -GRAV])
+
+        ###############################
+        ## Angular orientation change
+        omega_vec = np.matmul(rot, omega) # Change from body2world frame
+        wx, wy, wz = omega_vec
+        omega_mat_deriv = np.array([[0, -wz, wy], [wz, 0, -wx], [-wy, wx, 0]])
+
+        # ROtation matrix derivative
+        dR = np.matmul(omega_mat_deriv, rot).flatten()
+
+        ###############################
+        ## Angular rate change
+        F_omega = (1.0 / self.inertia) * (cross(-omega, self.inertia * omega))
+        omega_damp_quadratic = np.clip(self.damp_omega * omega ** 2, a_min=0.0, a_max=1.0)
+        dOmega = (1.0 - omega_damp_quadratic) * F_omega
+
+        ###############################
+        ## Goal change
+        dgoal = np.zeros_like(goal)
+
+        return np.concatenate([dx, dV, dR, dOmega, dgoal])
+
+
+    # Forced affine dynamics (controlling acceleration only)
+    def G(self, s):
+        xyz  = s[0:3]
+        Vxyz = s[3:6]
+        rot = s[6:15].reshape([3,3])
+        omega = s[15:18]
+        goal = s[18:21]
+
+        ###############################
+        ## dx, dV, dR, dgoal
+        dx = np.zeros([3,4])
+        dV = (rot / self.mass ) @ (self.thrust_max * self.thrust_sum_mx)
+        dR = np.zeros([9,4])
+        dgoal = np.zeros([3,4])
+        
+        ###############################
+        ## Angular acceleration
+        omega_damp_quadratic = np.clip(self.damp_omega * omega ** 2, a_min=0.0, a_max=1.0)
+        dOmega = (1.0 - omega_damp_quadratic)[:,None] * self.G_omega
+        
+        return np.concatenate([dx, dV, dR, dOmega, dgoal], axis=0)
 
 
     # return eye, center, up suitable for gluLookAt representing onboard camera
@@ -877,7 +845,7 @@ class QuadrotorEnv(gym.Env):
     }
 
     def __init__(self, raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
-                obs_repr="state_xyz_vxyz_rot_omega"):
+                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3):
         np.seterr(under='ignore')
         """
         @param obs_repr: options: state_xyz_vxyz_rot_omega, state_xyz_vxyz_quat_omega
@@ -925,7 +893,7 @@ class QuadrotorEnv(gym.Env):
 
 
         # TODO get this from a wrapper
-        self.ep_time = 3.0 #In seconds
+        self.ep_time = ep_time #In seconds
         self.dt = 1.0 / 100.0
         self.sim_steps = sim_steps
         self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
