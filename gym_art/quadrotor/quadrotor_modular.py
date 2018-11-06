@@ -280,7 +280,8 @@ class QuadrotorDynamics(object):
     #######################################################
     ## AFFINE DYNAMICS REPRESENTATION:
     # s = dt*(F(s) + G(s)*u)
-    # unforced dynamics (integrator, damping_deceleration)
+    
+    ## Unforced dynamics (integrator, damping_deceleration)
     def F(self, s, dt):
         xyz  = s[0:3]
         Vxyz = s[3:6]
@@ -318,7 +319,7 @@ class QuadrotorDynamics(object):
         return np.concatenate([dx, dV, dR, dOmega, dgoal])
 
 
-    # Forced affine dynamics (controlling acceleration only)
+    ## Forced affine dynamics (controlling acceleration only)
     def G(self, s):
         xyz  = s[0:3]
         Vxyz = s[3:6]
