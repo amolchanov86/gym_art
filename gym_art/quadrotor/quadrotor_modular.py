@@ -72,12 +72,30 @@ class QuadrotorDynamics(object):
     # inertia unit: kg * m^2, 3-element vector representing diagonal matrix
     # thrust_to_weight is the total, it will be divided among the 4 props
     # torque_to_thrust is ratio of torque produced by prop to thrust
-    def __init__(self, mass, arm_length, inertia, thrust_to_weight=2.0, torque_to_thrust=0.05, dynamics_steps_num=1, room_box=None):
+    def __init__(self, mass, 
+        arm_length, 
+        inertia, 
+        thrust_to_weight=2.0, 
+        torque_to_thrust=0.05, 
+        dynamics_steps_num=1, 
+        room_box=None,
+        dim_mode="3D"):
         assert np.isscalar(mass)
         assert np.isscalar(arm_length)
         assert inertia.shape == (3,)
         # This hack allows parametrize calling dynamics multiple times
         # without expensive for-loops
+
+        self.dim_mode = dim_mode
+        if self.dim_mode == '1D':
+            self.control_mx = np.ones([4,1])
+        elif self.dim_mode == '2D':
+            self.control_mx = np.array([[1.,0.],[1.,0.],[0.,1.],[0.,1.]])
+        elif self.dim_mode == '3D':
+            self.control_mx = np.eye(4)
+        else:
+            raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
+
 
         self.step = getattr(self, 'step%d' % dynamics_steps_num)
         if room_box is None:
@@ -339,7 +357,7 @@ class QuadrotorDynamics(object):
         omega_damp_quadratic = np.clip(self.damp_omega * omega ** 2, a_min=0.0, a_max=1.0)
         dOmega = (1.0 - omega_damp_quadratic)[:,None] * self.G_omega
         
-        return np.concatenate([dx, dV, dR, dOmega, dgoal], axis=0)
+        return np.concatenate([dx, dV, dR, dOmega, dgoal], axis=0) @ self.control_mx
 
 
     # return eye, center, up suitable for gluLookAt representing onboard camera
@@ -364,7 +382,7 @@ class QuadrotorDynamics(object):
         return spaces.Box(low, high)
 
 
-def default_dynamics(sim_steps, room_box):
+def default_dynamics(sim_steps, room_box, dim_mode):
     # similar to AscTec Hummingbird
     # TODO: dictionary of dynamics of real quadrotors
     mass = 0.5
@@ -372,7 +390,7 @@ def default_dynamics(sim_steps, room_box):
     inertia = mass * npa(0.01, 0.01, 0.02)
     thrust_to_weight = 2.0
     return QuadrotorDynamics(mass, arm_length, inertia,
-        thrust_to_weight=thrust_to_weight, dynamics_steps_num=sim_steps, room_box=room_box)
+        thrust_to_weight=thrust_to_weight, dynamics_steps_num=sim_steps, room_box=room_box, dim_mode=dim_mode)
 
 
 
@@ -855,7 +873,7 @@ class QuadrotorEnv(gym.Env):
         self.obs_repr = obs_repr
         self.state_vector = getattr(self, obs_repr)
 
-        self.dynamics = default_dynamics(sim_steps, room_box=self.room_box)
+        self.dynamics = default_dynamics(sim_steps, room_box=self.room_box, dim_mode=dim_mode)
         # self.controller = ShiftedMotorControl(self.dynamics)
         # self.controller = OmegaThrustControl(self.dynamics) ## The last one used
         # self.controller = VelocityYawControl(self.dynamics)
@@ -869,9 +887,9 @@ class QuadrotorEnv(gym.Env):
 
         if raw_control:
             if self.dim_mode == '1D':
-                self.controller = VerticalControl(self.dynamics)
+                self.controller = VerticalControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
             elif self.dim_mode == '2D':
-                self.controller = VertPlaneControl(self.dynamics)
+                self.controller = VertPlaneControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
             elif self.dim_mode == '3D':
                 self.controller = RawControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
             else:
