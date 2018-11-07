@@ -18,73 +18,16 @@ from gym import spaces
 from gym.utils import seeding
 import gym.envs.registration as gym_reg
 
+import gym_art.quadrotor.rendering3d as r3d
 from gym_art.quadrotor.quadrotor_control import *
-from gym_art.quadrotor.quadrotor_visualization import *
-from gym_art.quadrotor.quad_utils import *
+from gym_art.quadrotor.quadrotor_modular import *
 import transforms3d as t3d
 
-logger = logging.getLogger(__name__)
 
-GRAV = 9.81
-TILES = 256 # number of tiles used for the obstacle map
-EPS = 1e-6 #small constant to avoid divisions by 0 and log(0)
 
-# overall TODO:
-# - SVD does not converge from time to time
-# - fix front face CCW to enable culling
-# - add texture coords to primitives
-# - oracle policy for obstacles (already have for free space)
-# - non-flat floor
-# - fog
-
-# reasonable reward function for hovering at a goal and not flying too high
-def goal_seeking_reward(dynamics, goal, action, dt, crashed, time_remain):
-    if not crashed:
-        # log to create a sharp peak at the goal
-        dist = np.linalg.norm(goal - dynamics.pos)
-        # loss_pos = np.log(dist + 0.1) + 0.1 * dist
-        loss_pos = dist
-
-        # dynamics_pos = dynamics.pos
-        # print('dynamics.pos', dynamics.pos)
-
-        # penalize altitude above this threshold
-        max_alt = 6.0
-        loss_alt = np.exp(2*(dynamics.pos[2] - max_alt))
-
-        # penalize amount of control effort
-        loss_effort = 0.001 * np.linalg.norm(action)
-
-        # loss velocity
-        dx = goal - dynamics.pos
-        dx = dx / (np.linalg.norm(dx) + EPS)
-        vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
-        vel_proj = np.dot(dx, vel_direct)
-        # print('vel_proj:', vel_proj)
-        loss_vel_proj = -dt *(vel_proj - 1.0)
-        # print('loss_vel_proj:', loss_vel_proj)
-        loss_crash = 0
-    else:
-        loss_pos = 0
-        loss_alt = 0
-        loss_effort = 0
-        loss_vel_proj = 0
-        loss_crash = dt * time_remain * 100 + 100
-
-    reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
-    rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
-
-    # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
-    # print('pos', dynamics.pos)
-    if np.isnan(reward) or not np.isfinite(reward):
-        for key, value in locals().items():
-            print('%s: %s \n' % (key, str(value)))
-        raise ValueError('QuadEnv: reward is Nan')
-
-    return reward, rew_info
-
-# simple simulation of quadrotor dynamics.
-class QuadrotorDynamics(object):
+## Affine QuadrotorDynamics calculates dynamics in the form: s += dt(f(s) + G(s)u)
+# it DOES NOT MODEL SATURATION, which might be a problem for some algorithms
+class AffineQuadrotorDynamics(object):
     # mass unit: kilogram
     # arm_length unit: meter
     # inertia unit: kg * m^2, 3-element vector representing diagonal matrix
@@ -207,54 +150,21 @@ class QuadrotorDynamics(object):
     ## Step function integrates based on current derivative values (best fits affine dynamics model)
     # thrust_cmds is motor thrusts given in normalized range [0, 1].
     # 1 represents the max possible thrust of the motor.
-    ## Frames:
-    # pos - global
-    # vel - global
-    # rot - global
-    # omega - body frame
-    # goal_pos - global
     def step1(self, thrust_cmds, dt):
-        # import pdb; pdb.set_trace()
-        # uncomment for debugging. they are slow
-        #assert np.all(thrust_cmds >= 0)
-        #assert np.all(thrust_cmds <= 1)
+        """
+        IMPORTANT: MUST UPDATE self.goal before using step function
+        Since the goal should be provided outside of the function inputs
+        """
+        state = self.state_vector()
+        state = np.concatenate([state, self.goal])
 
-        ###################################
-        ## Convert the motor commands to a force and moment on the body
-        thrust_cmds = np.clip(thrust_cmds, 0.0, 1.0)
-        thrusts = self.thrust_max * thrust_cmds
-        #Prop crossproduct give torque directions
-        torques = self.prop_crossproducts * thrusts[:,None] # (4,3)=(props, xyz)
-
-        # additional torques along z-axis caused by propeller rotations
-        torques[:, 2] += self.torque_max * self.prop_ccw * thrust_cmds 
-
-        # net torque: sum over propellers
-        thrust_torque = np.sum(torques, axis=0) 
-
-        ###################################
-        ## (Square) Damping using torques (in case we would like to add damping using torques)
-        # damping_torque = - 0.3 * self.omega * np.fabs(self.omega)
-        damping_torque = 0.0
-        torque =  thrust_torque + damping_torque
-        thrust = npa(0,0,np.sum(thrusts))
-
-        #########################################################
-        ## ROTATIONAL DYNAMICS
-
-        ###################################
-        ## Integrating rotations (based on current values)
-        omega_vec = np.matmul(self.rot, self.omega) # Change from body2world frame
-        x, y, z = omega_vec
-        omega_mat_deriv = np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
-
-        # ROtation matrix derivative
-        dRdt = np.matmul(omega_mat_deriv, self.rot)
-        self.rot += dt * dRdt
-
+        state_dot = f_fn(state, dt=dt) + G_fn(state) @ thrust_cmds
+        state += delta_t * state_dot
+             
         # Occasionally orthogonalize the rotation matrix
         # It is necessary, since integration falls apart over time, thus
         # R matrix becomes non orthogonal (inconsistent)
+        self.rot = state[6:15].reshape([3,3])
         self.since_last_svd += 1
         if self.since_last_svd > 25:
             try:
@@ -270,53 +180,13 @@ class QuadrotorDynamics(object):
                 raise ValueError("QuadrotorEnv ERROR: SVD did not converge: " + str(e))
                 # log_error('QuadrotorEnv: ' + str(e) + ': ' + 'Rotation matrix: ' + str(self.rot))
 
-        ###################################
-        ## COMPUTING OMEGA UPDATE
-
-        ## Damping using velocities (I find it more stable numerically)
-        ## Linear damping
-
-        # This is only for linear dampling of angular velocity.
-        # omega_damp = 0.999   
-        # self.omega = omega_damp * self.omega + dt * omega_dot
-
-        omega_dot = ((1.0 / self.inertia) *
-            (cross(-self.omega, self.inertia * self.omega) + torque))
-
-        ## Quadratic damping
-        # 0.03 corresponds to roughly 1 revolution per sec
-        omega_damp_quadratic = np.clip(0.015 * self.omega ** 2, a_min=0.0, a_max=1.0)
-        self.omega = self.omega + (1.0 - omega_damp_quadratic) * dt * omega_dot
-
-        ## When use square damping on torques - use simple integration
-        ## since damping is accounted as part of the net torque
-        # self.omega += dt * omega_dot
-
-        #########################################################
-        # TRANSLATIONAL DYNAMICS
-
-        ## Room constraints
+       
+        self.omega = state[15:18]
         mask = np.logical_or(self.pos <= self.room_box[0], self.pos >= self.room_box[1])
-               
-        ## Computing position
-        self.pos = self.pos + dt * self.vel
-
-        # Clipping if met the obstacle and nullify velocities (not sure what to do about accelerations)
-        self.pos_before_clip = self.pos.copy()
+        self.pos = state[0:3]
         self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
-        # self.vel[np.equal(self.pos, self.pos_before_clip)] = 0.
-
-        ## Computing accelerations
-        acc = [0, 0, -GRAV] + (1.0 / self.mass) * np.matmul(self.rot, thrust)
-        # acc[mask] = 0. #If we leave the room - stop accelerating
-        self.acc = acc
-
-        ## Computing velocities
-        self.vel = self.vel_damp * self.vel + dt * acc
-        # self.vel[mask] = 0. #If we leave the room - stop flying
-
-        ## Accelerometer measures so called "proper acceleration" 
-        # that includes gravity with the opposite sign
+        self.vel = state[3:6]
+        self.acc = state_dot[3:6]
         self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, GRAV])
 
     #######################################################
@@ -413,7 +283,7 @@ def default_dynamics(sim_steps, room_box, dim_mode):
     arm_length = 0.33 / 2.0
     inertia = mass * npa(0.01, 0.01, 0.02)
     thrust_to_weight = 2.0
-    return QuadrotorDynamics(mass, arm_length, inertia,
+    return AffineQuadrotorDynamics(mass, arm_length, inertia,
         thrust_to_weight=thrust_to_weight, dynamics_steps_num=sim_steps, room_box=room_box, dim_mode=dim_mode)
 
 
@@ -500,10 +370,56 @@ def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
     return reward, rew_info
 
 
+# reasonable reward function for hovering at a goal and not flying too high
+def goal_seeking_reward(dynamics, goal, action, dt, crashed, time_remain):
+    if not crashed:
+        # log to create a sharp peak at the goal
+        dist = np.linalg.norm(goal - dynamics.pos)
+        # loss_pos = np.log(dist + 0.1) + 0.1 * dist
+        loss_pos = dist
+
+        # dynamics_pos = dynamics.pos
+        # print('dynamics.pos', dynamics.pos)
+
+        # penalize altitude above this threshold
+        max_alt = 6.0
+        loss_alt = np.exp(2*(dynamics.pos[2] - max_alt))
+
+        # penalize amount of control effort
+        loss_effort = 0.001 * np.linalg.norm(action)
+
+        # loss velocity
+        dx = goal - dynamics.pos
+        dx = dx / (np.linalg.norm(dx) + EPS)
+        vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
+        vel_proj = np.dot(dx, vel_direct)
+        # print('vel_proj:', vel_proj)
+        loss_vel_proj = -dt *(vel_proj - 1.0)
+        # print('loss_vel_proj:', loss_vel_proj)
+        loss_crash = 0
+    else:
+        loss_pos = 0
+        loss_alt = 0
+        loss_effort = 0
+        loss_vel_proj = 0
+        loss_crash = dt * time_remain * 100 + 100
+
+    reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
+    rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
+
+    # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
+    # print('pos', dynamics.pos)
+    if np.isnan(reward) or not np.isfinite(reward):
+        for key, value in locals().items():
+            print('%s: %s \n' % (key, str(value)))
+        raise ValueError('QuadEnv: reward is Nan')
+
+    return reward, rew_info
+
 
 # Gym environment for quadrotor seeking the origin
 # with no obstacles and full state observations
-class QuadrotorEnv(gym.Env):
+class AffineQuadrotorEnv(gym.Env):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second' : 50

@@ -4,50 +4,9 @@ from copy import deepcopy
 
 import gym
 from gym import spaces
+from gym_art.quadrotor.quad_utils import *
 
 GRAV = 9.81
-
-
-# numpy's cross is really slow for some reason
-def cross(a, b):
-    return np.array([a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]])
-
-# returns (normalized vector, original norm)
-def normalize(x):
-    n = norm(x)
-    if n < 0.00001:
-        return x, 0
-    return x / n, n
-
-def norm2(x):
-    return np.sum(x ** 2)
-
-# uniformly sample from the set of all 3D rotation matrices
-def rand_uniform_rot3d(np_random):
-    randunit = lambda: normalize(np_random.normal(size=(3,)))[0]
-    up = randunit()
-    fwd = randunit()
-    while np.dot(fwd, up) > 0.95:
-        fwd = randunit()
-    left = normalize(cross(up, fwd))
-    up = cross(fwd, left)
-    rot = np.column_stack([fwd, left, up])
-    return rot
-
-# shorter way to construct a numpy array
-def npa(*args):
-    return np.array(args)
-
-def clamp_norm(x, maxnorm):
-    n = np.linalg.norm(x)
-    return x if n <= maxnorm else (maxnorm / n) * x
-
-# project a vector into the x-y plane and normalize it.
-def to_xyhat(vec):
-    v = deepcopy(vec)
-    v[2] = 0
-    v, _ = normalize(v)
-    return v
 
 # like raw motor control, but shifted such that a zero action
 # corresponds to the amount of thrust needed to hover.
