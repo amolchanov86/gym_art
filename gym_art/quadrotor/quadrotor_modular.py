@@ -18,6 +18,8 @@ from gym import spaces
 from gym.utils import seeding
 import gym.envs.registration as gym_reg
 
+from garage.core import Serializable
+
 from gym_art.quadrotor.quadrotor_control import *
 from gym_art.quadrotor.quadrotor_visualization import *
 from gym_art.quadrotor.quad_utils import *
@@ -37,7 +39,8 @@ EPS = 1e-6 #small constant to avoid divisions by 0 and log(0)
 # - non-flat floor
 # - fog
 
-# reasonable reward function for hovering at a goal and not flying too high
+# Original goal-seeking reward. I don't really use it anymore
+# since compute_reward() is mainly used
 def goal_seeking_reward(dynamics, goal, action, dt, crashed, time_remain):
     if not crashed:
         # log to create a sharp peak at the goal
@@ -503,7 +506,7 @@ def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
 
 # Gym environment for quadrotor seeking the origin
 # with no obstacles and full state observations
-class QuadrotorEnv(gym.Env):
+class QuadrotorEnv(gym.Env, Serializable):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second' : 50
@@ -577,6 +580,9 @@ class QuadrotorEnv(gym.Env):
 
         if self.spec is None:
             self.spec = gym_reg.EnvSpec(id='Quadrotor-v0', max_episode_steps=self.ep_len)
+        
+        # Always call Serializable constructor last
+        Serializable.quick_init(self, locals())
 
     def state_xyz_vxyz_rot_omega(self):
         return np.concatenate([self.dynamics.state_vector(), self.goal[:3]])
@@ -733,6 +739,15 @@ class QuadrotorEnv(gym.Env):
 
     def _render(self, mode='human', close=False):
         self.scene.render_chase()
+    
+    def reset(self):
+        return self._reset()
+
+    def render(self, mode, **kwargs):
+        return self._render(mode, **kwargs)
+    
+    def step(self, action):
+        return self._step(action)
 
 
 def test_rollout():

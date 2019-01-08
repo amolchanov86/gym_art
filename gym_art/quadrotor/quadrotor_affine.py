@@ -18,11 +18,13 @@ from gym import spaces
 from gym.utils import seeding
 import gym.envs.registration as gym_reg
 
-import gym_art.quadrotor.rendering3d as r3d
-from gym_art.quadrotor.quadrotor_control import *
-from gym_art.quadrotor.quadrotor_modular import *
 import transforms3d as t3d
 
+import gym_art.quadrotor.rendering3d as r3d
+from gym_art.quadrotor.quadrotor_modular import *
+from gym_art.quadrotor.quadrotor_control import *
+from gym_art.quadrotor.quadrotor_visualization import *
+from gym_art.quadrotor.quad_utils import *
 
 
 ## Affine QuadrotorDynamics calculates dynamics in the form: s += dt(f(s) + G(s)u)
@@ -158,8 +160,9 @@ class AffineQuadrotorDynamics(object):
         state = self.state_vector()
         state = np.concatenate([state, self.goal])
 
-        state_dot = f_fn(state, dt=dt) + G_fn(state) @ thrust_cmds
-        state += delta_t * state_dot
+        # print("Shape: F,G,thrust", self.F(state, dt=dt).shape, self.G(state).shape, thrust_cmds.shape)
+        state_dot = self.F(state, dt=dt) + self.G(state) @ thrust_cmds
+        state += dt * state_dot
              
         # Occasionally orthogonalize the rotation matrix
         # It is necessary, since integration falls apart over time, thus
@@ -179,7 +182,6 @@ class AffineQuadrotorDynamics(object):
                     print('%s: %s \n' %(key, str(value)))
                 raise ValueError("QuadrotorEnv ERROR: SVD did not converge: " + str(e))
                 # log_error('QuadrotorEnv: ' + str(e) + ': ' + 'Rotation matrix: ' + str(self.rot))
-
        
         self.omega = state[15:18]
         mask = np.logical_or(self.pos <= self.room_box[0], self.pos >= self.room_box[1])
@@ -187,7 +189,7 @@ class AffineQuadrotorDynamics(object):
         self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
         self.vel = state[3:6]
         self.acc = state_dot[3:6]
-        self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, GRAV])
+        self.accelerometer = np.matmul(self.rot.T, self.acc + [0, 0, GRAV])
 
     #######################################################
     ## AFFINE DYNAMICS REPRESENTATION:
@@ -335,10 +337,8 @@ def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
     ## loss crash
     loss_crash = float(crashed)
 
-
     # reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
     # rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
-
 
     reward = -dt * np.sum([
         loss_pos, 
@@ -357,8 +357,6 @@ def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
     'rew_vel_proj': -loss_vel_proj,
     "rew_orient": -loss_orient
     }
-
-
 
     # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
     # print('pos', dynamics.pos)
@@ -449,9 +447,9 @@ class AffineQuadrotorEnv(gym.Env):
 
         if raw_control:
             if self.dim_mode == '1D':
-                self.controller = VerticalControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
+                self.controller = VerticalControl(self.dynamics, zero_action_middle=raw_control_zero_middle, dim_mode="1D")
             elif self.dim_mode == '2D':
-                self.controller = VertPlaneControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
+                self.controller = VertPlaneControl(self.dynamics, zero_action_middle=raw_control_zero_middle, dim_mode="2D")
             elif self.dim_mode == '3D':
                 self.controller = RawControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
             else:
@@ -575,6 +573,7 @@ class AffineQuadrotorEnv(gym.Env):
         # print('actions: ', action)
         # if not self.crashed:
         # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
+        self.dynamics.goal = self.goal #Dynamics requires to know the goal from outside
         self.controller.step_func(dynamics=self.dynamics,
                                 action=action,
                                 goal=self.goal,

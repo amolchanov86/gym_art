@@ -62,11 +62,54 @@ class RawControl(object):
         dynamics.step(action, dt)
         self.action = action.copy()
 
+class RawControl(object):
+    def __init__(self, dynamics, zero_action_middle=True, dim_mode="3D"):
+        self.zero_action_middle = zero_action_middle
+        # print("RawControl: self.zero_action_middle", self.zero_action_middle)
+        self.action = None
+        self.step_func = self.step
+
+    def action_space(self, dynamics):
+        if not self.zero_action_middle:
+            # Range of actions 0 .. 1
+            self.low = np.zeros(4)
+            self.bias = 0
+            self.scale = 1.0
+        else:
+            # Range of actions -1 .. 1
+            self.low = -np.ones(4)
+            self.bias =  1.0
+            self.scale = 0.5
+        self.high = np.ones(4)
+        return spaces.Box(self.low, self.high)
+
+    # modifies the dynamics in place.
+    def step(self, dynamics, action, goal, dt, observation=None):
+        action = self.scale * (action + self.bias)
+        action = np.clip(action, a_min=self.low, a_max=self.high)
+        dynamics.step(action, dt)
+        self.action = action.copy()
+
+    def step_tf(self, dynamics, action, goal, dt, observation=None):
+        # print('bias/scale: ', self.scale, self.bias)
+        action = self.scale * (action + self.bias)
+        action = np.clip(action, a_min=self.low, a_max=self.high)
+        dynamics.step(action, dt)
+        self.action = action.copy()
+
 
 class VerticalControl(object):
-    def __init__(self, dynamics, zero_action_middle=True):
+    def __init__(self, dynamics, zero_action_middle=True, dim_mode="3D"):
         self.zero_action_middle = zero_action_middle
-        self.step_func = self.step
+
+        self.dim_mode = dim_mode
+        if self.dim_mode == '1D':
+            self.step_func = self.step1D
+        elif self.dim_mode == '3D':
+            self.step_func = self.step3D
+        else:
+            raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
+
 
     def action_space(self, dynamics):
         if not self.zero_action_middle:
@@ -83,16 +126,31 @@ class VerticalControl(object):
         return spaces.Box(self.low, self.high)
 
     # modifies the dynamics in place.
-    def step(self, dynamics, action, goal, dt, observation=None):
+    def step3D(self, dynamics, action, goal, dt, observation=None):
         # print('action: ', action)
         action = self.scale * (action + self.bias)
         action = np.clip(action, a_min=self.low, a_max=self.high)
         dynamics.step(np.array([action[0]]*4), dt)
 
+    # modifies the dynamics in place.
+    def step1D(self, dynamics, action, goal, dt, observation=None):
+        # print('action: ', action)
+        action = self.scale * (action + self.bias)
+        action = np.clip(action, a_min=self.low, a_max=self.high)
+        dynamics.step(np.array([action[0]]), dt)
+
 class VertPlaneControl(object):
     def __init__(self, dynamics, zero_action_middle=True):
         self.zero_action_middle = zero_action_middle
         self.step_func = self.step
+
+        self.dim_mode = dim_mode
+        if self.dim_mode == '2D':
+            self.step_func = self.step2D
+        elif self.dim_mode == '3D':
+            self.step_func = self.step3D
+        else:
+            raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
 
     def action_space(self, dynamics):
         if not self.zero_action_middle:
@@ -109,11 +167,18 @@ class VertPlaneControl(object):
         return spaces.Box(self.low, self.high)
 
     # modifies the dynamics in place.
-    def step(self, dynamics, action, goal, dt, observation=None):
+    def step3D(self, dynamics, action, goal, dt, observation=None):
         # print('action: ', action)
         action = self.scale * (action + self.bias)
         action = np.clip(action, a_min=self.low, a_max=self.high)
         dynamics.step(np.array([action[0], action[0], action[1], action[1]]), dt)
+
+    # modifies the dynamics in place.
+    def step2D(self, dynamics, action, goal, dt, observation=None):
+        # print('action: ', action)
+        action = self.scale * (action + self.bias)
+        action = np.clip(action, a_min=self.low, a_max=self.high)
+        dynamics.step(np.array(action), dt)
 
 
 # jacobian of (acceleration magnitude, angular acceleration)
