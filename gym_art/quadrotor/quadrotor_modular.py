@@ -416,7 +416,7 @@ class QuadrotorDynamics(object):
         return spaces.Box(low, high)
 
 
-def default_dynamics(sim_steps, room_box, dim_mode):
+def default_dynamics(sim_steps, room_box, dim_mode, noise_scale):
     # similar to AscTec Hummingbird
     # TODO: dictionary of dynamics of real quadrotors
     mass = 0.5
@@ -424,7 +424,11 @@ def default_dynamics(sim_steps, room_box, dim_mode):
     inertia = mass * npa(0.01, 0.01, 0.02)
     thrust_to_weight = 2.0
     return QuadrotorDynamics(mass, arm_length, inertia,
-        thrust_to_weight=thrust_to_weight, dynamics_steps_num=sim_steps, room_box=room_box, dim_mode=dim_mode)
+        thrust_to_weight=thrust_to_weight, 
+        dynamics_steps_num=sim_steps, 
+        room_box=room_box, 
+        dim_mode=dim_mode,
+        thrust_noise_ratio=noise_scale)
 
 
 
@@ -520,7 +524,7 @@ class QuadrotorEnv(gym.Env, Serializable):
     }
 
     def __init__(self, raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
-                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3):
+                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3, thrust_noise_ratio=0.):
         np.seterr(under='ignore')
         """
         @param obs_repr: options: state_xyz_vxyz_rot_omega, state_xyz_vxyz_quat_omega
@@ -529,7 +533,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.obs_repr = obs_repr
         self.state_vector = getattr(self, obs_repr)
 
-        self.dynamics = default_dynamics(sim_steps, room_box=self.room_box, dim_mode=dim_mode)
+        self.dynamics = default_dynamics(sim_steps, room_box=self.room_box, dim_mode=dim_mode, noise_scale=thrust_noise_ratio)
         # self.controller = ShiftedMotorControl(self.dynamics)
         # self.controller = OmegaThrustControl(self.dynamics) ## The last one used
         # self.controller = VelocityYawControl(self.dynamics)
