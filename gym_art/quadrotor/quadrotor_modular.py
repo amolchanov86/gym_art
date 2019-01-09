@@ -93,6 +93,7 @@ class QuadrotorDynamics(object):
     # inertia unit: kg * m^2, 3-element vector representing diagonal matrix
     # thrust_to_weight is the total, it will be divided among the 4 props
     # torque_to_thrust is ratio of torque produced by prop to thrust
+    # thrust_noise is noise2signal ratio of the thrust noise, Ex: 0.05 = 5% of the current signal
     def __init__(self, mass, 
         arm_length, 
         inertia, 
@@ -100,7 +101,8 @@ class QuadrotorDynamics(object):
         torque_to_thrust=0.05, 
         dynamics_steps_num=1, 
         room_box=None,
-        dim_mode="3D"):
+        dim_mode="3D",
+        thrust_noise_ratio=0.0):
         assert np.isscalar(mass)
         assert np.isscalar(arm_length)
         assert inertia.shape == (3,)
@@ -132,6 +134,7 @@ class QuadrotorDynamics(object):
         self.thrust_to_weight = thrust_to_weight
         self.thrust_max = GRAV * mass * thrust_to_weight / 4.0
         self.torque_max = torque_to_thrust * self.thrust_max # propeller torque scales
+        self.thrust_noise_ratio = thrust_noise_ratio
         scl = arm_length / norm([1.,1.,0.])
 
         # Unscaled (normalized) propeller positions
@@ -157,6 +160,9 @@ class QuadrotorDynamics(object):
         # Allows to sum-up thrusts as a linear matrix operation
         self.thrust_sum_mx = np.zeros([3,4]) # [0,0,F_sum].T
         self.thrust_sum_mx[2,:] = 1# [0,0,F_sum].T
+
+        # sigma = 0.2 gives roughly max noise of -1 .. 1
+        self.thrust_noise = OUNoise(4, sigma=0.2*self.thrust_noise_ratio)
 
     # pos, vel, in world coords (meters)
     # rotation is 3x3 matrix (body coords) -> (world coords)
@@ -224,7 +230,8 @@ class QuadrotorDynamics(object):
 
         ###################################
         ## Convert the motor commands to a force and moment on the body
-        thrust_cmds = np.clip(thrust_cmds, 0.0, 1.0)
+        thrust_noise = thrust_cmds * self.thrust_noise.noise()
+        thrust_cmds = np.clip(thrust_cmds + thrust_noise, 0.0, 1.0)
         thrusts = self.thrust_max * thrust_cmds
         #Prop crossproduct give torque directions
         torques = self.prop_crossproducts * thrusts[:,None] # (4,3)=(props, xyz)
@@ -743,7 +750,7 @@ class QuadrotorEnv(gym.Env, Serializable):
     def reset(self):
         return self._reset()
 
-    def render(self, mode, **kwargs):
+    def render(self, mode='human', **kwargs):
         return self._render(mode, **kwargs)
     
     def step(self, action):

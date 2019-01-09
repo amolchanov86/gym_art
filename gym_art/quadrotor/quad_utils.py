@@ -1,6 +1,8 @@
 import numpy as np
+import numpy.random as nr
 from numpy.linalg import norm
 from copy import deepcopy
+
 
 # numpy's cross is really slow for some reason
 def cross(a, b):
@@ -69,3 +71,27 @@ def R2quat(rot):
     y = (R[0,2] - R[2,0]) / w4
     z = (R[1,0] - R[0,1]) / w4
     return np.array([w,x,y,z])
+
+class OUNoise:
+    """Ornstein–Uhlenbeck process"""
+    def __init__(self, action_dimension, mu=0, theta=0.15, sigma=0.3):
+        """
+        @param: mu: mean of noise
+        @param: theta: stabilization coeff (i.e. noise return to mean)
+        @param: sigma: noise scale coeff
+        """
+        self.action_dimension = action_dimension
+        self.mu = mu
+        self.theta = theta
+        self.sigma = sigma
+        self.state = np.ones(self.action_dimension) * self.mu
+        self.reset()
+
+    def reset(self):
+        self.state = np.ones(self.action_dimension) * self.mu
+
+    def noise(self):
+        x = self.state
+        dx = self.theta * (self.mu - x) + self.sigma * nr.randn(len(x))
+        self.state = x + dx
+        return self.state
