@@ -94,6 +94,10 @@ class QuadrotorDynamics(object):
     # thrust_to_weight is the total, it will be divided among the 4 props
     # torque_to_thrust is ratio of torque produced by prop to thrust
     # thrust_noise is noise2signal ratio of the thrust noise, Ex: 0.05 = 5% of the current signal
+    # Coord frames: x configuration:
+    #  - x axis between arms looking forward [x - configuration]
+    #  - y axis pointing to the left
+    #  - z axis up 
     def __init__(self, mass, 
         arm_length, 
         inertia, 
@@ -137,7 +141,7 @@ class QuadrotorDynamics(object):
         self.thrust_noise_ratio = thrust_noise_ratio
         scl = arm_length / norm([1.,1.,0.])
 
-        # Unscaled (normalized) propeller positions
+        # Unscaled (normalized) propeller positions (x configuration)
         self.prop_pos = scl * np.array([
             [1.,  1., -1., -1.],
             [1., -1., -1.,  1.],
@@ -474,6 +478,9 @@ def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
     ## Loss orientation
     loss_orient = -dynamics.rot[2,2] #Projection of the z-body axis to z-world axis
 
+    ##################################################
+    ## Loss for constant uncontrolled rotation around vertical axis
+    loss_spin = np.abs(dynamics.omega[2])
 
     ##################################################
     ## loss crash
@@ -489,7 +496,8 @@ def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
         loss_effort, 
         loss_crash, 
         loss_vel_proj,
-        loss_orient
+        loss_orient,
+        loss_spin
         ])
     
 
@@ -499,7 +507,8 @@ def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
     'rew_crash': -loss_crash, 
     #'rew_altitude': -loss_alt, 
     'rew_vel_proj': -loss_vel_proj,
-    "rew_orient": -loss_orient
+    "rew_orient": -loss_orient,
+    "rew_spin": -loss_spin
     }
 
 
