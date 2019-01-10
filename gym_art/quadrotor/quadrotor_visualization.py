@@ -225,7 +225,7 @@ class Quadrotor3DScene(object):
     def __init__(self, np_random, quad_arm, w, h,
         obstacles=True, visible=True, resizable=True, goal_diameter=None, viewpoint='chase'):
 
-        self.window_target = r3d.WindowTarget(w, h, resizable=resizable)
+        self.window_w, self.window_h = w , h
         self.obs_target = r3d.FBOTarget(64, 64)
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
@@ -323,11 +323,16 @@ class Quadrotor3DScene(object):
             collided = dynamics.pos[2] <= dynamics.arm
         return collided
 
-    def render_chase(self):
+    def render_chase(self, mode="human"):
         assert self.have_state
         self.cam3p.look_at(*self.chase_cam.look_at())
         #self.cam3p.look_at(*self.fpv_lookat)
-        r3d.draw(self.scene, self.cam3p, self.window_target)
+        if mode == "human":
+            if self.window_target is None:
+                self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=resizable)
+            r3d.draw(self.scene, self.cam3p, self.window_target)
+        elif mode == "rgb_array":
+            r3d.draw(self.scene, self.cam3p, self.obs_target)
 
     def render_obs(self):
         assert self.have_state
