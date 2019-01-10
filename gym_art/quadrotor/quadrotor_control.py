@@ -104,11 +104,12 @@ class VerticalControl(object):
 
         self.dim_mode = dim_mode
         if self.dim_mode == '1D':
-            self.step_func = self.step1D
+            self.step = self.step1D
         elif self.dim_mode == '3D':
-            self.step_func = self.step3D
+            self.step = self.step3D
         else:
             raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
+        self.step_func = self.step
 
 
     def action_space(self, dynamics):
@@ -140,17 +141,17 @@ class VerticalControl(object):
         dynamics.step(np.array([action[0]]), dt)
 
 class VertPlaneControl(object):
-    def __init__(self, dynamics, zero_action_middle=True):
+    def __init__(self, dynamics, zero_action_middle=True, dim_mode="3D"):
         self.zero_action_middle = zero_action_middle
-        self.step_func = self.step
 
         self.dim_mode = dim_mode
         if self.dim_mode == '2D':
-            self.step_func = self.step2D
+            self.step = self.step2D
         elif self.dim_mode == '3D':
-            self.step_func = self.step3D
+            self.step = self.step3D
         else:
             raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
+        self.step_func = self.step
 
     def action_space(self, dynamics):
         if not self.zero_action_middle:
