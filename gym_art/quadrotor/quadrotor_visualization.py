@@ -225,7 +225,9 @@ class Quadrotor3DScene(object):
     def __init__(self, np_random, quad_arm, w, h,
         obstacles=True, visible=True, resizable=True, goal_diameter=None, viewpoint='chase'):
 
+        self.window_target = None
         self.window_w, self.window_h = w , h
+        self.resizable = resizable
         self.obs_target = r3d.FBOTarget(64, 64)
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
@@ -329,7 +331,7 @@ class Quadrotor3DScene(object):
         #self.cam3p.look_at(*self.fpv_lookat)
         if mode == "human":
             if self.window_target is None:
-                self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=resizable)
+                self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
             r3d.draw(self.scene, self.cam3p, self.window_target)
         elif mode == "rgb_array":
             r3d.draw(self.scene, self.cam3p, self.obs_target)
