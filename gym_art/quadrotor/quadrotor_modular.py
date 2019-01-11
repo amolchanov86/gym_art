@@ -21,9 +21,11 @@ import gym.envs.registration as gym_reg
 from garage.core import Serializable
 
 from gym_art.quadrotor.quadrotor_control import *
+from gym_art.quadrotor.quadrotor_obstacles import *
 from gym_art.quadrotor.quadrotor_visualization import *
 from gym_art.quadrotor.quad_utils import *
 import transforms3d as t3d
+
 
 logger = logging.getLogger(__name__)
 
@@ -533,12 +535,13 @@ class QuadrotorEnv(gym.Env, Serializable):
     }
 
     def __init__(self, raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
-                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3, thrust_noise_ratio=0.):
+                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3, thrust_noise_ratio=0., obstacles_num=0, room_size=10):
         np.seterr(under='ignore')
         """
         @param obs_repr: options: state_xyz_vxyz_rot_omega, state_xyz_vxyz_quat_omega
         """
-        self.room_box = np.array([[-10, -10, 0], [10, 10, 10]])
+        self.room_size = room_size
+        self.room_box = np.array([[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
         self.obs_repr = obs_repr
         self.state_vector = getattr(self, obs_repr)
 
@@ -547,6 +550,11 @@ class QuadrotorEnv(gym.Env, Serializable):
         # self.controller = OmegaThrustControl(self.dynamics) ## The last one used
         # self.controller = VelocityYawControl(self.dynamics)
         self.scene = None
+        if obstacles_num > 0:
+            self.obstacles = _random_obstacles(None, obstacles_num, self.room_size, self.dynamics.arm)
+        else:
+            self.obstacles = None
+
         # self.oracle = NonlinearPositionController(self.dynamics)
         self.dim_mode = dim_mode
         if self.dim_mode =='1D':
@@ -691,7 +699,12 @@ class QuadrotorEnv(gym.Env, Serializable):
                                 dt=self.dt,
                                 observation=np.expand_dims(self.state_vector(), axis=0))
         # self.oracle.step(self.dynamics, self.goal, self.dt)
-        self.crashed = self.scene.update_state(self.dynamics)
+        # self.scene.update_state(self.dynamics, self.goal)
+
+        if self.obstacles is not None:
+            self.crashed = self.obstacles.detect_collision(self.dynamics)
+        else:
+            self.crashed = self.dynamics.pos[2] <= self.dynamics.arm
         self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
                                                       np.clip(self.dynamics.pos,
                                                               a_min=self.room_box[0],
@@ -709,8 +722,8 @@ class QuadrotorEnv(gym.Env, Serializable):
 
     def _reset(self):
         if self.scene is None:
-            self.scene = Quadrotor3DScene(None, self.dynamics.arm,
-                640, 480, resizable=True, obstacles=False, viewpoint=self.viewpoint)
+            self.scene = Quadrotor3DScene(self.dynamics.arm,
+                640, 480, resizable=True, obstacles=self.obstacles, viewpoint=self.viewpoint)
 
         self.goal = np.array([0., 0., 2.])
         # print('reset goal: ', self.goal)
@@ -745,7 +758,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.dynamics.set_state(pos, vel, rotation, omega)
 
         self.scene.reset(self.goal, self.dynamics)
-        self.scene.update_state(self.dynamics)
+        # self.scene.update_state(self.dynamics)
 
         self.crashed = False
         self.tick = 0
@@ -758,7 +771,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         return state
 
     def _render(self, mode='human', close=False):
-        return self.scene.render_chase(mode=mode)
+        return self.scene.render_chase(dynamics=self.dynamics, goal=self.goal, mode=mode)
     
     def reset(self):
         return self._reset()
