@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.linalg import norm
+import copy
 
 import gym_art.quadrotor.rendering3d as r3d
 from gym_art.quadrotor.quad_utils import *
@@ -90,12 +91,13 @@ class SideCamera(object):
 # this class deals both with map and mapless cases.
 class Quadrotor3DScene(object):
     def __init__(self, quad_arm, w, h,
-        obstacles=True, visible=True, resizable=True, goal_diameter=None, viewpoint='chase'):
+        obstacles=True, visible=True, resizable=True, goal_diameter=None, viewpoint='chase', obs_hw=[64,64]):
 
         self.window_target = None
         self.window_w, self.window_h = w , h
         self.resizable = resizable
         self.viepoint = viewpoint
+        self.obs_hw = copy.deepcopy(obs_hw)
 
         # self.world_box = 40.0
         self.quad_arm = quad_arm
@@ -116,7 +118,8 @@ class Quadrotor3DScene(object):
 
     def _make_scene(self):
         self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
-        self.obs_target = r3d.FBOTarget(64, 64)
+        self.obs_target = r3d.FBOTarget(self.obs_hw[0], self.obs_hw[1])
+        self.video_target = r3d.FBOTarget(self.window_h, self.window_h)
 
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
@@ -204,12 +207,12 @@ class Quadrotor3DScene(object):
             r3d.draw(self.scene, self.cam3p, self.window_target)
             return None
         elif mode == "rgb_array":
-            r3d.draw(self.scene, self.cam3p, self.obs_target)
-            return self.obs_target.read()
+            r3d.draw(self.scene, self.cam3p, self.video_target)
+            return np.flipud(self.video_target.read())
 
     def render_obs(self, dynamics, goal):
         if self.scene is None: self._make_scene()
         self.update_state(dynamics=dynamics, goal=goal)
         self.cam1p.look_at(*self.fpv_lookat)
         r3d.draw(self.scene, self.cam1p, self.obs_target)
-        return self.obs_target.read()
+        return np.flipud(self.obs_target.read())
