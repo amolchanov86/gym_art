@@ -187,12 +187,13 @@ class QuadrotorDynamics(object):
         self.thrusts = deepcopy(thrusts)
 
     # generate a random state (meters, meters/sec, radians/sec)
-    def random_state(self, np_random, box, vel_max=15.0, omega_max=2*np.pi):
-        pos = np_random.uniform(low=-box, high=box, size=(3,))
-        vel = np_random.uniform(low=-vel_max, high=vel_max, size=(3,))
-        omega = np_random.uniform(low=-omega_max, high=omega_max, size=(3,))
-        rot = rand_uniform_rot3d(np_random)
-        self.set_state(pos, vel, rot, omega)
+    def random_state(self, box, vel_max=15.0, omega_max=2*np.pi):
+        pos = np.random.uniform(low=-box, high=box, size=(3,))
+        vel = np.random.uniform(low=-vel_max, high=vel_max, size=(3,))
+        omega = np.random.uniform(low=-omega_max, high=omega_max, size=(3,))
+        rot = rand_uniform_rot3d()
+        return pos, vel, rot, omega
+        # self.set_state(pos, vel, rot, omega)
 
     # multiple dynamics steps
     def step2(self, thrust_cmds, dt):
@@ -482,16 +483,14 @@ def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
 
     ##################################################
     ## Loss for constant uncontrolled rotation around vertical axis
-    loss_spin = np.abs(dynamics.omega[2])
+    loss_spin = np.abs(dynamics.omega[2]) + 0.5 * np.linalg.norm(dynamics.omega)
 
     ##################################################
     ## loss crash
     loss_crash = float(crashed)
 
-
     # reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
     # rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
-
 
     reward = -dt * np.sum([
         loss_pos, 
@@ -535,12 +534,16 @@ class QuadrotorEnv(gym.Env, Serializable):
     }
 
     def __init__(self, raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
-                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3, thrust_noise_ratio=0., obstacles_num=0, room_size=10):
+                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3, thrust_noise_ratio=0., obstacles_num=0, room_size=10,
+                init_random_state=False):
         np.seterr(under='ignore')
         """
         @param obs_repr: options: state_xyz_vxyz_rot_omega, state_xyz_vxyz_quat_omega
         """
+        self.init_random_state = init_random_state
         self.room_size = room_size
+        self.max_init_vel = 1.
+        self.max_init_omega = 2 * np.pi
         self.room_box = np.array([[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
         self.obs_repr = obs_repr
         self.state_vector = getattr(self, obs_repr)
@@ -563,9 +566,9 @@ class QuadrotorEnv(gym.Env, Serializable):
             self.viewpoint = 'chase'
 
         if raw_control:
-            if self.dim_mode == '1D':
+            if self.dim_mode == '1D': # Z axis only
                 self.controller = VerticalControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
-            elif self.dim_mode == '2D':
+            elif self.dim_mode == '2D': # X and Z axes only
                 self.controller = VertPlaneControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
             elif self.dim_mode == '3D':
                 self.controller = RawControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
@@ -724,36 +727,52 @@ class QuadrotorEnv(gym.Env, Serializable):
             self.scene = Quadrotor3DScene(self.dynamics.arm,
                 640, 480, resizable=True, obstacles=self.obstacles, viewpoint=self.viewpoint)
 
+        ## Initializing goal and the location
         self.goal = np.array([0., 0., 2.])
-        # print('reset goal: ', self.goal)
+        # from 0.5 to 10 after 100k episodes (a form of curriculum)
+        if self.box < 10:
+            nextbox = self.box * self.box_scale
+            self.box = nextbox
         x, y, z = self.np_random.uniform(-self.box, self.box, size=(3,)) + self.goal
+        
         if self.dim_mode == '1D':
             x = self.goal[0]
             y = self.goal[1]
         elif self.dim_mode == '2D':
             y = self.goal[1]
         if z < 0.25 : z = 0.25
-        if self.box < 10:
-            # from 0.5 to 10 after 100k episodes
-            nextbox = self.box * self.box_scale
-            if int(4*nextbox) > int(4*self.box):
-                print("box:", nextbox)
-            self.box = nextbox
         pos = npa(x, y, z)
-        vel = omega = npa(0, 0, 0)
 
-        def randrot():
-            rotz = np.random.uniform(-np.pi, np.pi)
-            return r3d.rotz(rotz)[:3,:3]
-
-        if self.dim_mode == '1D' or self.dim_mode == '2D':
-            rotation = np.eye(3)
+        ## Initializing rotation and velocities
+        if self.init_random_state:
+            if self.dim_mode == '1D':
+                omega = npa(0, 0, 0) 
+                rotation = np.eye(3)
+                vel = np.array([0., 0., self.max_init_vel * np.random.rand()])
+            elif self.dim_mode == '2D':
+                omega = npa(0, self.max_init_omega * np.random.rand(), 0)
+                vel = self.max_init_vel * np.random.rand(3)
+                vel[1] = 0.
+                c, s, theta = np.cos(theta), np.sin(theta), np.pi * np.random.rand()
+                rotation = np.array(((c, 0., -s), (0., 1., 0.), (s, 0., c)))
+            else:
+                # It already sets the state internally
+                _, vel, rotation, omega = self.dynamics.random_state(box=self.room_size, vel_max=self.max_init_vel, omega_max=self.max_init_omega)
         else:
-            # make sure we're sort of pointing towards goal
-            rotation = randrot()
-            while np.dot(rotation[:,0], to_xyhat(-pos)) < 0.5:
-                rotation = randrot()
+            # Initializing horizontally with 0 velociites
+            vel, omega = npa(0, 0, 0), npa(0, 0, 0)
+            def randrot():
+                rotz = np.random.uniform(-np.pi, np.pi)
+                return r3d.rotz(rotz)[:3,:3]
 
+            if self.dim_mode == '1D' or self.dim_mode == '2D':
+                rotation = np.eye(3)
+            else:
+                # make sure we're sort of pointing towards goal (for mellinger controller)
+                rotation = randrot()
+                while np.dot(rotation[:,0], to_xyhat(-pos)) < 0.5:
+                    rotation = randrot()
+        # Setting the generated state
         self.dynamics.set_state(pos, vel, rotation, omega)
 
         self.scene.reset(self.goal, self.dynamics)

@@ -19,13 +19,14 @@ def norm2(x):
     return np.sum(x ** 2)
 
 # uniformly sample from the set of all 3D rotation matrices
-def rand_uniform_rot3d(np_random):
-    randunit = lambda: normalize(np_random.normal(size=(3,)))[0]
+def rand_uniform_rot3d():
+    randunit = lambda: normalize(np.random.normal(size=(3,)))[0]
     up = randunit()
     fwd = randunit()
     while np.dot(fwd, up) > 0.95:
         fwd = randunit()
-    left = normalize(cross(up, fwd))
+    left, _ = normalize(cross(up, fwd))
+    # import pdb; pdb.set_trace()
     up = cross(fwd, left)
     rot = np.column_stack([fwd, left, up])
     return rot
