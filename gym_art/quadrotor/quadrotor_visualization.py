@@ -115,11 +115,15 @@ class Quadrotor3DScene(object):
             self.chase_cam = SideCamera()
 
         self.scene = None
+        self.window_target = None
+        self.obs_target = None
+        self.video_target = None
 
-    def _make_scene(self):
-        self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
-        self.obs_target = r3d.FBOTarget(self.obs_hw[0], self.obs_hw[1])
-        self.video_target = r3d.FBOTarget(self.window_h, self.window_h)
+    def _make_scene(self, target=None):
+        if target is None:
+            self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
+            self.obs_target = r3d.FBOTarget(self.obs_hw[0], self.obs_hw[1])
+            self.video_target = r3d.FBOTarget(self.window_h, self.window_h)
 
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
@@ -199,19 +203,27 @@ class Quadrotor3DScene(object):
             self.shadow_transform.set_transform_nocollide(matrix)
 
     def render_chase(self, dynamics, goal, mode="human"):
-        if self.scene is None: self._make_scene()
-        self.update_state(dynamics=dynamics, goal=goal)
-        self.cam3p.look_at(*self.chase_cam.look_at())
-        #self.cam3p.look_at(*self.fpv_lookat)
         if mode == "human":
+            if self.window_target is None: 
+                self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
+                self._make_scene(target=self.window_target)
+            self.update_state(dynamics=dynamics, goal=goal)
+            self.cam3p.look_at(*self.chase_cam.look_at())
             r3d.draw(self.scene, self.cam3p, self.window_target)
             return None
         elif mode == "rgb_array":
+            if self.video_target is None:
+                self.video_target = r3d.FBOTarget(self.window_h, self.window_h)
+                self._make_scene(target=self.video_target)
+            self.update_state(dynamics=dynamics, goal=goal)
+            self.cam3p.look_at(*self.chase_cam.look_at())
             r3d.draw(self.scene, self.cam3p, self.video_target)
             return np.flipud(self.video_target.read())
 
     def render_obs(self, dynamics, goal):
-        if self.scene is None: self._make_scene()
+        if self.obs_target is None: 
+            self.obs_target = r3d.FBOTarget(self.obs_hw[0], self.obs_hw[1])
+            self._make_scene(target=self.obs_target)
         self.update_state(dynamics=dynamics, goal=goal)
         self.cam1p.look_at(*self.fpv_lookat)
         r3d.draw(self.scene, self.cam1p, self.obs_target)
