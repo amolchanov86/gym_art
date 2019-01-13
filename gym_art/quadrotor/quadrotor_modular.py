@@ -706,7 +706,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         #########################################
         ## REWARDS
-        self.rew_coeff = {"pos": 1, "effort": 0.01, "crash": 1, "vel_proj": 1, "spin": 1}
+        self.rew_coeff = {"pos": 1, "effort": 0.01, "crash": 1, "orient": 1, "vel_proj": 1, "spin": 1}
         if rew_coeff is not None: 
             assert isinstance(rew_coeff, dict)
             assert set(rew_coeff.keys()).issubset(set(self.rew_coeff.keys()))
