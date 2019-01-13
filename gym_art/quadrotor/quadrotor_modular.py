@@ -95,7 +95,8 @@ class QuadrotorDynamics(object):
     # inertia unit: kg * m^2, 3-element vector representing diagonal matrix
     # thrust_to_weight is the total, it will be divided among the 4 props
     # torque_to_thrust is ratio of torque produced by prop to thrust
-    # thrust_noise is noise2signal ratio of the thrust noise, Ex: 0.05 = 5% of the current signal
+    # thrust_noise_ratio is noise2signal ratio of the thrust noise, Ex: 0.05 = 5% of the current signal
+    #   It is an approximate ratio, i.e. the upper bound could still be higher, due to how OU noise operates
     # Coord frames: x configuration:
     #  - x axis between arms looking forward [x - configuration]
     #  - y axis pointing to the left
@@ -109,12 +110,33 @@ class QuadrotorDynamics(object):
         room_box=None,
         dim_mode="3D",
         thrust_noise_ratio=0.0):
+
+        ## Sanity checks
         assert np.isscalar(mass)
         assert np.isscalar(arm_length)
         assert inertia.shape == (3,)
-        # This hack allows parametrize calling dynamics multiple times
-        # without expensive for-loops
 
+        ###############################################################
+        ## PARAMETERS FOR RANDOMIZATION
+        self.mass = mass
+        self.arm = arm_length
+        self.inertia = inertia
+        self.thrust_to_weight = thrust_to_weight
+        self.thrust_noise_ratio = thrust_noise_ratio
+        ## TODO:
+        # + vs x configuration selection
+        # 
+
+        ###############################################################
+        ## OTHER PARAMETERS
+        self.vel_damp = 0.999
+        self.damp_omega = 0.015
+        if room_box is None:
+            self.room_box = np.array([[-10., -10., 0.], [10., 10., 10.]])
+        else:
+            self.room_box = np.array(room_box).copy()
+
+        ## Selecting 1D, Planar or Full 3D modes
         self.dim_mode = dim_mode
         if self.dim_mode == '1D':
             self.control_mx = np.ones([4,1])
@@ -125,22 +147,14 @@ class QuadrotorDynamics(object):
         else:
             raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
 
-
+        ## Selecting how many sim steps should be done b/w controller calls
+        # i.e. controller frequency
         self.step = getattr(self, 'step%d' % dynamics_steps_num)
-        if room_box is None:
-            self.room_box = np.array([[-10., -10., 0.], [10., 10., 10.]])
-        else:
-            self.room_box = np.array(room_box).copy()
 
-        self.vel_damp = 0.999
-        self.damp_omega = 0.015
-        self.mass = mass
-        self.arm = arm_length
-        self.inertia = inertia
-        self.thrust_to_weight = thrust_to_weight
+        ###############################################################
+        ## COMPUTED (Dependent) PARAMETERS
         self.thrust_max = GRAV * mass * thrust_to_weight / 4.0
         self.torque_max = torque_to_thrust * self.thrust_max # propeller torque scales
-        self.thrust_noise_ratio = thrust_noise_ratio
         scl = arm_length / norm([1.,1.,0.])
 
         # Unscaled (normalized) propeller positions (x configuration)
@@ -425,7 +439,6 @@ class QuadrotorDynamics(object):
 
 def default_dynamics(sim_steps, room_box, dim_mode, noise_scale):
     # similar to AscTec Hummingbird
-    # TODO: dictionary of dynamics of real quadrotors
     mass = 0.5
     arm_length = 0.33 / 2.0
     inertia = mass * npa(0.01, 0.01, 0.02)
@@ -523,6 +536,91 @@ def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
 
     return reward, rew_info
 
+# reasonable reward function for hovering at a goal and not flying too high
+def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, rew_coeff):
+    ##################################################
+    ## log to create a sharp peak at the goal
+    dist = np.linalg.norm(goal - dynamics.pos)
+    loss_pos = rew_coeff["pos"] * (np.log(dist + 0.1) + 0.1 * dist)
+    # loss_pos = dist
+
+    # dynamics_pos = dynamics.pos
+    # print('dynamics.pos', dynamics.pos)
+
+    ##################################################
+    ## penalize altitude above this threshold
+    # max_alt = 6.0
+    # loss_alt = np.exp(2*(dynamics.pos[2] - max_alt))
+
+    ##################################################
+    # penalize amount of control effort
+    loss_effort = rew_coeff["effort"] * np.linalg.norm(action)
+
+    ##################################################
+    ## loss velocity
+    dx = goal - dynamics.pos
+    dx = dx / (np.linalg.norm(dx) + EPS)
+    
+    ## normalized
+    # vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
+    # vel_proj = np.dot(dx, vel_direct)
+    
+    vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
+    vel_magn = np.clip(np.linalg.norm(dynamics.vel),-1, 1)
+    vel_clipped = vel_magn * vel_direct 
+    vel_proj = np.dot(dx, vel_clipped)
+
+    loss_vel_proj = - rew_coeff["vel_proj"] * dist * vel_proj
+    # print('vel_proj:', vel_proj)
+    # print('loss_vel_proj:', loss_vel_proj)
+
+    ##################################################
+    ## Loss orientation
+    loss_orient = -rew_coeff["orient"] * dynamics.rot[2,2] 
+    # Projection of the z-body axis to z-world axis
+    # Negative, because the larger the projection the smaller the loss (i.e. the higher the reward)
+
+    ##################################################
+    ## Loss for constant uncontrolled rotation around vertical axis
+    loss_spin = rew_coeff["spin"] * (np.abs(dynamics.omega[2]) + 0.5 * np.linalg.norm(dynamics.omega))
+
+    ##################################################
+    ## loss crash
+    loss_crash = rew_coeff["crash"] * float(crashed)
+
+    # reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
+    # rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
+
+    reward = -dt * np.sum([
+        loss_pos, 
+        loss_effort, 
+        loss_crash, 
+        loss_vel_proj,
+        loss_orient,
+        loss_spin
+        ])
+    
+
+    rew_info = {
+    'rew_pos': -loss_pos, 
+    'rew_action': -loss_effort, 
+    'rew_crash': -loss_crash, 
+    #'rew_altitude': -loss_alt, 
+    'rew_vel_proj': -loss_vel_proj,
+    "rew_orient": -loss_orient,
+    "rew_spin": -loss_spin
+    }
+
+
+
+    # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
+    # print('pos', dynamics.pos)
+    if np.isnan(reward) or not np.isfinite(reward):
+        for key, value in locals().items():
+            print('%s: %s \n' % (key, str(value)))
+        raise ValueError('QuadEnv: reward is Nan')
+
+    return reward, rew_info
 
 
 # Gym environment for quadrotor seeking the origin
@@ -535,7 +633,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
     def __init__(self, raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
                 obs_repr="state_xyz_vxyz_rot_omega", ep_time=3, thrust_noise_ratio=0., obstacles_num=0, room_size=10,
-                init_random_state=False):
+                init_random_state=False, rew_coeff=None):
         np.seterr(under='ignore')
         """
         @param obs_repr: options: state_xyz_vxyz_rot_omega, state_xyz_vxyz_quat_omega
@@ -605,6 +703,14 @@ class QuadrotorEnv(gym.Env, Serializable):
         # if box_scale > 1.0 then it will also growevery episode
         self.box = 2.0
         self.box_scale = 1.0 #scale the initialbox by this factor eache episode
+
+        #########################################
+        ## REWARDS
+        self.rew_coeff = {"pos": 1, "effort": 0.01, "crash": 1, "vel_proj": 1, "spin": 1}
+        if rew_coeff is not None: 
+            assert isinstance(rew_coeff, dict)
+            assert set(rew_coeff.keys()).issubset(set(self.rew_coeff.keys()))
+            self.rew_coeff.update(rew_coeff)
 
         self._reset()
 
@@ -713,7 +819,8 @@ class QuadrotorEnv(gym.Env, Serializable):
                                                               a_max=self.room_box[1]))
 
         self.time_remain = self.ep_len - self.tick
-        reward, rew_info = compute_reward(self.dynamics, self.goal, action, self.dt, self.crashed, self.time_remain)
+        reward, rew_info = compute_reward_weighted(self.dynamics, self.goal, action, self.dt, self.crashed, self.time_remain, 
+                            rew_coeff=self.rew_coeff)
         self.tick += 1
         done = self.tick > self.ep_len #or self.crashed
         sv = self.state_vector()
