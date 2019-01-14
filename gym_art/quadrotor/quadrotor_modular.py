@@ -516,6 +516,7 @@ def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
     
 
     rew_info = {
+    'rew_main': -loss_pos,
     'rew_pos': -loss_pos, 
     'rew_action': -loss_effort, 
     'rew_crash': -loss_crash, 
