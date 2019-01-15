@@ -202,7 +202,7 @@ class Structure:
 		self.motor_offset = 0.0
 		self.setBatteryOffset(0.0, 0.0) # inputs are battery offsets
 
-		[print(get_I(link.getInertia()), "\n") for link in self.getLinksInList() ]
+		# [print(get_I(link.getInertia()), "\n") for link in self.getLinksInList() ]
 
 	def getLinksInList(self):
 		return [self.center_box_link, self.battery_link, self.motor_arm_link_front_right, self.motor_arm_link_front_left, \
@@ -220,50 +220,59 @@ class Structure:
 					 self.center_box_link.y + battery_offset_y, 
 					 self.center_box_link.z + (self.center_box_link.height + self.battery_link.height)/2)
 		self.battery_link.setGlobalPosition(p.x, p.y, p.z)
+		print("pose: ", p.x, p.y, p.z)
 
 		## the front right arm and motor
 		p = Position(self.center_box_link.x + (self.center_box_link.length + self.motor_arm_link_front_right.length*sin45)/2, 
 					 self.center_box_link.y - (self.center_box_link.width + self.motor_arm_link_front_right.length*cos45)/2, 
 					 self.center_box_link.z + 0.0)
 		self.motor_arm_link_front_right.setGlobalPosition(p.x, p.y, p.z, 0, 0, -45) 
+		print("pose: ", p.x, p.y, p.z)
 
 		p = Position(self.motor_arm_link_front_right.x + (self.motor_arm_link_front_right.length/2 + self.motor_link_front_right.radius)*sin45, 
 					 self.motor_arm_link_front_right.y - (self.motor_arm_link_front_right.length/2 + self.motor_link_front_right.radius)*cos45,
 					 self.motor_arm_link_front_right.z + self.motor_offset)
 		self.motor_link_front_right.setGlobalPosition(p.x, p.y, p.z)
+		print("pose: ", p.x, p.y, p.z)
 
 		## the back right arm and motor
 		p = Position(self.center_box_link.x - (self.center_box_link.length + self.motor_arm_link_back_right.length*sin45)/2, 
 					 self.center_box_link.y - (self.center_box_link.width + self.motor_arm_link_back_right.length*cos45)/2, 
 					 self.center_box_link.z + 0.0)
 		self.motor_arm_link_back_right.setGlobalPosition(p.x, p.y, p.z, 0, 0, 45)
+		print("pose: ", p.x, p.y, p.z)
 
 		p = Position(self.motor_arm_link_back_right.x - (self.motor_arm_link_back_right.length/2 + self.motor_link_back_right.radius)*sin45, 
 					 self.motor_arm_link_back_right.y - (self.motor_arm_link_back_right.length/2 + self.motor_link_back_right.radius)*cos45,
 					 self.motor_arm_link_back_right.z + self.motor_offset)
 		self.motor_link_back_right.setGlobalPosition(p.x, p.y, p.z)
+		print("pose: ", p.x, p.y, p.z)
 
 		## the back left arm
 		p = Position(self.center_box_link.x - (self.center_box_link.length + self.motor_arm_link_back_left.length*sin45)/2, 
 					 self.center_box_link.y + (self.center_box_link.width + self.motor_arm_link_back_left.length*cos45)/2, 
 					 self.center_box_link.z + 0.0)
 		self.motor_arm_link_back_left.setGlobalPosition(p.x, p.y, p.z, 0, 0, -45)
+		print("pose: ", p.x, p.y, p.z)
 
 		p = Position(self.motor_arm_link_back_left.x - (self.motor_arm_link_back_left.length/2 + self.motor_link_back_left.radius)*sin45, 
 					 self.motor_arm_link_back_left.y + (self.motor_arm_link_back_left.length/2 + self.motor_link_back_left.radius)*cos45,
 					 self.motor_arm_link_back_left.z + self.motor_offset)
 		self.motor_link_back_left.setGlobalPosition(p.x, p.y, p.z)
+		print("pose: ", p.x, p.y, p.z)
 
 		## the front left arm 
 		p = Position(self.center_box_link.x + (self.center_box_link.length + self.motor_arm_link_front_left.length*sin45)/2, 
 					 self.center_box_link.y + (self.center_box_link.width + self.motor_arm_link_front_left.length*cos45)/2, 
 					 self.center_box_link.z + 0.0)
 		self.motor_arm_link_front_left.setGlobalPosition(p.x, p.y, p.z, 0, 0, 45)
+		print("pose: ", p.x, p.y, p.z)
 
 		p = Position(self.motor_arm_link_front_left.x + (self.motor_arm_link_front_left.length/2 + self.motor_link_front_left.radius)*sin45, 
 					 self.motor_arm_link_front_left.y + (self.motor_arm_link_front_left.length/2 + self.motor_link_front_left.radius)*cos45,
 					 self.motor_arm_link_front_left.z + self.motor_offset)
 		self.motor_link_front_left.setGlobalPosition(p.x, p.y, p.z)
+		print("pose: ", p.x, p.y, p.z)
 
 		links = self.getLinksInList()
 		self.cog_x, self.cog_y, self.cog_z = getCOM(links)
@@ -317,5 +326,8 @@ def getCOM(links):
 
 
 if __name__ == "__main__":
+	import time
+	start_time = time.time()
 	quad = Structure()
 	print("CrazyFie Inertia: ", quad.getInertia())
+	print("Time: ", time.time() - start_time)

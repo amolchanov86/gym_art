@@ -171,38 +171,43 @@ class LinkPose(object):
 
 class QuadLink(object):
     """
-    Quadrotor body set to compute inertia.
+    Quadrotor link set to compute inertia.
     Initial coordinate system assumes being in the middle of the central body.
+    Orientation of axes: x - forward; y - left; z - up
     arm_angle == |/ , i.e. between the x axis and the axis of the arm
     """
-    def __init__(self):
-        # PARAMETERS
+    def __init__(self, params=None, verbose=False):
+        # PARAMETERS (CrazyFlie by default)
         self.motors_num = 4
         self.params = {}
         self.params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
         self.params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
-        self.params["arms"] = {"l":0.022, "w":0.005, "h":0.005, "m":0.001}
-        # self.params["arms"] = {"w":0.005, "h":0.005, "m":0.001}
+        self.params["arms"] = {"w":0.005, "h":0.005, "m":0.001}
         self.params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
 
         self.params["arms_pos"] = {"angle": 45., "z": 0.}
 
         self.params["payload_pos"] = {"xy": [0., 0.]}
         self.params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
+        if params is not None:
+            self.params.update(params)
 
         # Printing all params
-        print("######################################################")
-        print("QUAD PARAMETERS:")
-        [print(key,":", val) for key,val in self.params.items()]
-        print("######################################################")
+        if verbose:
+            print("######################################################")
+            print("QUAD PARAMETERS:")
+            [print(key,":", val) for key,val in self.params.items()]
+            print("######################################################")
         
         # Dependent parameters
         self.arm_angle = deg2rad(self.params["arms_pos"]["angle"])
         self.motor_xyz = np.array(self.params["motor_pos"]["xyz"])
         delta_y = self.motor_xyz[1] - self.params["body"]["w"] / 2.
-        self.arm_length =  delta_y / np.sin(self.arm_angle)
         if "l" not in self.params["arms"]:
+            self.arm_length =  delta_y / np.sin(self.arm_angle)
             self.params["arms"]["l"] = self.arm_length
+        else:
+            self.arm_length = self.params["arms"]["l"]
         # print("Arm length: ", self.arm_length, "angle: ", self.arm_angle)
 
         # Vectors of coordinates of the COMs of arms, s.t. their ends will be exactly at motors locations
@@ -211,20 +216,20 @@ class QuadLink(object):
                                  self.params["arms_pos"]["z"] ])
         
 
-        # X signs according to clockwise starting front-right
-        self.x_sign = np.array([1, -1, -1, 1])
-        self.y_sign = np.array([1, 1, -1, -1])
+        # X signs according to clockwise starting front-left
+        # i.e. the list bodies are counting clockwise: front_left, front_right, back_right, back_left
+        self.x_sign = np.array([1, 1, -1, -1])
+        self.y_sign = np.array([1, -1, 1, -1])
         self.sign_mx = np.array([self.x_sign, self.y_sign, np.array([1., 1., 1., 1.])])
         self.motors_coord = self.sign_mx * self.motor_xyz[:, None]
         self.arm_angles = [
-            -self.arm_angle, 
              self.arm_angle, 
             -self.arm_angle, 
-             self.arm_angle]
+             self.arm_angle, 
+            -self.arm_angle]
         self.arms_coord = self.sign_mx * self.arm_xyz[:, None]
 
         # First defining the bodies
-        # In the list bodies are counting clockwise: front_right, back_right, back_left, front_left
         self.body =  BoxLink(**self.params["body"]) # Central body 
         self.payload = BoxLink(**self.params["payload"]) # Could include battery
         self.arms  = [BoxLink(**self.params["arms"]) for i in range(self.motors_num)] # Just arms
@@ -233,10 +238,10 @@ class QuadLink(object):
         
         self.links = [self.body, self.payload] + self.arms + self.motors
 
-        print("######################################################")
-        print("Inertias:")
-        [print(link.I_com, "\n") for link in self.links]
-        print("######################################################")
+        # print("######################################################")
+        # print("Inertias:")
+        # [print(link.I_com, "\n") for link in self.links]
+        # print("######################################################")
 
         # Defining locations of all bodies
         self.body_pose = LinkPose()
@@ -256,6 +261,14 @@ class QuadLink(object):
         self.poses_init = copy.deepcopy(self.poses)
         for pose in self.poses:
             pose.xyz -= self.com
+        
+        if verbose:
+            print("Initial poses: ")
+            [print(pose.xyz) for pose in self.poses_init]
+            print("###################################")
+            print("Final poses: ")
+            [print(pose.xyz) for pose in self.poses]
+            print("###################################")
 
         # Computing inertias
         self.links_I = []
@@ -273,8 +286,24 @@ class QuadLink(object):
 
 
 if __name__ == "__main__":
-    quad = QuadLink()
-    print("Quad inertia: ", quad.I_com)
+    import time
+    start_time = time.time()
+
+    ## CrazyFlie parameters
+    params = {}
+    params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
+    params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
+    params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
+    params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
+    params["arms_pos"] = {"angle": 45., "z": 0.}
+    params["payload_pos"] = {"xy": [0., 0.]}
+    params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
+
+    quad = QuadLink(params=params, verbose=True)
+
+    print("Time:", time.time()-start_time)
+    print("Quad inertia: \n", quad.I_com)
     print("Quad mass:", quad.m)
     print("Quad arm_xyz:", quad.arm_xyz)
     print("Quad COM: ", quad.com)
+    print("Quad arm_length: ", quad.arm_length)
