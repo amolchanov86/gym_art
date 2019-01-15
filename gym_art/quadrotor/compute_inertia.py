@@ -177,6 +177,13 @@ class CylinderLink:
 	def getInertiaCOM_numpy(self):
 		return np.array([self.ixx_COM, self.ixy_COM, self.ixz_COM, self.iyy_COM, self.iyz_COM, self.izz_COM])
 
+def get_I(i):
+	return np.array([
+		[i[0], i[1], i[2]],
+		[i[1], i[3], i[4]],
+		[i[2], i[4], i[5]]
+	])
+
 ## defins a model structure that matches the one in Gazebo
 class Structure:
 	def __init__(self):
@@ -194,6 +201,8 @@ class Structure:
 
 		self.motor_offset = 0.0
 		self.setBatteryOffset(0.0, 0.0) # inputs are battery offsets
+
+		[print(get_I(link.getInertia()), "\n") for link in self.getLinksInList() ]
 
 	def getLinksInList(self):
 		return [self.center_box_link, self.battery_link, self.motor_arm_link_front_right, self.motor_arm_link_front_left, \
@@ -288,3 +297,24 @@ class Structure:
 			combined_inertia += link.getInertiaCOM_numpy()
 
 		return combined_inertia
+
+## calculate the COM of the list of links that get passed in
+def getCOM(links):
+	total_w = 0.0
+	x_w = 0.0
+	y_w = 0.0 
+	z_w = 0.0
+	for link in links:
+		## sum up the total weights 
+		total_w += link.mass 
+		x_w += link.x * link.mass 
+		y_w += link.y * link.mass 
+		z_w += link.z * link.mass 
+
+	print("total mass:",total_w)
+	return (x_w/total_w, y_w/total_w, z_w/total_w)
+
+
+if __name__ == "__main__":
+	quad = Structure()
+	print("CrazyFie Inertia: ", quad.getInertia())
