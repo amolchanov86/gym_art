@@ -187,7 +187,7 @@ class QuadLink(object):
 
         self.params["arms_pos"] = {"angle": 45., "z": 0.}
 
-        self.params["payload_pos"] = {"xy": [0., 0.]}
+        self.params["payload_pos"] = {"xy": [0., 0.], "z_sign": 1.}
         self.params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
         if params is not None:
             self.params.update(params)
@@ -245,7 +245,7 @@ class QuadLink(object):
 
         # Defining locations of all bodies
         self.body_pose = LinkPose()
-        self.payload_pose = LinkPose(xyz=list(self.params["payload_pos"]["xy"]) + [(self.body.h + self.payload.h) / 2])
+        self.payload_pose = LinkPose(xyz=list(self.params["payload_pos"]["xy"]) + [np.sign(self.params["payload_pos"]["z_sign"])*(self.body.h + self.payload.h) / 2])
         self.arms_pose = [LinkPose(alpha_deg=self.arm_angles[i], xyz=self.arms_coord[:, i]) 
                             for i in range(self.motors_num)]
         self.motors_pos = [LinkPose(xyz=self.motors_coord[:, i]) 
@@ -295,9 +295,11 @@ if __name__ == "__main__":
     params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
     params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
     params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
-    params["arms_pos"] = {"angle": 45., "z": 0.}
-    params["payload_pos"] = {"xy": [0., 0.]}
+    
     params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
+    params["arms_pos"] = {"angle": 45., "z": 0.}
+    params["payload_pos"] = {"xy": [0., 0.], "z_sign": 1}
+    # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
 
     quad = QuadLink(params=params, verbose=True)
 
