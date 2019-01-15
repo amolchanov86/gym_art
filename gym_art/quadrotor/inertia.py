@@ -211,16 +211,16 @@ class QuadLink(object):
                                  self.params["arms_pos"]["z"] ])
         
 
-        # X signs according to clockwise
+        # X signs according to clockwise starting front-right
         self.x_sign = np.array([1, -1, -1, 1])
         self.y_sign = np.array([1, 1, -1, -1])
         self.sign_mx = np.array([self.x_sign, self.y_sign, np.array([1., 1., 1., 1.])])
         self.motors_coord = self.sign_mx * self.motor_xyz[:, None]
         self.arm_angles = [
-            self.arm_angle, 
-            np.pi - self.arm_angle, 
-            np.pi + self.arm_angle, 
-            2*np.pi - self.arm_angle]
+            -self.arm_angle, 
+             self.arm_angle, 
+            -self.arm_angle, 
+             self.arm_angle]
         self.arms_coord = self.sign_mx * self.arm_xyz[:, None]
 
         # First defining the bodies
@@ -250,7 +250,7 @@ class QuadLink(object):
 
         # Recomputing the center of mass of the new system of bodies
         masses = [link.m for link in self.links]
-        self.com = np.sum([ masses[i] * pose.xyz for i, pose in enumerate(self.poses)]) / self.m
+        self.com = sum([ masses[i] * pose.xyz for i, pose in enumerate(self.poses)]) / self.m
 
         # Recomputing corrections on posess with the respect to the new system
         self.poses_init = copy.deepcopy(self.poses)
@@ -277,3 +277,4 @@ if __name__ == "__main__":
     print("Quad inertia: ", quad.I_com)
     print("Quad mass:", quad.m)
     print("Quad arm_xyz:", quad.arm_xyz)
+    print("Quad COM: ", quad.com)

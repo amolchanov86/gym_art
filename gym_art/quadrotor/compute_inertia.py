@@ -267,6 +267,7 @@ class Structure:
 
 		links = self.getLinksInList()
 		self.cog_x, self.cog_y, self.cog_z = getCOM(links)
+		print("COM:", self.cog_x, self.cog_y, self.cog_z)
 
 	def setCenterBoxParams(self, width=0.03, height=0.004, mass=0.005):
 		self.center_box_link.setParams(width, width, height, mass)
