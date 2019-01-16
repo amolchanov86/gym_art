@@ -571,7 +571,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
     def __init__(self, dynamics_params="defaultquad", dynamics_change=None, 
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
-                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3, obstacles_num=0, room_size=10, init_random_state=False, 
+                obs_repr="xyz_vxyz_rot_omega", ep_time=3, obstacles_num=0, room_size=10, init_random_state=False, 
                 rew_coeff=None, verbose=True):
         np.seterr(under='ignore')
         """
@@ -582,7 +582,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         @param: dim_mode: [str] Dimensionality of the env. Options: 1D(just a vertical stabilization), 2D(vertical plane), 3D(normal)
         @param: tf_control: [bool] creates Mellinger controller using TensorFlow
         @param: sim_steps: [int] how many simulation steps for each control step
-        @param: obs_repr: [str] options: state_xyz_vxyz_rot_omega, state_xyz_vxyz_quat_omega
+        @param: obs_repr: [str] options: xyz_vxyz_rot_omega, xyz_vxyz_quat_omega
         @param: ep_time: [float] episode time in simulated seconds. This parameter is used to compute env max time length in steps.
         @param: obstacles_num: [int] number of obstacle in the env
         @param: room_size: [int] env room size. Not the same as the initialization box to allow shorter episodes
@@ -595,7 +595,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.max_init_omega = 2 * np.pi
         self.room_box = np.array([[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
         self.obs_repr = obs_repr
-        self.state_vector = getattr(self, obs_repr)
+        self.state_vector = getattr(self, "state_" + obs_repr)
 
         ################################################################################
         ## DYNAMICS
@@ -698,7 +698,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
     def get_observation_space(self):
         self.wall_offset = 0.3
-        if self.obs_repr == "state_xyz_vxyz_rot_omega":
+        if self.obs_repr == "xyz_vxyz_rot_omega":
             ## Creating observation space
             # pos, vel, rot, rot vel
             self.obs_comp_sizes = [3, 3, 9, 3, 3]
@@ -716,7 +716,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_low[18:21]  = self.room_box[0] + self.wall_offset
 
 
-        elif self.obs_repr == "state_xyz_vxyz_euler_omega":
+        elif self.obs_repr == "xyz_vxyz_euler_omega":
              ## Creating observation space
             # pos, vel, rot, rot vel
             self.obs_comp_sizes = [3, 3, 3, 3, 3]
