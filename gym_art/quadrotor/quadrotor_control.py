@@ -191,7 +191,10 @@ def quadrotor_jacobian(dynamics):
     dw = (1.0 / dynamics.inertia)[:,None] * torque
     dv = thrust / dynamics.mass
     J = np.vstack([dv, dw])
-    assert np.linalg.cond(J) < 25.0
+    J_cond = np.linalg.cond(J)
+    assert J_cond < 100.0
+    if J_cond > 25:
+        print("WARN: Jacobian conditioning is too high: ", J_cond)
     return J
 
 

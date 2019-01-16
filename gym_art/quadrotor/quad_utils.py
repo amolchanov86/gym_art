@@ -66,12 +66,26 @@ def qwxyz2R(quat):
 def R2quat(rot):
     # print('R2quat: ', rot, type(rot))
     R = rot.reshape([3,3])
-    w = np.sqrt(1.0 + R[0,0] + R[1,1] + R[2,2]) / 2.0;
-    w4 = (4.0 * w);
+    w = np.sqrt(1.0 + R[0,0] + R[1,1] + R[2,2]) / 2.0
+    w4 = (4.0 * w)
     x = (R[2,1] - R[1,2]) / w4
     y = (R[0,2] - R[2,0]) / w4
     z = (R[1,0] - R[0,1]) / w4
     return np.array([w,x,y,z])
+
+def rot2D(theta):
+    c = np.cos(theta)
+    s = np.sin(theta)
+    return np.array([[c, -s], [s, c]])
+
+def rotZ(theta):
+    r = np.eye(4)
+    r[:2,:2] = rot2D(theta)
+    return r
+
+def randyaw():
+    rotz = np.random.uniform(-np.pi, np.pi)
+    return rotZ(rotz)[:3,:3]
 
 class OUNoise:
     """Ornstein–Uhlenbeck process"""
@@ -96,3 +110,4 @@ class OUNoise:
         dx = self.theta * (self.mu - x) + self.sigma * nr.randn(len(x))
         self.state = x + dx
         return self.state
+

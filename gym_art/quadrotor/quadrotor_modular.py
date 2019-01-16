@@ -748,8 +748,8 @@ class QuadrotorEnv(gym.Env, Serializable):
 
     def _reset(self):
         if self.scene is None:
-            self.scene = Quadrotor3DScene(self.dynamics.arm,
-                640, 480, resizable=True, obstacles=self.obstacles, viewpoint=self.viewpoint)
+            self.scene = Quadrotor3DScene(quad_arm=self.dynamics.arm,
+                w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.viewpoint)
 
         ## Initializing goal and the location
         self.goal = np.array([0., 0., 2.])

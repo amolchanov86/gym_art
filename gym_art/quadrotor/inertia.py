@@ -195,6 +195,8 @@ class QuadLink(object):
         self.params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
         if params is not None:
             self.params.update(params)
+        else:
+            print("WARN: since params is None the CrazyFlie params will be used")
 
         # Printing all params
         if verbose:
@@ -223,7 +225,7 @@ class QuadLink(object):
         # X signs according to clockwise starting front-left
         # i.e. the list bodies are counting clockwise: front_left, front_right, back_right, back_left
         self.x_sign = np.array([1, 1, -1, -1])
-        self.y_sign = np.array([1, -1, 1, -1])
+        self.y_sign = np.array([1, -1, -1, 1])
         self.sign_mx = np.array([self.x_sign, self.y_sign, np.array([1., 1., 1., 1.])])
         self.motors_coord = self.sign_mx * self.motor_xyz[:, None]
         self.props_coord = copy.deepcopy(self.motors_coord)
@@ -289,7 +291,7 @@ class QuadLink(object):
         self.I_com = sum(self.links_I)
 
         # Propeller poses
-        self.prop_pos = np.array([pose.xyz for pose in self.motors_pos]).T
+        self.prop_pos = np.array([pose.xyz for pose in self.motors_pos])
     
     @property
     def m(self):
@@ -306,6 +308,7 @@ if __name__ == "__main__":
     params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
     params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
     params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
+    params["propellers"] = {"h":0.002, "r":0.022, "m":0.00075}
     
     params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
     params["arms_pos"] = {"angle": 45., "z": 0.}
@@ -313,6 +316,28 @@ if __name__ == "__main__":
     # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
 
     quad = QuadLink(params=params, verbose=True)
+
+    print("Time:", time.time()-start_time)
+    print("Quad inertia: \n", quad.I_com)
+    print("Quad mass:", quad.m)
+    print("Quad arm_xyz:", quad.arm_xyz)
+    print("Quad COM: ", quad.com)
+    print("Quad arm_length: ", quad.arm_length)
+    print("Quad prop_pos: \n", quad.prop_pos, "shape:", quad.prop_pos.shape)
+
+    ## Aztec params
+    geom_params = {}
+    geom_params["body"] = {"l": 0.1, "w": 0.1, "h": 0.085, "m": 0.5}
+    geom_params["payload"] = {"l": 0.12, "w": 0.12, "h": 0.04, "m": 0.1}
+    geom_params["arms"] = {"l": 0.1, "w":0.005, "h":0.005, "m":0.025} #0.17 total arm
+    geom_params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
+    geom_params["propellers"] = {"h":0.005, "r":0.1, "m":0.009}
+    
+    geom_params["motor_pos"] = {"xyz": [0.12, 0.12, 0.]}
+    geom_params["arms_pos"] = {"angle": 45., "z": 0.}
+    geom_params["payload_pos"] = {"xy": [0., 0.], "z_sign": -1}
+
+    quad = QuadLink(params=geom_params, verbose=True)
 
     print("Time:", time.time()-start_time)
     print("Quad inertia: \n", quad.I_com)

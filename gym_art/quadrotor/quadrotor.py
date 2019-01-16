@@ -40,7 +40,7 @@ EPS = 1e-6 #small constant to avoid divisions by 0 and log(0)
 # -
 # -
 
-def crazy_flie_parameters():
+def crazyflie_params():
     ## See: http://mikehamer.info/assets/papers/Crazyflie%20Modelling.pdf
     ## Geometric parameters for Inertia and the model
     geom_params = {}
@@ -63,8 +63,9 @@ def crazy_flie_parameters():
     noise_params["thrust_noise_ratio"] = 0.01
 
     ## Motor parameters
-    motor_params = {"thrust_to_weight" : 2.18 }
-    motor_params = {"torque_to_thrust": 0.05}
+    motor_params = {"thrust_to_weight" : 2.18,
+                    "torque_to_thrust": 0.05
+                    }
 
     ## Summarizing
     params = {
@@ -75,17 +76,17 @@ def crazy_flie_parameters():
     }
     return params
 
-def default_parameters():
+def defaultquad_params():
     # Similar to AscTec Hummingbird: http://www.asctec.de/en/uav-uas-drones-rpas-roav/asctec-hummingbird/
     ## Geometric parameters for Inertia and the model
     geom_params = {}
     geom_params["body"] = {"l": 0.1, "w": 0.1, "h": 0.085, "m": 0.5}
     geom_params["payload"] = {"l": 0.12, "w": 0.12, "h": 0.04, "m": 0.1}
-    geom_params["arms"] = {"l": 0.17, "w":0.005, "h":0.005, "m":0.025}
+    geom_params["arms"] = {"l": 0.1, "w":0.005, "h":0.005, "m":0.025} #0.17 total arm
     geom_params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
     geom_params["propellers"] = {"h":0.005, "r":0.1, "m":0.009}
     
-    geom_params["motor_pos"] = {"xyz": [0.22, 0.22, 0.]}
+    geom_params["motor_pos"] = {"xyz": [0.12, 0.12, 0.]}
     geom_params["arms_pos"] = {"angle": 45., "z": 0.}
     geom_params["payload_pos"] = {"xy": [0., 0.], "z_sign": -1}
     # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
@@ -98,8 +99,9 @@ def default_parameters():
     noise_params["thrust_noise_ratio"] = 0.01
     
     ## Motor parameters
-    motor_params = {"thrust_to_weight" : 2.8 }
-    motor_params = {"torque_to_thrust": 0.05}
+    motor_params = {"thrust_to_weight" : 2.8,
+                    "torque_to_thrust": 0.05
+                    }
 
     ## Summarizing
     params = {
@@ -111,59 +113,42 @@ def default_parameters():
     return params
 
 
-def default_dynamics(sim_steps, room_box, dim_mode, noise_scale):
-    # similar to AscTec Hummingbird
-    mass = 0.5
-    arm_length = 0.33 / 2.0
-    inertia = mass * npa(0.01, 0.01, 0.02)
-    thrust_to_weight = 2.0
-    return QuadrotorDynamics(mass, arm_length, inertia,
-        thrust_to_weight=thrust_to_weight, 
-        dynamics_steps_num=sim_steps, 
-        room_box=room_box, 
-        dim_mode=dim_mode,
-        thrust_noise_ratio=noise_scale)
-
-# simple simulation of quadrotor dynamics.
 class QuadrotorDynamics(object):
-    # mass unit: kilogram
-    # arm_length unit: meter
-    # inertia unit: kg * m^2, 3-element vector representing diagonal matrix
-    # thrust_to_weight is the total, it will be divided among the 4 props
-    # torque_to_thrust is ratio of torque produced by prop to thrust
-    # thrust_noise_ratio is noise2signal ratio of the thrust noise, Ex: 0.05 = 5% of the current signal
-    #   It is an approximate ratio, i.e. the upper bound could still be higher, due to how OU noise operates
-    # Coord frames: x configuration:
-    #  - x axis between arms looking forward [x - configuration]
-    #  - y axis pointing to the left
-    #  - z axis up 
-    def __init__(self, 
-        mass, 
-        arm_length, 
-        inertia, 
-        thrust_to_weight=2.0, 
-        torque_to_thrust=0.05, 
-        thrust_noise_ratio=0.0,
+    """
+    Simple simulation of quadrotor dynamics.
+    mass unit: kilogram
+    arm_length unit: meter
+    inertia unit: kg * m^2, 3-element vector representing diagonal matrix
+    thrust_to_weight is the total, it will be divided among the 4 props
+    torque_to_thrust is ratio of torque produced by prop to thrust
+    thrust_noise_ratio is noise2signal ratio of the thrust noise, Ex: 0.05 = 5% of the current signal
+      It is an approximate ratio, i.e. the upper bound could still be higher, due to how OU noise operates
+    Coord frames: x configuration:
+     - x axis between arms looking forward [x - configuration]
+     - y axis pointing to the left
+     - z axis up 
+    TODO:
+    - only diagonal inertia is used at the moment
+    """
+    def __init__(self, model_params,
         room_box=None,
         dynamics_steps_num=1, 
         dim_mode="3D"):
 
-        ## Sanity checks
-        assert np.isscalar(mass)
-        assert np.isscalar(arm_length)
-        assert inertia.shape == (3,)
+        ###############################################################
+        ## PARAMETERS 
+        self.prop_ccw = np.array([1., -1., 1., -1.])
 
         ###############################################################
-        ## PARAMETERS FOR RANDOMIZATION
-        self.mass = mass
-        self.arm = arm_length
-        self.inertia = inertia
-        self.thrust_to_weight = thrust_to_weight
-        self.thrust_noise_ratio = thrust_noise_ratio
-        ## TODO:
-        # + vs x configuration selection
-        self.vel_damp = 0.999
-        self.damp_omega_quadratic = 0.015
+        ## Internal State variables
+        self.since_last_svd = 0
+
+        ###############################################################
+        ## Initializing model
+        self.update_model(model_params)
+        
+        ## Sanity checks
+        assert self.inertia.shape == (3,)
 
         ###############################################################
         ## OTHER PARAMETERS
@@ -187,24 +172,33 @@ class QuadrotorDynamics(object):
         # i.e. controller frequency
         self.step = getattr(self, 'step%d' % dynamics_steps_num)
 
+    def update_model(self, model_params):
+        self.model = QuadLink(params=model_params["geom"])
+        self.model_params = model_params
+
+        ###############################################################
+        ## PARAMETERS FOR RANDOMIZATION
+        self.mass = self.model.m
+        self.inertia = np.diagonal(self.model.I_com)
+        self.thrust_to_weight = self.model_params["motor"]["thrust_to_weight"]
+        self.torque_to_thrust = self.model_params["motor"]["torque_to_thrust"]
+        self.thrust_noise_ratio = self.model_params["noise"]["thrust_noise_ratio"]
+        self.vel_damp = self.model_params["damp"]["vel"]
+        self.damp_omega_quadratic = self.model_params["damp"]["omega_quadratic"]
+
         ###############################################################
         ## COMPUTED (Dependent) PARAMETERS
-        self.thrust_max = GRAV * mass * thrust_to_weight / 4.0
-        self.torque_max = torque_to_thrust * self.thrust_max # propeller torque scales
-        scl = arm_length / norm([1.,1.,0.])
+        self.thrust_max = GRAV * self.mass * self.thrust_to_weight / 4.0
+        self.torque_max = self.torque_to_thrust * self.thrust_max # propeller torque scales
 
-        # Unscaled (normalized) propeller positions (x configuration)
-        self.prop_pos = scl * np.array([
-            [1.,  1., -1., -1.],
-            [1., -1., -1.,  1.],
-            [0.,  0.,  0.,  0.]]).T # row-wise easier with np
+        # Propeller positions in X configurations
+        self.prop_pos = self.model.prop_pos
+
         # unit: meters^2 ??? maybe wrong
         self.prop_crossproducts = np.cross(self.prop_pos, [0., 0., 1.])
         # 1 for props turning CCW, -1 for CW
-        self.prop_ccw = np.array([1., -1., 1., -1.])
         self.prop_ccw_mx = np.zeros([3,4]) # Matrix allows using matrix multiplication
         self.prop_ccw_mx[2,:] = self.prop_ccw 
-        self.since_last_svd = 0
 
         ## Forced dynamics auxiliary matrices
         #Prop crossproduct give torque directions
@@ -219,6 +213,9 @@ class QuadrotorDynamics(object):
 
         # sigma = 0.2 gives roughly max noise of -1 .. 1
         self.thrust_noise = OUNoise(4, sigma=0.2*self.thrust_noise_ratio)
+
+        self.arm = np.linalg.norm(self.model.motor_xyz[:2])
+        import pdb; pdb.set_trace()
 
     # pos, vel, in world coords (meters)
     # rotation is 3x3 matrix (body coords) -> (world coords)
@@ -280,7 +277,6 @@ class QuadrotorDynamics(object):
     # omega - body frame
     # goal_pos - global
     def step1(self, thrust_cmds, dt):
-        # import pdb; pdb.set_trace()
         # uncomment for debugging. they are slow
         #assert np.all(thrust_cmds >= 0)
         #assert np.all(thrust_cmds <= 1)
@@ -551,8 +547,6 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     "rew_spin_xy": -loss_spin_xy,
     }
 
-
-
     # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
     # print('pos', dynamics.pos)
     if np.isnan(reward) or not np.isfinite(reward):
@@ -563,20 +557,37 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     return reward, rew_info
 
 
-# Gym environment for quadrotor seeking the origin
-# with no obstacles and full state observations
+####################################################################################################################################################################
+## ENV
+# Gym environment for quadrotor seeking the origin with no obstacles and full state observations.
+# NOTES:
+# - room size of the env and init state distribution are not the same !
+#   It is done for the reason of having static (and preferably short) episode length, since for some distance it would be impossible to reach the goal
 class QuadrotorEnv(gym.Env, Serializable):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
-                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3, thrust_noise_ratio=0., obstacles_num=0, room_size=10,
-                init_random_state=False, rew_coeff=None):
+    def __init__(self, dynamics_params="defaultquad", dynamics_change=None, 
+                raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
+                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3, obstacles_num=0, room_size=10, init_random_state=False, 
+                rew_coeff=None, verbose=True):
         np.seterr(under='ignore')
         """
-        @param obs_repr: options: state_xyz_vxyz_rot_omega, state_xyz_vxyz_quat_omega
+        @param: dynamics_params: [str or dict] loading dynamics params by name or by providing a dictionary
+        @param: dynamics_change: [dict] update to dynamics parameters relative to dynamics_params provided
+        @param: raw_control: [bool] use raw cantrol or the Mellinger controller as a default
+        @param: raw_control_zero_middle: [bool] meaning that control will be [-1 .. 1] rather than [0 .. 1]
+        @param: dim_mode: [str] Dimensionality of the env. Options: 1D(just a vertical stabilization), 2D(vertical plane), 3D(normal)
+        @param: tf_control: [bool] creates Mellinger controller using TensorFlow
+        @param: sim_steps: [int] how many simulation steps for each control step
+        @param: obs_repr: [str] options: state_xyz_vxyz_rot_omega, state_xyz_vxyz_quat_omega
+        @param: ep_time: [float] episode time in simulated seconds. This parameter is used to compute env max time length in steps.
+        @param: obstacles_num: [int] number of obstacle in the env
+        @param: room_size: [int] env room size. Not the same as the initialization box to allow shorter episodes
+        @param: init_random_state: [bool] use random state initialization or horizontal initialization with 0 velocities
+        @param: rew_coeff: [dict] weights for different reward components (see compute_weighted_reward() function)
         """
         self.init_random_state = init_random_state
         self.room_size = room_size
@@ -586,23 +597,43 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.obs_repr = obs_repr
         self.state_vector = getattr(self, obs_repr)
 
-        self.dynamics = default_dynamics(sim_steps, room_box=self.room_box, dim_mode=dim_mode, noise_scale=thrust_noise_ratio)
-        # self.controller = ShiftedMotorControl(self.dynamics)
-        # self.controller = OmegaThrustControl(self.dynamics) ## The last one used
-        # self.controller = VelocityYawControl(self.dynamics)
+        ################################################################################
+        ## DYNAMICS
+        if isinstance(dynamics_params, str):
+            self.dynamics_params = globals()[dynamics_params + "_params"]()
+        elif isinstance(dynamics_params, dict):
+            # This option is good when you only partially provide parameters of the model
+            # For example if you are making some sort of a search, from the initial model
+            self.dynamics_params = dynamics_params
+        
+        ## Now, updating if we are providing modifications
+        if dynamics_change is not None:
+            self.dynamics_params.update(dynamics_change)
+        ## Then loading the dynamics
+        self.dynamics = QuadrotorDynamics(model_params=self.dynamics_params, 
+                        dynamics_steps_num=sim_steps, room_box=self.room_box, dim_mode=dim_mode)
+        
+        if verbose:
+            print("Dynamics params loaded:\n", self.dynamics_params)
+
+        ################################################################################
+        ## SCENE
         self.scene = None
         if obstacles_num > 0:
             self.obstacles = _random_obstacles(None, obstacles_num, self.room_size, self.dynamics.arm)
         else:
             self.obstacles = None
 
-        # self.oracle = NonlinearPositionController(self.dynamics)
+        ################################################################################
+        ## DIMENSIONALITY
         self.dim_mode = dim_mode
         if self.dim_mode =='1D':
             self.viewpoint = 'side'
         else:
             self.viewpoint = 'chase'
 
+        ################################################################################
+        ## CONTROL and SPACES
         if raw_control:
             if self.dim_mode == '1D': # Z axis only
                 self.controller = VerticalControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
@@ -617,18 +648,10 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         self.action_space = self.controller.action_space(self.dynamics)
 
-        ## Former way to get obs space
-        # # pos, vel, rot, rot vel
-        # obs_dim = 3 + 3 + 9 + 3 + 3 # xyz, Vxyz, R, Omega, goal_xyz
-        # # TODO tighter bounds on some variables
-        # obs_high = 100 * np.ones(obs_dim)
-        # # rotation mtx guaranteed to be orthogonal
-        # obs_high[6:6+9] = 1
-        # self.observation_space = spaces.Box(-obs_high, obs_high)
-
         self.observation_space = self.get_observation_space()
 
-
+        ################################################################################
+        ## EPISODE PARAMS
         # TODO get this from a wrapper
         self.ep_time = ep_time #In seconds
         self.dt = 1.0 / 100.0
@@ -637,21 +660,23 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.tick = 0
         self.crashed = False
 
-        self._seed()
-
+        ## WARN: If you
         # size of the box from which initial position will be randomly sampled
         # if box_scale > 1.0 then it will also growevery episode
         self.box = 2.0
         self.box_scale = 1.0 #scale the initialbox by this factor eache episode
 
         #########################################
-        ## REWARDS
-        self.rew_coeff = {"pos": 1, "effort": 0.01, "crash": 1, "orient": 1, "vel_proj": 1, "spin": 1}
+        ## REWARDS PARAMS
+        self.rew_coeff = {"pos": 1, "effort": 0.01, "crash": 1, "orient": 1, "vel_proj": 0, "spin_z": 1, "spin_xy": 0.5}
         if rew_coeff is not None: 
             assert isinstance(rew_coeff, dict)
             assert set(rew_coeff.keys()).issubset(set(self.rew_coeff.keys()))
             self.rew_coeff.update(rew_coeff)
 
+        #########################################
+        ## RESET
+        self._seed()
         self._reset()
 
         if self.spec is None:
@@ -770,31 +795,36 @@ class QuadrotorEnv(gym.Env, Serializable):
         return sv, reward, done, {'rewards': rew_info}
 
     def _reset(self):
+        ##############################################################
+        ## VISUALIZATION
         if self.scene is None:
             self.scene = Quadrotor3DScene(self.dynamics.arm,
                 640, 480, resizable=True, obstacles=self.obstacles, viewpoint=self.viewpoint)
 
-        ## Initializing goal and the location
+        ##############################################################
+        ## GOAL
         self.goal = np.array([0., 0., 2.])
+
+        ## CURRICULUM (NOT REALLY NEEDED ANYMORE)
         # from 0.5 to 10 after 100k episodes (a form of curriculum)
         if self.box < 10:
-            nextbox = self.box * self.box_scale
-            self.box = nextbox
+            self.box = self.box * self.box_scale
         x, y, z = self.np_random.uniform(-self.box, self.box, size=(3,)) + self.goal
         
         if self.dim_mode == '1D':
-            x = self.goal[0]
-            y = self.goal[1]
+            x, y = self.goal[0], self.goal[1]
         elif self.dim_mode == '2D':
             y = self.goal[1]
-        if z < 0.25 : z = 0.25
+        #Since being near the groud means crash we have to start above
+        if z < 0.25 : z = 0.25 
         pos = npa(x, y, z)
 
+        ##############################################################
+        ## INIT STATE
         ## Initializing rotation and velocities
         if self.init_random_state:
             if self.dim_mode == '1D':
-                omega = npa(0, 0, 0) 
-                rotation = np.eye(3)
+                omega, rotation = npa(0, 0, 0), np.eye(3)
                 vel = np.array([0., 0., self.max_init_vel * np.random.rand()])
             elif self.dim_mode == '2D':
                 omega = npa(0, self.max_init_omega * np.random.rand(), 0)
@@ -806,33 +836,29 @@ class QuadrotorEnv(gym.Env, Serializable):
                 # It already sets the state internally
                 _, vel, rotation, omega = self.dynamics.random_state(box=self.room_size, vel_max=self.max_init_vel, omega_max=self.max_init_omega)
         else:
-            # Initializing horizontally with 0 velociites
+            ## INIT HORIZONTALLY WITH 0 VEL and OMEGA
             vel, omega = npa(0, 0, 0), npa(0, 0, 0)
-            def randrot():
-                rotz = np.random.uniform(-np.pi, np.pi)
-                return r3d.rotz(rotz)[:3,:3]
 
             if self.dim_mode == '1D' or self.dim_mode == '2D':
                 rotation = np.eye(3)
             else:
                 # make sure we're sort of pointing towards goal (for mellinger controller)
-                rotation = randrot()
+                rotation = randyaw()
                 while np.dot(rotation[:,0], to_xyhat(-pos)) < 0.5:
-                    rotation = randrot()
+                    rotation = randyaw()
+        
         # Setting the generated state
         self.dynamics.set_state(pos, vel, rotation, omega)
 
+        # Resetting scene to reflect the state we have just set in dynamics
         self.scene.reset(self.goal, self.dynamics)
         # self.scene.update_state(self.dynamics)
 
+        # Reseting some internal state (counters, etc)
         self.crashed = False
         self.tick = 0
-        # if self.ep_len < 1000:
-        #     self.ep_len += 0.01 # len 1000 after 100k episodes
 
         state = self.state_vector()
-        #That helps to avoid including goals xyz into the observation space
-        # print('state', state)
         return state
 
     def _render(self, mode='human', close=False):
@@ -862,6 +888,7 @@ def test_rollout():
     rollouts_num = 10
     plot_obs = False
 
+    # env = QuadrotorEnv(dynamics_params="crazyflie",raw_control=False, sim_steps=4)
     env = QuadrotorEnv(raw_control=False, sim_steps=4)
 
     env.max_episode_steps = time_limit
@@ -922,13 +949,6 @@ def main(argv):
         help="Test mode: "
              "0 - rollout with default controller"
     )
-    # parser.add_argument(
-    #     '-e',"--env_id",
-    #     type=int,
-    #     default=0,
-    #     help="Env ID: "
-    #          "0 - Quad"
-    # )
     args = parser.parse_args()
 
     if args.mode == 0:
