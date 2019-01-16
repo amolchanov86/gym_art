@@ -4,6 +4,9 @@ Quadrotor simulation for OpenAI Gym, with components reusable elsewhere.
 Also see: D. Mellinger, N. Michael, V.Kumar. 
 Trajectory Generation and Control for Precise Aggressive Maneuvers with Quadrotors
 http://journals.sagepub.com/doi/pdf/10.1177/0278364911434236
+
+Developers:
+James Preiss, Artem Molchanov, Tao Chen 
 """
 import argparse
 import logging
@@ -19,74 +22,107 @@ from gym.utils import seeding
 import gym.envs.registration as gym_reg
 
 from garage.core import Serializable
+import transforms3d as t3d
 
 from gym_art.quadrotor.quadrotor_control import *
 from gym_art.quadrotor.quadrotor_obstacles import *
 from gym_art.quadrotor.quadrotor_visualization import *
 from gym_art.quadrotor.quad_utils import *
-import transforms3d as t3d
-
+from gym_art.quadrotor.inertia import QuadLink
 
 logger = logging.getLogger(__name__)
 
 GRAV = 9.81
-TILES = 256 # number of tiles used for the obstacle map
 EPS = 1e-6 #small constant to avoid divisions by 0 and log(0)
 
-# overall TODO:
-# - SVD does not converge from time to time
-# - fix front face CCW to enable culling
-# - add texture coords to primitives
-# - oracle policy for obstacles (already have for free space)
-# - non-flat floor
-# - fog
+#TODO:
+# -
+# -
+# -
 
-# Original goal-seeking reward. I don't really use it anymore
-# since compute_reward() is mainly used
-def goal_seeking_reward(dynamics, goal, action, dt, crashed, time_remain):
-    if not crashed:
-        # log to create a sharp peak at the goal
-        dist = np.linalg.norm(goal - dynamics.pos)
-        # loss_pos = np.log(dist + 0.1) + 0.1 * dist
-        loss_pos = dist
+def crazy_flie_parameters():
+    ## See: http://mikehamer.info/assets/papers/Crazyflie%20Modelling.pdf
+    ## Geometric parameters for Inertia and the model
+    geom_params = {}
+    geom_params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
+    geom_params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
+    geom_params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
+    geom_params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
+    geom_params["propellers"] = {"h":0.002, "r":0.022, "m":0.00075}
+    
+    geom_params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
+    geom_params["arms_pos"] = {"angle": 45., "z": 0.}
+    geom_params["payload_pos"] = {"xy": [0., 0.], "z_sign": 1}
+    # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
 
-        # dynamics_pos = dynamics.pos
-        # print('dynamics.pos', dynamics.pos)
+    ## Damping parameters
+    damp_params = {"vel": 0.999, "omega_quadratic": 0.015}
 
-        # penalize altitude above this threshold
-        max_alt = 6.0
-        loss_alt = np.exp(2*(dynamics.pos[2] - max_alt))
+    ## Noise parameters
+    noise_params = {}
+    noise_params["thrust_noise_ratio"] = 0.01
 
-        # penalize amount of control effort
-        loss_effort = 0.001 * np.linalg.norm(action)
+    ## Motor parameters
+    motor_params = {"thrust_to_weight" : 2.18 }
+    motor_params = {"torque_to_thrust": 0.05}
 
-        # loss velocity
-        dx = goal - dynamics.pos
-        dx = dx / (np.linalg.norm(dx) + EPS)
-        vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
-        vel_proj = np.dot(dx, vel_direct)
-        # print('vel_proj:', vel_proj)
-        loss_vel_proj = -dt *(vel_proj - 1.0)
-        # print('loss_vel_proj:', loss_vel_proj)
-        loss_crash = 0
-    else:
-        loss_pos = 0
-        loss_alt = 0
-        loss_effort = 0
-        loss_vel_proj = 0
-        loss_crash = dt * time_remain * 100 + 100
+    ## Summarizing
+    params = {
+        "geom": geom_params, 
+        "damp": damp_params, 
+        "noise": noise_params,
+        "motor": motor_params
+    }
+    return params
 
-    reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
-    rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
+def default_parameters():
+    # Similar to AscTec Hummingbird: http://www.asctec.de/en/uav-uas-drones-rpas-roav/asctec-hummingbird/
+    ## Geometric parameters for Inertia and the model
+    geom_params = {}
+    geom_params["body"] = {"l": 0.1, "w": 0.1, "h": 0.085, "m": 0.5}
+    geom_params["payload"] = {"l": 0.12, "w": 0.12, "h": 0.04, "m": 0.1}
+    geom_params["arms"] = {"l": 0.17, "w":0.005, "h":0.005, "m":0.025}
+    geom_params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
+    geom_params["propellers"] = {"h":0.005, "r":0.1, "m":0.009}
+    
+    geom_params["motor_pos"] = {"xyz": [0.22, 0.22, 0.]}
+    geom_params["arms_pos"] = {"angle": 45., "z": 0.}
+    geom_params["payload_pos"] = {"xy": [0., 0.], "z_sign": -1}
+    # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
+    
+    ## Damping parameters
+    damp_params = {"vel": 0.999, "omega_quadratic": 0.015}
 
-    # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
-    # print('pos', dynamics.pos)
-    if np.isnan(reward) or not np.isfinite(reward):
-        for key, value in locals().items():
-            print('%s: %s \n' % (key, str(value)))
-        raise ValueError('QuadEnv: reward is Nan')
+    ## Noise parameters
+    noise_params = {}
+    noise_params["thrust_noise_ratio"] = 0.01
+    
+    ## Motor parameters
+    motor_params = {"thrust_to_weight" : 2.8 }
+    motor_params = {"torque_to_thrust": 0.05}
 
-    return reward, rew_info
+    ## Summarizing
+    params = {
+        "geom": geom_params, 
+        "damp": damp_params, 
+        "noise": noise_params,
+        "motor": motor_params
+    }
+    return params
+
+
+def default_dynamics(sim_steps, room_box, dim_mode, noise_scale):
+    # similar to AscTec Hummingbird
+    mass = 0.5
+    arm_length = 0.33 / 2.0
+    inertia = mass * npa(0.01, 0.01, 0.02)
+    thrust_to_weight = 2.0
+    return QuadrotorDynamics(mass, arm_length, inertia,
+        thrust_to_weight=thrust_to_weight, 
+        dynamics_steps_num=sim_steps, 
+        room_box=room_box, 
+        dim_mode=dim_mode,
+        thrust_noise_ratio=noise_scale)
 
 # simple simulation of quadrotor dynamics.
 class QuadrotorDynamics(object):
@@ -101,15 +137,16 @@ class QuadrotorDynamics(object):
     #  - x axis between arms looking forward [x - configuration]
     #  - y axis pointing to the left
     #  - z axis up 
-    def __init__(self, mass, 
+    def __init__(self, 
+        mass, 
         arm_length, 
         inertia, 
         thrust_to_weight=2.0, 
         torque_to_thrust=0.05, 
-        dynamics_steps_num=1, 
+        thrust_noise_ratio=0.0,
         room_box=None,
-        dim_mode="3D",
-        thrust_noise_ratio=0.0):
+        dynamics_steps_num=1, 
+        dim_mode="3D"):
 
         ## Sanity checks
         assert np.isscalar(mass)
@@ -125,11 +162,11 @@ class QuadrotorDynamics(object):
         self.thrust_noise_ratio = thrust_noise_ratio
         ## TODO:
         # + vs x configuration selection
+        self.vel_damp = 0.999
+        self.damp_omega_quadratic = 0.015
 
         ###############################################################
         ## OTHER PARAMETERS
-        self.vel_damp = 0.999
-        self.damp_omega = 0.015
         if room_box is None:
             self.room_box = np.array([[-10., -10., 0.], [10., 10., 10.]])
         else:
@@ -315,7 +352,7 @@ class QuadrotorDynamics(object):
 
         ## Quadratic damping
         # 0.03 corresponds to roughly 1 revolution per sec
-        omega_damp_quadratic = np.clip(0.015 * self.omega ** 2, a_min=0.0, a_max=1.0)
+        omega_damp_quadratic = np.clip(self.damp_omega_quadratic * self.omega ** 2, a_min=0.0, a_max=1.0)
         self.omega = self.omega + (1.0 - omega_damp_quadratic) * dt * omega_dot
 
         ## When use square damping on torques - use simple integration
@@ -381,7 +418,7 @@ class QuadrotorDynamics(object):
         ###############################
         ## Angular rate change
         F_omega = (1.0 / self.inertia) * (cross(-omega, self.inertia * omega))
-        omega_damp_quadratic = np.clip(self.damp_omega * omega ** 2, a_min=0.0, a_max=1.0)
+        omega_damp_quadratic = np.clip(self.damp_omega_quadratic * omega ** 2, a_min=0.0, a_max=1.0)
         dOmega = (1.0 - omega_damp_quadratic) * F_omega
 
         ###############################
@@ -408,7 +445,7 @@ class QuadrotorDynamics(object):
         
         ###############################
         ## Angular acceleration
-        omega_damp_quadratic = np.clip(self.damp_omega * omega ** 2, a_min=0.0, a_max=1.0)
+        omega_damp_quadratic = np.clip(self.damp_omega_quadratic * omega ** 2, a_min=0.0, a_max=1.0)
         dOmega = (1.0 - omega_damp_quadratic)[:,None] * self.G_omega
         
         return np.concatenate([dx, dV, dR, dOmega, dgoal], axis=0) @ self.control_mx
@@ -434,20 +471,6 @@ class QuadrotorDynamics(object):
         low = np.zeros(4)
         high = np.ones(4)
         return spaces.Box(low, high)
-
-
-def default_dynamics(sim_steps, room_box, dim_mode, noise_scale):
-    # similar to AscTec Hummingbird
-    mass = 0.5
-    arm_length = 0.33 / 2.0
-    inertia = mass * npa(0.01, 0.01, 0.02)
-    thrust_to_weight = 2.0
-    return QuadrotorDynamics(mass, arm_length, inertia,
-        thrust_to_weight=thrust_to_weight, 
-        dynamics_steps_num=sim_steps, 
-        room_box=room_box, 
-        dim_mode=dim_mode,
-        thrust_noise_ratio=noise_scale)
 
 
 # reasonable reward function for hovering at a goal and not flying too high
@@ -623,7 +646,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         #########################################
         ## REWARDS
-        self.rew_coeff = {"pos": 1, "effort": 0.01, "crash": 1, "orient": 1, "vel_proj": 0, "spin_z": 1, "spin_xy": 0.5}
+        self.rew_coeff = {"pos": 1, "effort": 0.01, "crash": 1, "orient": 1, "vel_proj": 1, "spin": 1}
         if rew_coeff is not None: 
             assert isinstance(rew_coeff, dict)
             assert set(rew_coeff.keys()).issubset(set(self.rew_coeff.keys()))

@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
-# Computing inertias of bodies.
-# Coordinate frame:
-# x - forward; y - left; z - up
-# The same coord frame is used for quads
-# All default inertias of objects are with respect to COM
-# Source of inertias: https://en.wikipedia.org/wiki/List_of_moments_of_inertia
+"""
+Computing inertias of bodies.
+Coordinate frame:
+x - forward; y - left; z - up
+The same coord frame is used for quads
+All default inertias of objects are with respect to COM
+Source of inertias: https://en.wikipedia.org/wiki/List_of_moments_of_inertia
+WARNIGN: The h,w,l of the BoxLink are defined DIFFERENTLY compare to Wiki
+"""
 
 import numpy as np
 import copy
@@ -184,6 +187,7 @@ class QuadLink(object):
         self.params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
         self.params["arms"] = {"w":0.005, "h":0.005, "m":0.001}
         self.params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
+        self.params["propellers"] = {"h":0.002, "r":0.022, "m":0.00075}
 
         self.params["arms_pos"] = {"angle": 45., "z": 0.}
 
@@ -222,6 +226,8 @@ class QuadLink(object):
         self.y_sign = np.array([1, -1, 1, -1])
         self.sign_mx = np.array([self.x_sign, self.y_sign, np.array([1., 1., 1., 1.])])
         self.motors_coord = self.sign_mx * self.motor_xyz[:, None]
+        self.props_coord = copy.deepcopy(self.motors_coord)
+        self.props_coord[2,:] = self.params["motors"]["h"] / 2.
         self.arm_angles = [
              self.arm_angle, 
             -self.arm_angle, 
@@ -234,9 +240,9 @@ class QuadLink(object):
         self.payload = BoxLink(**self.params["payload"]) # Could include battery
         self.arms  = [BoxLink(**self.params["arms"]) for i in range(self.motors_num)] # Just arms
         self.motors =  [CylinderLink(**self.params["motors"]) for i in range(self.motors_num)] # The motors itself
-        # self.props =  [CylinderLink(h=0.002, r=0.045, m=0.0001) for i in range(self.motors_num)] # Propellers
+        self.props =  [CylinderLink(**self.params["propellers"]) for i in range(self.motors_num)] # Propellers
         
-        self.links = [self.body, self.payload] + self.arms + self.motors
+        self.links = [self.body, self.payload] + self.arms + self.motors + self.props
 
         # print("######################################################")
         # print("Inertias:")
@@ -250,8 +256,10 @@ class QuadLink(object):
                             for i in range(self.motors_num)]
         self.motors_pos = [LinkPose(xyz=self.motors_coord[:, i]) 
                             for i in range(self.motors_num)]
+        self.props_pos = [LinkPose(xyz=self.props_coord[:, i]) 
+                    for i in range(self.motors_num)]
         
-        self.poses = [self.body_pose, self.payload_pose] + self.arms_pose + self.motors_pos
+        self.poses = [self.body_pose, self.payload_pose] + self.arms_pose + self.motors_pos + self.props_pos
 
         # Recomputing the center of mass of the new system of bodies
         masses = [link.m for link in self.links]
@@ -279,6 +287,9 @@ class QuadLink(object):
         
         # Total inertia
         self.I_com = sum(self.links_I)
+
+        # Propeller poses
+        self.prop_pos = np.array([pose.xyz for pose in self.motors_pos]).T
     
     @property
     def m(self):
@@ -309,3 +320,4 @@ if __name__ == "__main__":
     print("Quad arm_xyz:", quad.arm_xyz)
     print("Quad COM: ", quad.com)
     print("Quad arm_length: ", quad.arm_length)
+    print("Quad prop_pos: \n", quad.prop_pos, "shape:", quad.prop_pos.shape)
