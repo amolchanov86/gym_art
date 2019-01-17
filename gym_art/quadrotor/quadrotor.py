@@ -26,7 +26,7 @@ import transforms3d as t3d
 
 from gym_art.quadrotor.quadrotor_control import *
 from gym_art.quadrotor.quadrotor_obstacles import *
-from gym_art.quadrotor.quadrotor_visualization import *
+from gym_art.quadrotor.quadrotor_visualization_complex import *
 from gym_art.quadrotor.quad_utils import *
 from gym_art.quadrotor.inertia import QuadLink
 
@@ -82,9 +82,9 @@ def defaultquad_params():
     geom_params = {}
     geom_params["body"] = {"l": 0.1, "w": 0.1, "h": 0.085, "m": 0.5}
     geom_params["payload"] = {"l": 0.12, "w": 0.12, "h": 0.04, "m": 0.1}
-    geom_params["arms"] = {"l": 0.1, "w":0.005, "h":0.005, "m":0.025} #0.17 total arm
-    geom_params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
-    geom_params["propellers"] = {"h":0.005, "r":0.1, "m":0.009}
+    geom_params["arms"] = {"l": 0.1, "w":0.015, "h":0.015, "m":0.025} #0.17 total arm
+    geom_params["motors"] = {"h":0.02, "r":0.025, "m":0.02}
+    geom_params["propellers"] = {"h":0.01, "r":0.1, "m":0.009}
     
     geom_params["motor_pos"] = {"xyz": [0.12, 0.12, 0.]}
     geom_params["arms_pos"] = {"angle": 45., "z": 0.}
@@ -280,7 +280,7 @@ class QuadrotorDynamics(object):
         self.thrust_noise = OUNoise(4, sigma=0.2*self.thrust_noise_ratio)
 
         self.arm = np.linalg.norm(self.model.motor_xyz[:2])
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
     # pos, vel, in world coords (meters)
     # rotation is 3x3 matrix (body coords) -> (world coords)
@@ -863,8 +863,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         ##############################################################
         ## VISUALIZATION
         if self.scene is None:
-            self.scene = Quadrotor3DScene(self.dynamics.arm,
-                640, 480, resizable=True, obstacles=self.obstacles, viewpoint=self.viewpoint)
+            self.scene = Quadrotor3DScene(model=self.dynamics.model,
+                w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.viewpoint)
 
         ##############################################################
         ## GOAL

@@ -42,11 +42,13 @@ class SphereLink():
     """
     Box object
     """
-    def __init__(self, r, m=None, density=None):
+    type = "sphere"
+    def __init__(self, r, m=None, density=None, name="sphere"):
         """
         m = mass
         dx = dy = dz = diameter = 2 * r
         """
+        self.name = name
         self.r = r
         if m is None:
             self.m = self.compute_m(density)
@@ -69,13 +71,15 @@ class BoxLink():
     """
     Box object
     """
-    def __init__(self, l, w, h, m=None, density=None):
+    type = "box"
+    def __init__(self, l, w, h, m=None, density=None, name="box"):
         """
         m = mass
         dx = length = l
         dy = width = l
         dz = height = h
         """
+        self.name = name
         self.l, self.w, self.h = l, w, h
         if m is None:
             self.m = self.compute_m(density)
@@ -97,12 +101,14 @@ class RodLink():
     """
     Rod == Horizontal Cylinder
     """
-    def __init__(self, l, r=0.002, m=None, density=None):
+    type = "rod"
+    def __init__(self, l, r=0.002, m=None, density=None, name="rod"):
         """
         m = mass
         dx = length
         dy = dz = diameter == height
         """
+        self.name = name
         self.l = l
         self.r = r
         if m is None:
@@ -124,12 +130,14 @@ class CylinderLink():
     """
     Vertical Cylinder
     """
-    def __init__(self, h, r, m=None, density=None):
+    type = "cylinder"
+    def __init__(self, h, r, m=None, density=None, name="cylinder"):
         """
         m = mass
         dz = height = h
         dy = dx = 2*radius = 2*r = diameter
         """
+        self.name = name
         self.h, self.r = h, r
         if m is None:
             self.m = self.compute_m(density)
@@ -148,7 +156,7 @@ class CylinderLink():
         return density * np.pi * self.h * self.r ** 2
 
 class LinkPose(object):
-    def __init__(self, R=None, xyz=None, alpha_deg=None):
+    def __init__(self, R=None, xyz=None, alpha=None):
         """
         One can provide either:
         R - rotation matrix or 
@@ -161,8 +169,7 @@ class LinkPose(object):
             self.xyz = np.zeros(3)
         if R is not None:
             self.R = R
-        elif alpha_deg:
-            alpha = deg2rad(alpha_deg)
+        elif alpha:
             self.R = np.array([
                 [np.cos(alpha), -np.sin(alpha), 0.],
                 [np.sin(alpha), np.cos(alpha), 0.],
@@ -229,7 +236,7 @@ class QuadLink(object):
         self.sign_mx = np.array([self.x_sign, self.y_sign, np.array([1., 1., 1., 1.])])
         self.motors_coord = self.sign_mx * self.motor_xyz[:, None]
         self.props_coord = copy.deepcopy(self.motors_coord)
-        self.props_coord[2,:] = self.params["motors"]["h"] / 2.
+        self.props_coord[2,:] = self.params["motors"]["h"] / 2. + self.params["propellers"]["h"]
         self.arm_angles = [
              self.arm_angle, 
             -self.arm_angle, 
@@ -238,11 +245,11 @@ class QuadLink(object):
         self.arms_coord = self.sign_mx * self.arm_xyz[:, None]
 
         # First defining the bodies
-        self.body =  BoxLink(**self.params["body"]) # Central body 
-        self.payload = BoxLink(**self.params["payload"]) # Could include battery
-        self.arms  = [BoxLink(**self.params["arms"]) for i in range(self.motors_num)] # Just arms
-        self.motors =  [CylinderLink(**self.params["motors"]) for i in range(self.motors_num)] # The motors itself
-        self.props =  [CylinderLink(**self.params["propellers"]) for i in range(self.motors_num)] # Propellers
+        self.body =  BoxLink(**self.params["body"], name="body") # Central body 
+        self.payload = BoxLink(**self.params["payload"], name="payload") # Could include battery
+        self.arms  = [BoxLink(**self.params["arms"], name="arm_%d" % i) for i in range(self.motors_num)] # Just arms
+        self.motors =  [CylinderLink(**self.params["motors"], name="motor_%d" % i) for i in range(self.motors_num)] # The motors itself
+        self.props =  [CylinderLink(**self.params["propellers"], name="prop_%d" % i) for i in range(self.motors_num)] # Propellers
         
         self.links = [self.body, self.payload] + self.arms + self.motors + self.props
 
@@ -254,7 +261,7 @@ class QuadLink(object):
         # Defining locations of all bodies
         self.body_pose = LinkPose()
         self.payload_pose = LinkPose(xyz=list(self.params["payload_pos"]["xy"]) + [np.sign(self.params["payload_pos"]["z_sign"])*(self.body.h + self.payload.h) / 2])
-        self.arms_pose = [LinkPose(alpha_deg=self.arm_angles[i], xyz=self.arms_coord[:, i]) 
+        self.arms_pose = [LinkPose(alpha=self.arm_angles[i], xyz=self.arms_coord[:, i]) 
                             for i in range(self.motors_num)]
         self.motors_pos = [LinkPose(xyz=self.motors_coord[:, i]) 
                             for i in range(self.motors_num)]
@@ -329,9 +336,9 @@ if __name__ == "__main__":
     geom_params = {}
     geom_params["body"] = {"l": 0.1, "w": 0.1, "h": 0.085, "m": 0.5}
     geom_params["payload"] = {"l": 0.12, "w": 0.12, "h": 0.04, "m": 0.1}
-    geom_params["arms"] = {"l": 0.1, "w":0.005, "h":0.005, "m":0.025} #0.17 total arm
-    geom_params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
-    geom_params["propellers"] = {"h":0.005, "r":0.1, "m":0.009}
+    geom_params["arms"] = {"l": 0.1, "w":0.015, "h":0.015, "m":0.025} #0.17 total arm
+    geom_params["motors"] = {"h":0.02, "r":0.025, "m":0.02}
+    geom_params["propellers"] = {"h":0.01, "r":0.1, "m":0.009}
     
     geom_params["motor_pos"] = {"xyz": [0.12, 0.12, 0.]}
     geom_params["arms_pos"] = {"angle": 45., "z": 0.}

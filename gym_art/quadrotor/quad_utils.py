@@ -6,14 +6,14 @@ from copy import deepcopy
 # walk dictionary
 def walk_dict(node, call):
     for key, item in node.items():
-        if item isinstance(item, dict):
+        if isinstance(item, dict):
             walk_dict(item, call)
         else:
             node[key] = call(key, item)
 
 def walk_2dict(node1, node2, call):
     for key, item in node1.items():
-        if item isinstance(item, dict):
+        if isinstance(item, dict):
             walk_2dict(item, node2[key], call)
         else:
             node1[key], node2[key] = call(key, item, node2[key])
