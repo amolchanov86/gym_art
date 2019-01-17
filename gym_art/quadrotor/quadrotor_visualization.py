@@ -9,8 +9,8 @@ from gym_art.quadrotor.quad_utils import *
 # a rough attempt at a reasonable third-person camera
 # that looks "over the quadrotor's shoulder" from behind
 class ChaseCamera(object):
-    def __init__(self):
-        self.view_dist = 4
+    def __init__(self, view_dist=4):
+        self.view_dist = view_dist
 
     def reset(self, goal, pos, vel):
         self.goal = goal
@@ -49,8 +49,8 @@ class ChaseCamera(object):
 # for visualization.
 # In case we have vertical control only we use a side view camera
 class SideCamera(object):
-    def __init__(self):
-        self.view_dist = 4
+    def __init__(self, view_dist):
+        self.view_dist = view_dist
 
     def reset(self, goal, pos, vel):
         self.goal = goal
@@ -90,8 +90,8 @@ class SideCamera(object):
 # using our rendering3d.py to draw the scene in 3D.
 # this class deals both with map and mapless cases.
 class Quadrotor3DScene(object):
-    def __init__(self, quad_arm, w, h,
-        obstacles=True, visible=True, resizable=True, goal_diameter=None, viewpoint='chase', obs_hw=[64,64]):
+    def __init__(self, w, h,
+        quad_arm=None, model=None, obstacles=True, visible=True, resizable=True, goal_diameter=None, viewpoint='chase', obs_hw=[64,64]):
 
         self.window_target = None
         self.window_w, self.window_h = w , h
@@ -103,16 +103,21 @@ class Quadrotor3DScene(object):
         self.quad_arm = quad_arm
         self.obstacles = obstacles
 
-        self.diameter = 2 * self.quad_arm
+        if quad_arm is not None:
+            self.diameter = 2 * self.quad_arm
+        else:
+            self.diameter = 2 * np.linalg.norm(model.params["motor_pos"]["xyz"][:2])
+        
+        self.model = model
         if goal_diameter:
             self.goal_diameter = goal_diameter
         else:
             self.goal_diameter = self.diameter
         
         if self.viepoint == 'chase':
-            self.chase_cam = ChaseCamera()
+            self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
         elif self.viepoint == 'side':
-            self.chase_cam = SideCamera()
+            self.chase_cam = SideCamera(view_dist=self.diameter * 15)
 
         self.scene = None
         self.window_target = None
@@ -128,7 +133,10 @@ class Quadrotor3DScene(object):
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
 
-        self.quad_transform = self._quadrotor_3dmodel(self.diameter)
+        if self.model is not None:
+            self.quad_transform = self._quadrotor_3dmodel(self.model)
+        else:
+            self.quad_transform = self._quadrotor_simple_3dmodel(self.diameter)
 
         self.shadow_transform = r3d.transform_and_color(
             np.eye(4), (0, 0, 0, 0.4), r3d.circle(0.75*self.diameter, 32))
@@ -153,7 +161,56 @@ class Quadrotor3DScene(object):
         self.scene = r3d.Scene(batches=[batch], bgcolor=(0,0,0))
         self.scene.initialize()
 
-    def _quadrotor_3dmodel(self, diam):
+    def _quadrotor_3dmodel(self, model):
+        # params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
+        # params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
+        # params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
+        # params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
+        # params["propellers"] = {"h":0.002, "r":0.022, "m":0.00075}
+        
+        # params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
+        # params["arms_pos"] = {"angle": 45., "z": 0.}
+        # params["payload_pos"] = {"xy": [0., 0.], "z_sign": 1}
+
+        ## PROPELLERS 
+        # "X" propeller configuration, start fwd left, go clockwise
+        link_colors = {
+            "body": (0.67843137, 1. , 0.18431373),
+            "payload": (0., 0., 1.),
+            "prop_0":(1,0,0), "prop_1":(1,0,0), "prop_2":(0,1,0), "prop_3": (0,1,0),
+            "motor_0":(0,0,0), "motor_1":(0,0,0), "motor_2":(0,0,0), "motor_3": (0,0,0),
+            "arm_0":(0,0,1), "arm_1":(0,0,1), "arm_2":(0,0,1), "arm_3": (0,0,1),
+            }
+        
+        links = []
+        for i, link in enumerate(model.links):
+            xyz, R, color = model.poses[i].xyz, model.poses[i].R, link_colors[link.name]
+            rot = np.eye(4)
+            rot[:3,:3] = R
+            # print("LINK: ", link.name, "R:", rot, end=" ")
+            if link.name[:4] == "prop":
+                prop_r = link.r
+                color = 0.5 * np.array(color) + 0.2
+            if link.type == "box":
+                # print("Type: Box")
+                link_transf = r3d.transform_and_color(
+                    np.matmul(r3d.translate(xyz), rot), color, 
+                              r3d.box(link.l, link.w, link.h))
+            elif link.type == "cylinder":
+                # print("Type: Cylinder")
+                link_transf = r3d.transform_and_color(r3d.translate(xyz), color,
+                    r3d.cylinder(link.r, link.h, 32))
+            links.append(link_transf)
+
+
+        ## ARROWS
+        arrow = r3d.Color((0.2, 0.3, 0.9), r3d.arrow(0.12*prop_r, 2.5*prop_r, 16))
+        links.append(arrow)
+
+        self.have_state = False
+        return r3d.Transform(np.eye(4), links)
+
+    def _quadrotor_simple_3dmodel(self, diam):
         r = diam / 2
         prop_r = 0.3 * diam
         prop_h = prop_r / 15.0

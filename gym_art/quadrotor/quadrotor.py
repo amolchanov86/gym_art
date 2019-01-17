@@ -26,7 +26,7 @@ import transforms3d as t3d
 
 from gym_art.quadrotor.quadrotor_control import *
 from gym_art.quadrotor.quadrotor_obstacles import *
-from gym_art.quadrotor.quadrotor_visualization_complex import *
+from gym_art.quadrotor.quadrotor_visualization import *
 from gym_art.quadrotor.quad_utils import *
 from gym_art.quadrotor.inertia import QuadLink
 
@@ -953,8 +953,8 @@ def test_rollout():
     rollouts_num = 10
     plot_obs = False
 
-    # env = QuadrotorEnv(dynamics_params="crazyflie",raw_control=False, sim_steps=4)
-    env = QuadrotorEnv(raw_control=False, sim_steps=4)
+    env = QuadrotorEnv(dynamics_params="crazyflie",raw_control=False, sim_steps=4)
+    # env = QuadrotorEnv(raw_control=False, sim_steps=4)
 
     env.max_episode_steps = time_limit
     print('Reseting env ...')
