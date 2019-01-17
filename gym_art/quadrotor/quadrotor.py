@@ -112,6 +112,71 @@ def defaultquad_params():
     }
     return params
 
+def clip_params_positive(params):
+    def clip_positive(key, item):
+        return np.clip(item, a_min=0., a_max=None)
+    walk_dict(params, clip_params_positive)
+    return params
+
+def check_quad_param_limits(params):
+    ## Body parameters (like lengths and masses) are always positive
+    for key in ["body", "payload", "arms", "motors", "propellers"]:
+        params["geom"][key] = clip_params_positive(params["geom"][key])
+
+    params["geom"]["motor_pos"]["xyz"][:2] = np.clip(params["geom"]["motor_pos"]["xyz"][:2], a_min=0.005, a_max=None)    
+    params["geom"]["payload_pos"]["xy"] = np.clip(params["geom"]["payload_pos"]["xy"], a_min=0., a_max=None)    
+    
+    ## Damping parameters
+    params["damp"]["vel"] = np.clip(params["damp"]["vel"], a_min=0.01, a_max=1.)
+    
+    ## Noise parameters
+    params["motor"]["thrust_to_weight"] = np.clip(params["motor"]["thrust_to_weight"], a_min=1.2, a_max=None)
+    params["motor"]["torque_to_thrust"] = np.clip(params["motor"]["torque_to_thrust"], a_min=0.01, a_max=1.)
+
+    return params
+
+def perturb_quadrotor_parameters(params, noise_ratio=0., noise_ratio_params=None, sampler="normal"):
+    """
+    The function samples around nominal parameters provided.
+    Args:
+        params (dict): dictionary of quadrotor parameters
+        noise_ratio (float): ratio of change relative to the nominal values
+        noise_ratio_params (dict): if for some parameters you want to have different ratios relative to noise_ratio,
+            you can provided it through this dictionary
+    Returns:
+        dict: modified parameters
+    """
+    ## Setting the initial noise ratios (nominal ones)
+    noise_params = deepcopy(params)
+    def set_noise_ratio(key, item):
+        if not isinstance(item, str):
+            return None
+        else:
+            return noise_ratio
+    
+    walk_dict(noise_params, set_noise_ratio)
+
+    ## Updating noise ratios
+    noise_params.update(noise_ratio_params)
+
+    ## Sampling parameters
+    def sample_normal(param_val, ratio):
+        #2*ratio since 2std contain 98% of all samples
+        return np.random.normal(loc=param_val, scale=2*ratio), ratio
+    
+    def sample_uniform(param_val, ratio):
+        return np.random.uniform(low=param_val - param_val*ratio, high=param_val + param_val*ratio), ratio
+
+    sample_param = locals()["sample_" + sampler]
+
+    params_new = deepcopy(params)
+    walk_2dict(params_new, noise_params, sample_param)
+
+    ## Fixing a few parameters if they go out of allowed limits
+    params_new = check_quad_param_limits(params_new)
+
+    return params_new
+
 
 class QuadrotorDynamics(object):
     """

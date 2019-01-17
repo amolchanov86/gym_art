@@ -168,6 +168,7 @@ class Quadrotor3DScene(object):
         # params["arms_pos"] = {"angle": 45., "z": 0.}
         # params["payload_pos"] = {"xy": [0., 0.], "z_sign": 1}
 
+        ## PROPELLERS 
         r = diam / 2
         prop_r = 0.3 * diam
         prop_h = prop_r / 15.0
@@ -183,12 +184,18 @@ class Quadrotor3DScene(object):
             return disc
         props = [disc(d, c) for d, c in zip(deltas, colors)]
 
+        ## BODY
+
+        ## PAYLOAD
+
+        ## ARMS
         arm_thicc = diam / 20.0
         arm_color = (0.6, 0.6, 0.6)
         arms = r3d.transform_and_color(
             np.matmul(r3d.translate((0, 0, -arm_thicc)), r3d.rotz(np.pi / 4)), arm_color,
             [r3d.box(diam/10, diam, arm_thicc), r3d.box(diam, diam/10, arm_thicc)])
 
+        ## ARROS
         arrow = r3d.Color((0.2, 0.3, 0.9), r3d.arrow(0.12*prop_r, 2.5*prop_r, 16))
 
         bodies = props + [arms, arrow]
