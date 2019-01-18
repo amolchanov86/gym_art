@@ -67,7 +67,6 @@ def log_error(err_str, ):
 
 
 def quat2R(qw, qx, qy, qz):
-    
     R = \
     [[1.0 - 2*qy**2 - 2*qz**2,         2*qx*qy - 2*qz*qw,         2*qx*qz + 2*qy*qw],
      [      2*qx*qy + 2*qz*qw,   1.0 - 2*qx**2 - 2*qz**2,         2*qy*qz - 2*qx*qw],

@@ -939,7 +939,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         return self._step(action)
 
 
-def test_rollout():
+def test_rollout(quad):
     #############################
     # Init plottting
     fig = plt.figure(1)
@@ -953,7 +953,7 @@ def test_rollout():
     rollouts_num = 10
     plot_obs = False
 
-    env = QuadrotorEnv(dynamics_params="crazyflie",raw_control=False, sim_steps=4)
+    env = QuadrotorEnv(dynamics_params=quad,raw_control=False, sim_steps=4)
     # env = QuadrotorEnv(raw_control=False, sim_steps=4)
 
     env.max_episode_steps = time_limit
@@ -1014,11 +1014,18 @@ def main(argv):
         help="Test mode: "
              "0 - rollout with default controller"
     )
+    parser.add_argument(
+        '-q',"--quad",
+        default="defaultquad",
+        help="Quadrotor model to use: \n" + 
+            "- defaultquad \n" + 
+            "- crazyflie \n"
+    )
     args = parser.parse_args()
 
     if args.mode == 0:
         print('Running test rollout ...')
-        test_rollout()
+        test_rollout(quad=args.quad)
 
 if __name__ == '__main__':
     main(sys.argv)
