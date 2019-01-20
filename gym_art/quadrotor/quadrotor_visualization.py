@@ -163,7 +163,8 @@ class Quadrotor3DScene(object):
 
     def update_model(self, model):
         self.model = model
-        self._make_scene(target=self.window_target)
+        if self.window_target:
+            self._make_scene(target=self.window_target)
 
     def _quadrotor_3dmodel(self, model):
         # params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
