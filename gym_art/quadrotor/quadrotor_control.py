@@ -193,8 +193,8 @@ def quadrotor_jacobian(dynamics):
     J = np.vstack([dv, dw])
     J_cond = np.linalg.cond(J)
     assert J_cond < 100.0
-    if J_cond > 25:
-        print("WARN: Jacobian conditioning is too high: ", J_cond)
+    if J_cond > 50:
+        print("WARN: Jacobian conditioning is high: ", J_cond)
     return J
 
 

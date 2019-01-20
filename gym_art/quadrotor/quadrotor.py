@@ -15,6 +15,7 @@ from numpy.linalg import norm
 import sys
 from copy import deepcopy
 import matplotlib.pyplot as plt
+import time
 
 import gym
 from gym import spaces
@@ -56,7 +57,7 @@ def crazyflie_params():
     # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
 
     ## Damping parameters
-    damp_params = {"vel": 0.999, "omega_quadratic": 0.015}
+    damp_params = {"vel": 0.001, "omega_quadratic": 0.015}
 
     ## Noise parameters
     noise_params = {}
@@ -92,7 +93,7 @@ def defaultquad_params():
     # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
     
     ## Damping parameters
-    damp_params = {"vel": 0.999, "omega_quadratic": 0.015}
+    damp_params = {"vel": 0.001, "omega_quadratic": 0.015}
 
     ## Noise parameters
     noise_params = {}
@@ -115,10 +116,10 @@ def defaultquad_params():
 def clip_params_positive(params):
     def clip_positive(key, item):
         return np.clip(item, a_min=0., a_max=None)
-    walk_dict(params, clip_params_positive)
+    walk_dict(params, clip_positive)
     return params
 
-def check_quad_param_limits(params):
+def check_quad_param_limits(params, params_init=None):
     ## Body parameters (like lengths and masses) are always positive
     for key in ["body", "payload", "arms", "motors", "propellers"]:
         params["geom"][key] = clip_params_positive(params["geom"][key])
@@ -133,23 +134,28 @@ def check_quad_param_limits(params):
     params["motor"]["thrust_to_weight"] = np.clip(params["motor"]["thrust_to_weight"], a_min=1.2, a_max=None)
     params["motor"]["torque_to_thrust"] = np.clip(params["motor"]["torque_to_thrust"], a_min=0.01, a_max=1.)
 
+    ## Make sure propellers make sense in size
+    if params_init is not None:
+        r0 = params_init["geom"]["propellers"]["r"]
+        t2w, t2w0 = params_init["motor"]["thrust_to_weight"], params["motor"]["thrust_to_weight"]
+        params["geom"]["propellers"]["r"] = r0 * (t2w/t2w0)**0.5
+
     return params
 
-def perturb_quadrotor_parameters(params, noise_ratio=0., noise_ratio_params=None, sampler="normal"):
+def get_dyn_randomization_params(quad_params, noise_ratio=0., noise_ratio_params=None):
     """
-    The function samples around nominal parameters provided.
+    The function updates noise params
     Args:
-        params (dict): dictionary of quadrotor parameters
         noise_ratio (float): ratio of change relative to the nominal values
         noise_ratio_params (dict): if for some parameters you want to have different ratios relative to noise_ratio,
             you can provided it through this dictionary
     Returns:
-        dict: modified parameters
+        noise_params dictionary
     """
     ## Setting the initial noise ratios (nominal ones)
-    noise_params = deepcopy(params)
+    noise_params = deepcopy(quad_params)
     def set_noise_ratio(key, item):
-        if not isinstance(item, str):
+        if isinstance(item, str):
             return None
         else:
             return noise_ratio
@@ -157,14 +163,29 @@ def perturb_quadrotor_parameters(params, noise_ratio=0., noise_ratio_params=None
     walk_dict(noise_params, set_noise_ratio)
 
     ## Updating noise ratios
-    noise_params.update(noise_ratio_params)
+    if noise_ratio_params is not None:
+        noise_params.update(noise_ratio_params)
+    return noise_params
 
+
+def perturb_dyn_parameters(params, noise_params, sampler="normal"):
+    """
+    The function samples around nominal parameters provided noise parameters
+    Args:
+        params (dict): dictionary of quadrotor parameters
+        noise_params (dict): dictionary of noise parameters with the same hierarchy as params, but
+            contains ratio of deviation from the params
+    Returns:
+        dict: modified parameters
+    """
     ## Sampling parameters
-    def sample_normal(param_val, ratio):
+    def sample_normal(key, param_val, ratio):
         #2*ratio since 2std contain 98% of all samples
-        return np.random.normal(loc=param_val, scale=2*ratio), ratio
+        param_val_sample = np.random.normal(loc=param_val, scale=np.abs((ratio/2)*np.array(param_val)))
+        return param_val_sample, ratio
     
-    def sample_uniform(param_val, ratio):
+    def sample_uniform(key, param_val, ratio):
+        param_val = np.array(param_val)
         return np.random.uniform(low=param_val - param_val*ratio, high=param_val + param_val*ratio), ratio
 
     sample_param = locals()["sample_" + sampler]
@@ -173,7 +194,8 @@ def perturb_quadrotor_parameters(params, noise_ratio=0., noise_ratio_params=None
     walk_2dict(params_new, noise_params, sample_param)
 
     ## Fixing a few parameters if they go out of allowed limits
-    params_new = check_quad_param_limits(params_new)
+    params_new = check_quad_param_limits(params_new, params)
+    print_dic(params_new)
 
     return params_new
 
@@ -440,7 +462,7 @@ class QuadrotorDynamics(object):
         self.acc = acc
 
         ## Computing velocities
-        self.vel = self.vel_damp * self.vel + dt * acc
+        self.vel = (1.0 - self.vel_damp) * self.vel + dt * acc
         # self.vel[mask] = 0. #If we leave the room - stop flying
 
         ## Accelerometer measures so called "proper acceleration" 
@@ -465,7 +487,7 @@ class QuadrotorDynamics(object):
 
         ###############################
         ## Linear velocity change
-        dV = (self.vel_damp * Vxyz - Vxyz) / dt + np.array([0, 0, -GRAV])
+        dV = ((1.0 - self.vel_damp) * Vxyz - Vxyz) / dt + np.array([0, 0, -GRAV])
 
         ###############################
         ## Angular orientation change
@@ -635,105 +657,116 @@ class QuadrotorEnv(gym.Env, Serializable):
     }
 
     def __init__(self, dynamics_params="defaultquad", dynamics_change=None, 
+                dynamics_randomize_every=None, dynamics_randomization_ratio=0., dynamics_randomization_ratio_params=None,
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
                 obs_repr="xyz_vxyz_rot_omega", ep_time=3, obstacles_num=0, room_size=10, init_random_state=False, 
-                rew_coeff=None, verbose=True):
+                rew_coeff=None, verbose=True ):
         np.seterr(under='ignore')
         """
-        @param: dynamics_params: [str or dict] loading dynamics params by name or by providing a dictionary
-        @param: dynamics_change: [dict] update to dynamics parameters relative to dynamics_params provided
-        @param: raw_control: [bool] use raw cantrol or the Mellinger controller as a default
-        @param: raw_control_zero_middle: [bool] meaning that control will be [-1 .. 1] rather than [0 .. 1]
-        @param: dim_mode: [str] Dimensionality of the env. Options: 1D(just a vertical stabilization), 2D(vertical plane), 3D(normal)
-        @param: tf_control: [bool] creates Mellinger controller using TensorFlow
-        @param: sim_steps: [int] how many simulation steps for each control step
-        @param: obs_repr: [str] options: xyz_vxyz_rot_omega, xyz_vxyz_quat_omega
-        @param: ep_time: [float] episode time in simulated seconds. This parameter is used to compute env max time length in steps.
-        @param: obstacles_num: [int] number of obstacle in the env
-        @param: room_size: [int] env room size. Not the same as the initialization box to allow shorter episodes
-        @param: init_random_state: [bool] use random state initialization or horizontal initialization with 0 velocities
-        @param: rew_coeff: [dict] weights for different reward components (see compute_weighted_reward() function)
+        Args:
+            dynamics_params: [str or dict] loading dynamics params by name or by providing a dictionary
+            dynamics_change: [dict] update to dynamics parameters relative to dynamics_params provided
+            dynamics_randomize_every: [int] how often (trajectories) perform randomization
+            dynamics_randomization_ratio: [float] randomization ratio relative to the nominal values of parameters
+            dynamics_randomization_ratio_params: [dict] if a few dyn params require custom randomization ratios - provide them in this dict
+            raw_control: [bool] use raw cantrol or the Mellinger controller as a default
+            raw_control_zero_middle: [bool] meaning that control will be [-1 .. 1] rather than [0 .. 1]
+            dim_mode: [str] Dimensionality of the env. Options: 1D(just a vertical stabilization), 2D(vertical plane), 3D(normal)
+            tf_control: [bool] creates Mellinger controller using TensorFlow
+            sim_steps: [int] how many simulation steps for each control step
+            obs_repr: [str] options: xyz_vxyz_rot_omega, xyz_vxyz_quat_omega
+            ep_time: [float] episode time in simulated seconds. This parameter is used to compute env max time length in steps.
+            obstacles_num: [int] number of obstacle in the env
+            room_size: [int] env room size. Not the same as the initialization box to allow shorter episodes
+            init_random_state: [bool] use random state initialization or horizontal initialization with 0 velocities
+            rew_coeff: [dict] weights for different reward components (see compute_weighted_reward() function)
         """
+        ## ARGS
         self.init_random_state = init_random_state
         self.room_size = room_size
+        self.obs_repr = obs_repr
+        self.sim_steps = sim_steps
+        self.dim_mode = dim_mode
+        self.raw_control_zero_middle = raw_control_zero_middle
+        self.tf_control = tf_control
+        self.dynamics_randomize_every = dynamics_randomize_every
+        self.verbose = verbose
+        self.obstacles_num = obstacles_num
+        self.raw_control = raw_control
+        
+        ## PARAMS
         self.max_init_vel = 1.
         self.max_init_omega = 2 * np.pi
         self.room_box = np.array([[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
-        self.obs_repr = obs_repr
-        self.state_vector = getattr(self, "state_" + obs_repr)
-
-        ################################################################################
-        ## DYNAMICS
-        if isinstance(dynamics_params, str):
-            self.dynamics_params = globals()[dynamics_params + "_params"]()
-        elif isinstance(dynamics_params, dict):
-            # This option is good when you only partially provide parameters of the model
-            # For example if you are making some sort of a search, from the initial model
-            self.dynamics_params = dynamics_params
-        
-        ## Now, updating if we are providing modifications
-        if dynamics_change is not None:
-            self.dynamics_params.update(dynamics_change)
-        ## Then loading the dynamics
-        self.dynamics = QuadrotorDynamics(model_params=self.dynamics_params, 
-                        dynamics_steps_num=sim_steps, room_box=self.room_box, dim_mode=dim_mode)
-        
-        if verbose:
-            print("Dynamics params loaded:\n", self.dynamics_params)
-
-        ################################################################################
-        ## SCENE
-        self.scene = None
-        if obstacles_num > 0:
-            self.obstacles = _random_obstacles(None, obstacles_num, self.room_size, self.dynamics.arm)
-        else:
-            self.obstacles = None
-
-        ################################################################################
-        ## DIMENSIONALITY
-        self.dim_mode = dim_mode
-        if self.dim_mode =='1D':
-            self.viewpoint = 'side'
-        else:
-            self.viewpoint = 'chase'
-
-        ################################################################################
-        ## CONTROL and SPACES
-        if raw_control:
-            if self.dim_mode == '1D': # Z axis only
-                self.controller = VerticalControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
-            elif self.dim_mode == '2D': # X and Z axes only
-                self.controller = VertPlaneControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
-            elif self.dim_mode == '3D':
-                self.controller = RawControl(self.dynamics, zero_action_middle=raw_control_zero_middle)
-            else:
-                raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
-        else:
-            self.controller = NonlinearPositionController(self.dynamics, tf_control=tf_control)
-
-        self.action_space = self.controller.action_space(self.dynamics)
-
-        self.observation_space = self.get_observation_space()
-
-        ################################################################################
-        ## EPISODE PARAMS
-        # TODO get this from a wrapper
-        self.ep_time = ep_time #In seconds
-        self.dt = 1.0 / 100.0
-        self.sim_steps = sim_steps
-        self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
-        self.tick = 0
-        self.crashed = False
-
+        self.state_vector = getattr(self, "state_" + self.obs_repr)
         ## WARN: If you
         # size of the box from which initial position will be randomly sampled
         # if box_scale > 1.0 then it will also growevery episode
         self.box = 2.0
         self.box_scale = 1.0 #scale the initialbox by this factor eache episode
 
+        ## Statistics vars
+        self.traj_count = 0
+
+        ###############################################################################
+        ## DYNAMICS (and randomization)
+
+        ## Setting the quad dynamics params
+        if isinstance(dynamics_params, str):
+            self.dynamics_params_def = globals()[dynamics_params + "_params"]()
+        elif isinstance(dynamics_params, dict):
+            # This option is good when you only partially provide parameters of the model
+            # For example if you are making some sort of a search, from the initial model
+            self.dynamics_params_def = copy.deepcopy(dynamics_params)
+        
+        ## Now, updating if we are providing modifications
+        if dynamics_change is not None:
+            self.dynamics_params_def.update(dynamics_change)
+
+        ## Setting randomization params
+        if self.dynamics_randomize_every is not None:
+            self.dyn_randomization_params = get_dyn_randomization_params(
+                    quad_params=self.dynamics_params_def,
+                    noise_ratio=dynamics_randomization_ratio,
+                    noise_ratio_params=dynamics_randomization_ratio_params) 
+            if self.verbose:
+                print("###############################################")
+                print("DYN RANDOMIZATION PARAMS:")
+                print_dic(self.dyn_randomization_params)
+                print("###############################################")
+
+        ## Updating dynamics
+        dyn_upd_start_time = time.time()
+        self.update_dynamics(dynamics_params=self.dynamics_params_def)
+        print("QuadEnv: Dyn update time: ", time.time() - dyn_upd_start_time)
+
+        ###############################################################################
+        ## OBSERVATIONS
+        self.observation_space = self.get_observation_space()
+
+        ################################################################################
+        ## DIMENSIONALITY
+        if self.dim_mode =='1D':
+            self.viewpoint = 'side'
+        else:
+            self.viewpoint = 'chase'
+
+        ################################################################################
+        ## EPISODE PARAMS
+        # TODO get this from a wrapper
+        self.ep_time = ep_time #In seconds
+        self.dt = 1.0 / 100.0
+        self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
+        self.tick = 0
+        self.crashed = False
+
         #########################################
         ## REWARDS PARAMS
-        self.rew_coeff = {"pos": 1, "effort": 0.01, "crash": 1, "orient": 1, "vel_proj": 0, "spin_z": 1, "spin_xy": 0.5}
+        self.rew_coeff = {
+            "pos": 1, "effort": 0.01, "crash": 1, 
+            "vel_proj": 0, 
+            "orient": 1, "spin_z": 0.5, "spin_xy": 0.5}
+
         if rew_coeff is not None: 
             assert isinstance(rew_coeff, dict)
             assert set(rew_coeff.keys()).issubset(set(self.rew_coeff.keys()))
@@ -749,6 +782,47 @@ class QuadrotorEnv(gym.Env, Serializable):
         
         # Always call Serializable constructor last
         Serializable.quick_init(self, locals())
+
+    def update_dynamics(self, dynamics_params):
+        ################################################################################
+        ## DYNAMICS
+        ## Then loading the dynamics
+        self.dynamics_params = dynamics_params
+        self.dynamics = QuadrotorDynamics(model_params=dynamics_params, 
+                        dynamics_steps_num=self.sim_steps, room_box=self.room_box, dim_mode=self.dim_mode)
+        
+        if self.verbose:
+            print("#################################################")
+            print("Dynamics params loaded:")
+            print_dic(dynamics_params)
+            print("#################################################")
+
+        ################################################################################
+        ## SCENE
+        self.scene = None
+        if self.obstacles_num > 0:
+            self.obstacles = _random_obstacles(None, obstacles_num, self.room_size, self.dynamics.arm)
+        else:
+            self.obstacles = None
+
+        ################################################################################
+        ## CONTROL
+        if self.raw_control:
+            if self.dim_mode == '1D': # Z axis only
+                self.controller = VerticalControl(self.dynamics, zero_action_middle=self.raw_control_zero_middle)
+            elif self.dim_mode == '2D': # X and Z axes only
+                self.controller = VertPlaneControl(self.dynamics, zero_action_middle=self.raw_control_zero_middle)
+            elif self.dim_mode == '3D':
+                self.controller = RawControl(self.dynamics, zero_action_middle=self.raw_control_zero_middle)
+            else:
+                raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
+        else:
+            self.controller = NonlinearPositionController(self.dynamics, tf_control=self.tf_control)
+
+        ################################################################################
+        ## ACTIONS
+        self.action_space = self.controller.action_space(self.dynamics)
+
 
     def state_xyz_vxyz_rot_omega(self):
         return np.concatenate([self.dynamics.state_vector(), self.goal[:3]])
@@ -855,11 +929,24 @@ class QuadrotorEnv(gym.Env, Serializable):
         done = self.tick > self.ep_len #or self.crashed
         sv = self.state_vector()
 
+        self.traj_count += int(done)
         # print('state', sv, 'goal', self.goal)
         # print('vel', sv[3], sv[4], sv[5])
         return sv, reward, done, {'rewards': rew_info}
 
     def _reset(self):
+        ##############################################################
+        ## DYNAMICS RANDOMIZATION AND UPDATE       
+        if self.dynamics_randomize_every is not None and \
+           self.traj_count % (self.dynamics_randomize_every + 1) == 0:
+            ## Generating new params
+            self.dynamics_params = perturb_dyn_parameters(
+                params=copy.deepcopy(self.dynamics_params_def), 
+                noise_params=self.dyn_randomization_params
+                )
+            ## Updating params
+            self.update_dynamics(dynamics_params=self.dynamics_params)
+
         ##############################################################
         ## VISUALIZATION
         if self.scene is None:
@@ -939,7 +1026,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         return self._step(action)
 
 
-def test_rollout(quad):
+def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None):
     #############################
     # Init plottting
     fig = plt.figure(1)
@@ -953,8 +1040,8 @@ def test_rollout(quad):
     rollouts_num = 10
     plot_obs = False
 
-    env = QuadrotorEnv(dynamics_params=quad,raw_control=False, sim_steps=4)
-    # env = QuadrotorEnv(raw_control=False, sim_steps=4)
+    env = QuadrotorEnv(dynamics_params=quad, raw_control=False, sim_steps=4, 
+        dynamics_randomize_every=dyn_randomize_every, dynamics_randomization_ratio=dyn_randomization_ratio)
 
     env.max_episode_steps = time_limit
     print('Reseting env ...')
@@ -1021,11 +1108,26 @@ def main(argv):
             "- defaultquad \n" + 
             "- crazyflie \n"
     )
+    parser.add_argument(
+        '-dre',"--dyn_randomize_every",
+        type=int,
+        help="How often (in terms of trajectories) to perform randomization"
+    )
+    parser.add_argument(
+        '-drr',"--dyn_randomization_ratio",
+        type=float,
+        default=0.5,
+        help="Randomization ratio for random sampling of dynamics parameters"
+    )
     args = parser.parse_args()
 
     if args.mode == 0:
         print('Running test rollout ...')
-        test_rollout(quad=args.quad)
+        test_rollout(
+            quad=args.quad, 
+            dyn_randomize_every=args.dyn_randomize_every,
+            dyn_randomization_ratio=args.dyn_randomization_ratio
+        )
 
 if __name__ == '__main__':
     main(sys.argv)

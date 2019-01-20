@@ -3,6 +3,15 @@ import numpy.random as nr
 from numpy.linalg import norm
 from copy import deepcopy
 
+# dict pretty printing
+def print_dic(dic, indent=""):
+    for key, item in dic.items():
+        if isinstance(item, dict):
+            print(indent, key + ":")
+            print_dic(item, indent=indent+"  ")
+        else:
+            print(indent, key + ":", item)
+
 # walk dictionary
 def walk_dict(node, call):
     for key, item in node.items():
