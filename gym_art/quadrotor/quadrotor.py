@@ -126,9 +126,10 @@ def check_quad_param_limits(params, params_init=None):
 
     params["geom"]["motor_pos"]["xyz"][:2] = np.clip(params["geom"]["motor_pos"]["xyz"][:2], a_min=0.005, a_max=None)    
     params["geom"]["payload_pos"]["xy"] = np.clip(params["geom"]["payload_pos"]["xy"], a_min=0., a_max=None)    
+    params["geom"]["arms_pos"]["angle"] = np.clip(params["geom"]["arms_pos"]["angle"], a_min=0., a_max=90.)    
     
     ## Damping parameters
-    params["damp"]["vel"] = np.clip(params["damp"]["vel"], a_min=0.01, a_max=1.)
+    params["damp"]["vel"] = np.clip(params["damp"]["vel"], a_min=0.000001, a_max=1.)
     
     ## Noise parameters
     params["motor"]["thrust_to_weight"] = np.clip(params["motor"]["thrust_to_weight"], a_min=1.2, a_max=None)
@@ -195,7 +196,7 @@ def perturb_dyn_parameters(params, noise_params, sampler="normal"):
 
     ## Fixing a few parameters if they go out of allowed limits
     params_new = check_quad_param_limits(params_new, params)
-    print_dic(params_new)
+    # print_dic(params_new)
 
     return params_new
 
@@ -693,6 +694,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.verbose = verbose
         self.obstacles_num = obstacles_num
         self.raw_control = raw_control
+        self.scene = None
         
         ## PARAMS
         self.max_init_vel = 1.
@@ -799,7 +801,6 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         ################################################################################
         ## SCENE
-        self.scene = None
         if self.obstacles_num > 0:
             self.obstacles = _random_obstacles(None, obstacles_num, self.room_size, self.dynamics.arm)
         else:
@@ -938,7 +939,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         ##############################################################
         ## DYNAMICS RANDOMIZATION AND UPDATE       
         if self.dynamics_randomize_every is not None and \
-           self.traj_count % (self.dynamics_randomize_every + 1) == 0:
+           (self.traj_count + 1) % (self.dynamics_randomize_every) == 0:
             ## Generating new params
             self.dynamics_params = perturb_dyn_parameters(
                 params=copy.deepcopy(self.dynamics_params_def), 
@@ -952,6 +953,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         if self.scene is None:
             self.scene = Quadrotor3DScene(model=self.dynamics.model,
                 w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.viewpoint)
+        else:
+            self.scene.update_model(self.dynamics.model)
 
         ##############################################################
         ## GOAL

@@ -161,6 +161,10 @@ class Quadrotor3DScene(object):
         self.scene = r3d.Scene(batches=[batch], bgcolor=(0,0,0))
         self.scene.initialize()
 
+    def update_model(self, model):
+        self.model = model
+        self._make_scene(target=self.window_target)
+
     def _quadrotor_3dmodel(self, model):
         # params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
         # params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
