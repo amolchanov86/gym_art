@@ -102,17 +102,13 @@ class Quadrotor3DScene(object):
         # self.world_box = 40.0
         self.quad_arm = quad_arm
         self.obstacles = obstacles
-
-        if quad_arm is not None:
-            self.diameter = 2 * self.quad_arm
-        else:
-            self.diameter = 2 * np.linalg.norm(model.params["motor_pos"]["xyz"][:2])
-        
         self.model = model
+
         if goal_diameter:
-            self.goal_diameter = goal_diameter
+            self.goal_forced_diameter = goal_diameter
         else:
-            self.goal_diameter = self.diameter
+            self.goal_forced_diameter = None
+        self.update_goal_diameter()
         
         if self.viepoint == 'chase':
             self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
@@ -123,6 +119,18 @@ class Quadrotor3DScene(object):
         self.window_target = None
         self.obs_target = None
         self.video_target = None
+
+    def update_goal_diameter(self):
+        if self.quad_arm is not None:
+            self.diameter = 2 * self.quad_arm
+        else:
+            self.diameter = 2 * np.linalg.norm(self.model.params["motor_pos"]["xyz"][:2])
+         
+        if self.goal_forced_diameter:
+            self.goal_diameter = self.goal_forced_diameter
+        else:
+            self.goal_diameter = self.diameter
+
 
     def _make_scene(self, target=None):
         if target is None:
@@ -145,6 +153,8 @@ class Quadrotor3DScene(object):
         floor = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25),
             r3d.rect((1000, 1000), (0, 100), (0, 100)))
 
+        self.update_goal_diameter()
+        self.chase_cam.view_dist = self.diameter * 15
         self.goal_transform = r3d.transform_and_color(np.eye(4),
             (0.85, 0.55, 0), r3d.sphere(self.goal_diameter/2, 18))
 

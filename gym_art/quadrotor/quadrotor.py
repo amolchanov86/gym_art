@@ -77,6 +77,7 @@ def crazyflie_params():
     }
     return params
 
+
 def defaultquad_params():
     # Similar to AscTec Hummingbird: http://www.asctec.de/en/uav-uas-drones-rpas-roav/asctec-hummingbird/
     ## Geometric parameters for Inertia and the model
@@ -85,7 +86,7 @@ def defaultquad_params():
     geom_params["payload"] = {"l": 0.12, "w": 0.12, "h": 0.04, "m": 0.1}
     geom_params["arms"] = {"l": 0.1, "w":0.015, "h":0.015, "m":0.025} #0.17 total arm
     geom_params["motors"] = {"h":0.02, "r":0.025, "m":0.02}
-    geom_params["propellers"] = {"h":0.01, "r":0.1, "m":0.009}
+    geom_params["propellers"] = {"h":0.001, "r":0.1, "m":0.009}
     
     geom_params["motor_pos"] = {"xyz": [0.12, 0.12, 0.]}
     geom_params["arms_pos"] = {"angle": 45., "z": 0.}
@@ -124,8 +125,9 @@ def check_quad_param_limits(params, params_init=None):
     for key in ["body", "payload", "arms", "motors", "propellers"]:
         params["geom"][key] = clip_params_positive(params["geom"][key])
 
-    params["geom"]["motor_pos"]["xyz"][:2] = np.clip(params["geom"]["motor_pos"]["xyz"][:2], a_min=0.005, a_max=None)    
-    params["geom"]["payload_pos"]["xy"] = np.clip(params["geom"]["payload_pos"]["xy"], a_min=0., a_max=None)    
+    params["geom"]["motor_pos"]["xyz"][:2] = np.clip(params["geom"]["motor_pos"]["xyz"][:2], a_min=0.005, a_max=None)
+    body_w = params["geom"]["body"]["w"]
+    params["geom"]["payload_pos"]["xy"] = np.clip(params["geom"]["payload_pos"]["xy"], a_min=-body_w/4., a_max=body_w/4.)    
     params["geom"]["arms_pos"]["angle"] = np.clip(params["geom"]["arms_pos"]["angle"], a_min=0., a_max=90.)    
     
     ## Damping parameters
@@ -200,6 +202,91 @@ def perturb_dyn_parameters(params, noise_params, sampler="normal"):
 
     return params_new
 
+def sample_dyn_parameters():
+    """
+    The function samples parameters for all possible quadrotors
+    Args:
+        scale (float): scale of sampling
+    Returns:
+        dict: sampled quadrotor parameters
+    """
+    ###################################################################
+    ## DENSITIES (body, payload, arms, motors, propellers)
+    # Crazyflie estimated body / payload / arms / motors / props density: 1388.9 / 1785.7 / 1777.8 / 1948.8 / 246.6 kg/m^3
+    # Hummingbird estimated body / payload / arms / motors/ props density: 588.2 / 173.6 / 1111.1 / 509.3 / 246.6 kg/m^3
+    geom_params = {}
+    dens_val = np.random.uniform(
+        low=[200., 200., 200., 500., 240.], 
+        high=[2000., 2000., 2000., 2000., 250.])
+    
+    geom_params["body"] = {"density": dens_val[0]}
+    geom_params["payload"] = {"density": dens_val[1]}
+    geom_params["arms"] = {"density": dens_val[2]}
+    geom_params["motors"] = {"density": dens_val[3]}
+    geom_params["propellers"] = {"density": dens_val[4]}
+
+    ###################################################################
+    ## GEOMETRIES
+    # MOTORS (and overal size)
+    total_w = np.random.uniform(low=0.07, high=0.7)
+    total_l = np.clip(np.random.normal(loc=1., scale=0.25), a_min=1.0, a_max=None) * total_w
+    motor_z = np.random.normal(loc=0., scale=total_w / 8.)
+    geom_params["motor_pos"] = {"xyz": [total_w / 2., total_l / 2., motor_z]}
+    geom_params["motors"]["r"] = total_w * np.random.normal(loc=0.05, scale=0.005)
+    geom_params["motors"]["h"] = geom_params["motors"]["r"] * np.random.normal(loc=1.0, scale=0.05)
+    
+    # BODY
+    geom_params["body"]["w"] =  np.random.normal(loc=0.5, scale=0.1) * total_w
+    geom_params["body"]["l"] =  np.clip(np.random.normal(loc=1., scale=0.25), a_min=1.0, a_max=None) * geom_params["body"]["w"]
+    geom_params["body"]["h"] =  np.random.uniform(low=0.1, high=1.5) * geom_params["body"]["w"]
+
+    # PAYLOAD
+    pl_scl = np.random.uniform(low=0.25, high=1.0, size=3)
+    geom_params["payload"]["w"] =  pl_scl[0] * geom_params["body"]["w"]
+    geom_params["payload"]["l"] =  pl_scl[1] * geom_params["body"]["l"]
+    geom_params["payload"]["h"] =  pl_scl[2] * geom_params["body"]["h"]
+    geom_params["payload_pos"] = {
+            "xy": np.random.normal(loc=0., scale=geom_params["body"]["w"] / 8., size=2), 
+            "z_sign": np.sign(np.random.uniform(low=-1, high=1))}
+    # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
+
+    # ARMS
+    geom_params["arms"]["w"] = total_w * np.random.normal(loc=0.05, scale=0.005)
+    geom_params["arms"]["h"] = total_w * np.random.normal(loc=0.05, scale=0.005)
+    geom_params["arms_pos"] = {"angle": np.random.normal(loc=45., scale=10.), "z": motor_z - geom_params["motors"]["h"]/2.}
+    
+    # PROPS
+    thrust_to_weight = np.random.uniform(low=1.8, high=2.8)
+    geom_params["propellers"]["h"] = 0.01
+    geom_params["propellers"]["r"] = (0.3) * total_w * (thrust_to_weight / 2.0)**0.5
+    
+    ## Damping parameters
+    damp_vel_scale = np.random.uniform(low=0.1, high=2.)
+    damp_omega_scale = damp_vel_scale * np.random.uniform(low=0.75, high=1.25)
+    damp_params = {
+        "vel": 0.001 * damp_vel_scale, 
+        "omega_quadratic": 0.015 * damp_omega_scale}
+
+    ## Noise parameters
+    noise_params = {}
+    noise_params["thrust_noise_ratio"] = np.random.uniform(low=0.001, high=0.02) #0.01
+    
+    ## Motor parameters
+    motor_params = {"thrust_to_weight" : thrust_to_weight,
+                    "torque_to_thrust": np.random.uniform(low=0.03, high=0.07) #0.05 originally
+                    }
+
+    ## Summarizing
+    params = {
+        "geom": geom_params, 
+        "damp": damp_params, 
+        "noise": noise_params,
+        "motor": motor_params
+    }
+
+    ## Checking everything
+    params = check_quad_param_limits(params=params)
+    return params
 
 class QuadrotorDynamics(object):
     """
@@ -665,7 +752,11 @@ class QuadrotorEnv(gym.Env, Serializable):
         np.seterr(under='ignore')
         """
         Args:
-            dynamics_params: [str or dict] loading dynamics params by name or by providing a dictionary
+            dynamics_params: [str or dict] loading dynamics params by name or by providing a dictionary. 
+                If "random": dynamics will be randomized completely (see sample_dyn_parameters() )
+                If dynamics_randomize_every is None: it will be randomized only once at the beginning.
+                One can randomize dynamics during the end of any episode using resample_dynamics()
+                WARNING: randomization during an episode is not supported yet. Randomize ONLY before calling reset().
             dynamics_change: [dict] update to dynamics parameters relative to dynamics_params provided
             dynamics_randomize_every: [int] how often (trajectories) perform randomization
             dynamics_randomization_ratio: [float] randomization ratio relative to the nominal values of parameters
@@ -712,34 +803,38 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         ###############################################################################
         ## DYNAMICS (and randomization)
+        if dynamics_params == "random":
+            self.dynamics_params_def = None
+            self.dynamics_params = sample_dyn_parameters()
+        else:
+            ## Setting the quad dynamics params
+            if isinstance(dynamics_params, str):
+                self.dynamics_params_def = globals()[dynamics_params + "_params"]()
+            elif isinstance(dynamics_params, dict):
+                # This option is good when you only partially provide parameters of the model
+                # For example if you are making some sort of a search, from the initial model
+                self.dynamics_params_def = copy.deepcopy(dynamics_params)
+            
+            ## Now, updating if we are providing modifications
+            if dynamics_change is not None:
+                self.dynamics_params_def.update(dynamics_change)
 
-        ## Setting the quad dynamics params
-        if isinstance(dynamics_params, str):
-            self.dynamics_params_def = globals()[dynamics_params + "_params"]()
-        elif isinstance(dynamics_params, dict):
-            # This option is good when you only partially provide parameters of the model
-            # For example if you are making some sort of a search, from the initial model
-            self.dynamics_params_def = copy.deepcopy(dynamics_params)
-        
-        ## Now, updating if we are providing modifications
-        if dynamics_change is not None:
-            self.dynamics_params_def.update(dynamics_change)
-
-        ## Setting randomization params
-        if self.dynamics_randomize_every is not None:
-            self.dyn_randomization_params = get_dyn_randomization_params(
-                    quad_params=self.dynamics_params_def,
-                    noise_ratio=dynamics_randomization_ratio,
-                    noise_ratio_params=dynamics_randomization_ratio_params) 
-            if self.verbose:
-                print("###############################################")
-                print("DYN RANDOMIZATION PARAMS:")
-                print_dic(self.dyn_randomization_params)
-                print("###############################################")
+            ## Setting randomization params
+            if self.dynamics_randomize_every is not None:
+                self.dyn_randomization_params = get_dyn_randomization_params(
+                        quad_params=self.dynamics_params_def,
+                        noise_ratio=dynamics_randomization_ratio,
+                        noise_ratio_params=dynamics_randomization_ratio_params) 
+                if self.verbose:
+                    print("###############################################")
+                    print("DYN RANDOMIZATION PARAMS:")
+                    print_dic(self.dyn_randomization_params)
+                    print("###############################################")
+            self.dynamics_params = self.dynamics_params_def
 
         ## Updating dynamics
         dyn_upd_start_time = time.time()
-        self.update_dynamics(dynamics_params=self.dynamics_params_def)
+        self.update_dynamics(dynamics_params=self.dynamics_params)
         print("QuadEnv: Dyn update time: ", time.time() - dyn_upd_start_time)
 
         ###############################################################################
@@ -935,18 +1030,32 @@ class QuadrotorEnv(gym.Env, Serializable):
         # print('vel', sv[3], sv[4], sv[5])
         return sv, reward, done, {'rewards': rew_info}
 
-    def _reset(self):
-        ##############################################################
-        ## DYNAMICS RANDOMIZATION AND UPDATE       
-        if self.dynamics_randomize_every is not None and \
-           (self.traj_count + 1) % (self.dynamics_randomize_every) == 0:
+    def resample_dynamics(self):
+        """
+        Allows manual dynamics resampling when needed.
+        WARNING: 
+            - Randomization dyring an episode is not supported
+            - MUST call reset() after this function
+        """
+        if self.dynamics_params_def is None:
+            self.dynamics_params = sample_dyn_parameters()
+        else:
             ## Generating new params
             self.dynamics_params = perturb_dyn_parameters(
                 params=copy.deepcopy(self.dynamics_params_def), 
                 noise_params=self.dyn_randomization_params
                 )
-            ## Updating params
-            self.update_dynamics(dynamics_params=self.dynamics_params)
+        ## Updating params
+        self.update_dynamics(dynamics_params=self.dynamics_params)
+
+
+    def _reset(self):
+        ##############################################################
+        ## DYNAMICS RANDOMIZATION AND UPDATE       
+        if self.dynamics_randomize_every is not None and \
+           (self.traj_count + 1) % (self.dynamics_randomize_every) == 0:
+           
+           self.resample_dynamics()
 
         ##############################################################
         ## VISUALIZATION
@@ -1109,7 +1218,8 @@ def main(argv):
         default="defaultquad",
         help="Quadrotor model to use: \n" + 
             "- defaultquad \n" + 
-            "- crazyflie \n"
+            "- crazyflie \n" +
+            "- random"
     )
     parser.add_argument(
         '-dre',"--dyn_randomize_every",

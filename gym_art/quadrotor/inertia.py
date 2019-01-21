@@ -236,7 +236,7 @@ class QuadLink(object):
         self.sign_mx = np.array([self.x_sign, self.y_sign, np.array([1., 1., 1., 1.])])
         self.motors_coord = self.sign_mx * self.motor_xyz[:, None]
         self.props_coord = copy.deepcopy(self.motors_coord)
-        self.props_coord[2,:] = self.params["motors"]["h"] / 2. + self.params["propellers"]["h"]
+        self.props_coord[2,:] = (self.props_coord[2,:] + self.params["motors"]["h"] / 2. + self.params["propellers"]["h"])
         self.arm_angles = [
              self.arm_angle, 
             -self.arm_angle, 
