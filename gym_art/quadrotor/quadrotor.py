@@ -393,7 +393,7 @@ class QuadrotorDynamics(object):
         # import pdb; pdb.set_trace()
 
     # pos, vel, in world coords (meters)
-    # rotation is 3x3 matrix (body coords) -> (world coords)
+    # rotation is 3x3 matrix (body coords) -> (world coords)dt
     # omega is angular velocity (radians/sec) in body coords, i.e. the gyroscope
     def set_state(self, position, velocity, rotation, omega, thrusts=np.zeros((4,))):
         for v in (position, velocity, omega):
@@ -746,8 +746,8 @@ class QuadrotorEnv(gym.Env, Serializable):
 
     def __init__(self, dynamics_params="defaultquad", dynamics_change=None, 
                 dynamics_randomize_every=None, dynamics_randomization_ratio=0., dynamics_randomization_ratio_params=None,
-                raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
-                obs_repr="xyz_vxyz_rot_omega", ep_time=3, obstacles_num=0, room_size=10, init_random_state=False, 
+                raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
+                obs_repr="xyz_vxyz_rot_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
                 rew_coeff=None, verbose=True ):
         np.seterr(under='ignore')
         """
@@ -765,6 +765,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             raw_control_zero_middle: [bool] meaning that control will be [-1 .. 1] rather than [0 .. 1]
             dim_mode: [str] Dimensionality of the env. Options: 1D(just a vertical stabilization), 2D(vertical plane), 3D(normal)
             tf_control: [bool] creates Mellinger controller using TensorFlow
+            sim_freq (float): frequency of simulation
             sim_steps: [int] how many simulation steps for each control step
             obs_repr: [str] options: xyz_vxyz_rot_omega, xyz_vxyz_quat_omega
             ep_time: [float] episode time in simulated seconds. This parameter is used to compute env max time length in steps.
@@ -852,7 +853,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         ## EPISODE PARAMS
         # TODO get this from a wrapper
         self.ep_time = ep_time #In seconds
-        self.dt = 1.0 / 100.0
+        self.dt = 1.0 / sim_freq
+        self.metadata["video.frames_per_second"] = sim_freq / self.sim_steps
         self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
         self.tick = 0
         self.crashed = False
