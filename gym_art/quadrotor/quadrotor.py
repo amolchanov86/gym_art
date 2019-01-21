@@ -880,6 +880,15 @@ class QuadrotorEnv(gym.Env, Serializable):
         # Always call Serializable constructor last
         Serializable.quick_init(self, locals())
 
+    def save_dyn_params(self, filename):
+        import yaml
+        with open(filename, 'w') as yaml_file:
+            def numpy_convert(key, item):
+                return str(item)
+            self.dynamics_params_converted = copy.deepcopy(self.dynamics_params)
+            walk_dict(self.dynamics_params_converted, numpy_convert)
+            yaml_file.write(yaml.dump(self.dynamics_params_converted, default_flow_style=False))
+
     def update_dynamics(self, dynamics_params):
         ################################################################################
         ## DYNAMICS
