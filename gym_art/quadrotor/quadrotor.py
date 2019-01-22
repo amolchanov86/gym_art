@@ -451,6 +451,8 @@ class QuadrotorDynamics(object):
     # rot - global
     # omega - body frame
     # goal_pos - global
+    # from numba import jit, autojit
+    # @autojit
     def step1(self, thrust_cmds, dt):
         # uncomment for debugging. they are slow
         #assert np.all(thrust_cmds >= 0)
@@ -666,21 +668,17 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
 
     ##################################################
     ## loss velocity
-    dx = goal - dynamics.pos
-    dx = dx / (np.linalg.norm(dx) + EPS)
+    # dx = goal - dynamics.pos
+    # dx = dx / (np.linalg.norm(dx) + EPS)
     
-    ## normalized
+    ## normalized    
     # vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
-    # vel_proj = np.dot(dx, vel_direct)
-    
-    vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
-    vel_magn = np.clip(np.linalg.norm(dynamics.vel),-1, 1)
-    vel_clipped = vel_magn * vel_direct 
-    vel_proj = np.dot(dx, vel_clipped)
+    # vel_magn = np.clip(np.linalg.norm(dynamics.vel),-1, 1)
+    # vel_clipped = vel_magn * vel_direct 
+    # vel_proj = np.dot(dx, vel_clipped)
+    # loss_vel_proj = - rew_coeff["vel_proj"] * dist * vel_proj
 
-    loss_vel_proj = - rew_coeff["vel_proj"] * dist * vel_proj
-    # print('vel_proj:', vel_proj)
-    # print('loss_vel_proj:', loss_vel_proj)
+    loss_vel_proj = 0. 
 
     ##################################################
     ## Loss orientation
@@ -1149,18 +1147,19 @@ class QuadrotorEnv(gym.Env, Serializable):
         return self._step(action)
 
 
-def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None):
+def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, render=True, traj_num=10, plot_step=None):
+    import tqdm
     #############################
     # Init plottting
     fig = plt.figure(1)
     # ax = plt.subplot(111)
     plt.show(block=False)
 
-    render = True
-    plot_step = 50
+    # render = True
+    # plot_step = 50
     time_limit = 25
     render_each = 2
-    rollouts_num = 10
+    rollouts_num = traj_num
     plot_obs = False
 
     env = QuadrotorEnv(dynamics_params=quad, raw_control=False, sim_steps=4, 
@@ -1180,7 +1179,9 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None):
     action = [0.5, 0.5, 0.5, 0.5]
     rollouts_id = 0
 
-    while rollouts_id < rollouts_num:
+    start_time = time.time()
+    # while rollouts_id < rollouts_num:
+    for rollouts_id in tqdm.tqdm(range(rollouts_num)):
         rollouts_id += 1
         s = env.reset()
         ## Diagnostics
@@ -1194,7 +1195,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None):
             observations.append(s)
             # print('Step: ', t, ' Obs:', s)
 
-            if t % plot_step == 0:
+            if plot_step is not None and t % plot_step == 0:
                 plt.clf()
 
                 if plot_obs:
@@ -1207,12 +1208,16 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None):
 
                 plt.pause(0.05) #have to pause otherwise does not draw
                 plt.draw()
+
             if done: break
             t += 1
+    print("##############################################################")
+    print("Total time: ", time.time() - start_time )
     # print('Rollouts are done!')
     # plt.pause(2.0)
     # plt.waitforbuttonpress()
-    input("Press Enter to continue...")
+    if plot_step is not None:
+        input("Press Enter to continue...")
 
 def main(argv):
     # parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
@@ -1243,6 +1248,22 @@ def main(argv):
         default=0.5,
         help="Randomization ratio for random sampling of dynamics parameters"
     )
+    parser.add_argument(
+        '-r',"--render",
+        action="store_false",
+        help="Use this flag to turn off rendering"
+    )
+    parser.add_argument(
+        '-trj',"--traj_num",
+        type=int,
+        default=10,
+        help="Number of trajectories to run"
+    )
+    parser.add_argument(
+        '-plt',"--plot_step",
+        type=int,
+        help="Plot step"
+    )
     args = parser.parse_args()
 
     if args.mode == 0:
@@ -1250,7 +1271,10 @@ def main(argv):
         test_rollout(
             quad=args.quad, 
             dyn_randomize_every=args.dyn_randomize_every,
-            dyn_randomization_ratio=args.dyn_randomization_ratio
+            dyn_randomization_ratio=args.dyn_randomization_ratio,
+            render=args.render,
+            traj_num=args.traj_num,
+            plot_step=args.plot_step
         )
 
 if __name__ == '__main__':
