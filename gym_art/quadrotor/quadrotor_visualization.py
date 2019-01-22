@@ -26,14 +26,19 @@ class ChaseCamera(object):
         self.pos_smooth = ap * self.pos_smooth + (1 - ap) * pos
         self.vel_smooth = av * self.vel_smooth + (1 - av) * vel
 
-        veln, n = normalize(self.vel_smooth)
-        up = npa(0, 0, 1)
-        ideal_vel, _ = normalize(self.goal - self.pos_smooth)
-        if True or np.abs(veln[2]) > 0.95 or n < 0.01 or np.dot(veln, ideal_vel) < 0.7:
-            # look towards goal even though we are not heading there
-            right, _ = normalize(cross(ideal_vel, up))
+        fixed_angle = True
+        if fixed_angle:
+            right = npa(1, 0, 0)
         else:
-            right, _ = normalize(cross(veln, up))
+            veln, n = normalize(self.vel_smooth)
+            up = npa(0, 0, 1)
+            ideal_vel, _ = normalize(self.goal - self.pos_smooth)
+            if True or np.abs(veln[2]) > 0.95 or n < 0.01 or np.dot(veln, ideal_vel) < 0.7:
+                # look towards goal even though we are not heading there
+                right, _ = normalize(cross(ideal_vel, up))
+            else:
+                right, _ = normalize(cross(veln, up))
+                
         self.right_smooth = ar * self.right_smooth + (1 - ar) * right
 
     # return eye, center, up suitable for gluLookAt

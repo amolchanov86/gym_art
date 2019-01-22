@@ -464,7 +464,7 @@ def crazyflie_dynamics(sim_steps, room_box, dim_mode, noise_scale):
     mass = 0.028    # [kg]
     arm_length = 0.092 / 2.0 # [m]
     inertia = npa(1.657171e-5, 1.657171e-5, 2.9261652e-5)   # [kg * m^2]
-    thrust_to_weight = 0.60 / (mass * GRAV)# max thrust produced by one rotor is about 0.15 N
+    thrust_to_weight = (0.1597 * 4) / (mass * GRAV)# max thrust produced by one rotor is about 0.1597 N
     torque_to_thrust = 0.005964552
     return QuadrotorDynamics(mass, arm_length, inertia, 
         thrust_to_weight=thrust_to_weight,
@@ -473,7 +473,7 @@ def crazyflie_dynamics(sim_steps, room_box, dim_mode, noise_scale):
         room_box=room_box,
         dim_mode=dim_mode,
         thrust_noise_ratio=noise_scale)
-    
+
 
 # reasonable reward function for hovering at a goal and not flying too high
 def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
@@ -728,7 +728,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         # size of the box from which initial position will be randomly sampled
         # if box_scale > 1.0 then it will also growevery episode
-        self.box = 0.5 # 2.0
+        self.box = 2.0
         self.box_scale = 1.0 #scale the initialbox by this factor eache episode
 
         #########################################
