@@ -132,11 +132,11 @@ class Quadrotor3DScene(object):
             self.goal_diameter = self.diameter
 
 
-    def _make_scene(self, target=None):
-        if target is None:
-            self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
-            self.obs_target = r3d.FBOTarget(self.obs_hw[0], self.obs_hw[1])
-            self.video_target = r3d.FBOTarget(self.window_h, self.window_h)
+    def _make_scene(self):
+        # if target is None:
+        #     self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
+        #     self.obs_target = r3d.FBOTarget(self.obs_hw[0], self.obs_hw[1])
+        #     self.video_target = r3d.FBOTarget(self.window_h, self.window_h)
 
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
@@ -173,8 +173,14 @@ class Quadrotor3DScene(object):
 
     def update_model(self, model):
         self.model = model
+        if self.video_target is not None:
+            self.video_target.finish()
+            self.video_target = None
+        if self.obs_target is not None:
+            self.obs_target.finish()
+            self.obs_target = None
         if self.window_target:
-            self._make_scene(target=self.window_target)
+            self._make_scene()
 
     def _quadrotor_3dmodel(self, model):
         # params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
@@ -278,7 +284,7 @@ class Quadrotor3DScene(object):
         if mode == "human":
             if self.window_target is None: 
                 self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
-                self._make_scene(target=self.window_target)
+                self._make_scene()
             self.update_state(dynamics=dynamics, goal=goal)
             self.cam3p.look_at(*self.chase_cam.look_at())
             r3d.draw(self.scene, self.cam3p, self.window_target)
@@ -286,7 +292,7 @@ class Quadrotor3DScene(object):
         elif mode == "rgb_array":
             if self.video_target is None:
                 self.video_target = r3d.FBOTarget(self.window_h, self.window_h)
-                self._make_scene(target=self.video_target)
+                self._make_scene()
             self.update_state(dynamics=dynamics, goal=goal)
             self.cam3p.look_at(*self.chase_cam.look_at())
             r3d.draw(self.scene, self.cam3p, self.video_target)
@@ -295,7 +301,7 @@ class Quadrotor3DScene(object):
     def render_obs(self, dynamics, goal):
         if self.obs_target is None: 
             self.obs_target = r3d.FBOTarget(self.obs_hw[0], self.obs_hw[1])
-            self._make_scene(target=self.obs_target)
+            self._make_scene()
         self.update_state(dynamics=dynamics, goal=goal)
         self.cam1p.look_at(*self.fpv_lookat)
         r3d.draw(self.scene, self.cam1p, self.obs_target)
