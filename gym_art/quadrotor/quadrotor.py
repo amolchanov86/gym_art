@@ -22,7 +22,6 @@ from gym import spaces
 from gym.utils import seeding
 import gym.envs.registration as gym_reg
 
-from garage.core import Serializable
 import transforms3d as t3d
 
 from gym_art.quadrotor.quadrotor_control import *
@@ -30,6 +29,17 @@ from gym_art.quadrotor.quadrotor_obstacles import *
 from gym_art.quadrotor.quadrotor_visualization import *
 from gym_art.quadrotor.quad_utils import *
 from gym_art.quadrotor.inertia import QuadLink
+
+try:
+    from garage.core import Serializable
+except:
+    print("WARNING: garage.core.Serializable is not found. Substituting with a dummy class")
+    class Serializable:
+        def __init__(self):
+            pass
+        def quick_init(self, locals_in):
+            pass
+
 
 logger = logging.getLogger(__name__)
 
