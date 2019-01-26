@@ -320,6 +320,7 @@ class QuadrotorDynamics(object):
         dynamics_steps_num=1, 
         dim_mode="3D"):
 
+        self.dynamics_steps_num = dynamics_steps_num
         ###############################################################
         ## PARAMETERS 
         self.prop_ccw = np.array([1., -1., 1., -1.])
@@ -400,7 +401,8 @@ class QuadrotorDynamics(object):
         self.thrust_noise = OUNoise(4, sigma=0.2*self.thrust_noise_ratio)
 
         self.arm = np.linalg.norm(self.model.motor_xyz[:2])
-        # import pdb; pdb.set_trace()
+
+        self.step = getattr(self, 'step%d' % self.dynamics_steps_num)
 
     # pos, vel, in world coords (meters)
     # rotation is 3x3 matrix (body coords) -> (world coords)dt
@@ -464,6 +466,7 @@ class QuadrotorDynamics(object):
     # from numba import jit, autojit
     # @autojit
     def step1(self, thrust_cmds, dt):
+        # print("thrust_cmds:", thrust_cmds)
         # uncomment for debugging. they are slow
         #assert np.all(thrust_cmds >= 0)
         #assert np.all(thrust_cmds <= 1)
@@ -653,7 +656,7 @@ class QuadrotorDynamics(object):
     def action_space(self):
         low = np.zeros(4)
         high = np.ones(4)
-        return spaces.Box(low, high)
+        return spaces.Box(low, high, dtype=np.float32)
 
 
 # reasonable reward function for hovering at a goal and not flying too high
@@ -938,6 +941,10 @@ class QuadrotorEnv(gym.Env, Serializable):
         ## ACTIONS
         self.action_space = self.controller.action_space(self.dynamics)
 
+        ################################################################################
+        ## STATE VECTOR FUNCTION
+        self.state_vector = getattr(self, "state_" + self.obs_repr)
+
 
     def state_xyz_vxyz_rot_omega(self):
         return np.concatenate([self.dynamics.state_vector(), self.goal[:3]])
@@ -1009,7 +1016,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_low[13:16]  = self.room_box[0] + self.wall_offset  
 
 
-        self.observation_space = spaces.Box(obs_low, obs_high)
+        self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
         return self.observation_space
 
     def _seed(self, seed=None):
@@ -1046,7 +1053,9 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         self.traj_count += int(done)
         # print('state', sv, 'goal', self.goal)
+        # print('state', sv)
         # print('vel', sv[3], sv[4], sv[5])
+        # print(sv, reward, done, rew_info)
         return sv, reward, done, {'rewards': rew_info}
 
     def resample_dynamics(self):
@@ -1069,7 +1078,6 @@ class QuadrotorEnv(gym.Env, Serializable):
 
 
     def _reset(self):
-        # import pdb; pdb.set_trace()
         ##############################################################
         ## DYNAMICS RANDOMIZATION AND UPDATE       
         if self.dynamics_randomize_every is not None and \
@@ -1215,7 +1223,6 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, r
 
         ## Collecting dynamics params
         if plot_dyn_change:
-            # import pdb; pdb.set_trace()
             for par_i, par in enumerate(dyn_param_names):
                 dyn_param_stats[par_i].append(np.array(getattr(env.dynamics, par)).flatten())
                 # print(par, dyn_param_stats[par_i][-1])
@@ -1259,7 +1266,6 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, r
             dyn_par_var.append(np.std(par, axis=0))
             dyn_par_normvar.append(dyn_par_var[-1] / dyn_par_means[-1])
 
-            # import pdb; pdb.set_trace()
             if par.shape[1] > 1:
                 for vi in range(par.shape[1]):
                     plt.plot(par[:, vi])

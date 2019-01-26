@@ -18,7 +18,7 @@ class ShiftedMotorControl(object):
         # make it so the zero action corresponds to hovering
         low = -1.0 * np.ones(4)
         high = (dynamics.thrust_to_weight - 1.0) * np.ones(4)
-        return spaces.Box(low, high)
+        return spaces.Box(low, high, dtype=np.float32)
 
     # modifies the dynamics in place.
     def step(self, dynamics, action, dt):
@@ -46,7 +46,7 @@ class RawControl(object):
             self.bias =  1.0
             self.scale = 0.5
         self.high = np.ones(4)
-        return spaces.Box(self.low, self.high)
+        return spaces.Box(self.low, self.high, dtype=np.float32)
 
     # modifies the dynamics in place.
     def step(self, dynamics, action, goal, dt, observation=None):
@@ -81,7 +81,7 @@ class RawControl(object):
             self.bias =  1.0
             self.scale = 0.5
         self.high = np.ones(4)
-        return spaces.Box(self.low, self.high)
+        return spaces.Box(self.low, self.high, dtype=np.float32)
 
     # modifies the dynamics in place.
     def step(self, dynamics, action, goal, dt, observation=None):
@@ -124,7 +124,7 @@ class VerticalControl(object):
             self.bias =  1.0
             self.scale = 0.5
         self.high = np.ones(1)
-        return spaces.Box(self.low, self.high)
+        return spaces.Box(self.low, self.high, dtype=np.float32)
 
     # modifies the dynamics in place.
     def step3D(self, dynamics, action, goal, dt, observation=None):
@@ -165,7 +165,7 @@ class VertPlaneControl(object):
             self.bias =  1.0
             self.scale = 0.5
         self.high = np.ones(2)
-        return spaces.Box(self.low, self.high)
+        return spaces.Box(self.low, self.high, dtype=np.float32)
 
     # modifies the dynamics in place.
     def step3D(self, dynamics, action, goal, dt, observation=None):
@@ -213,7 +213,7 @@ class OmegaThrustControl(object):
         max_g = dynamics.thrust_to_weight - 1.0
         low  = np.array([min_g, -max_rp, -max_rp, -max_yaw])
         high = np.array([max_g,  max_rp,  max_rp,  max_yaw])
-        return spaces.Box(low, high)
+        return spaces.Box(low, high, dtype=np.float32)
 
     # modifies the dynamics in place.
     def step(self, dynamics, action, dt):
@@ -238,7 +238,7 @@ class VelocityYawControl(object):
         vmax = 20.0 # meters / sec
         dymax = 4 * np.pi # radians / sec
         high = np.array([vmax, vmax, vmax, dymax])
-        return spaces.Box(-high, high)
+        return spaces.Box(-high, high, dtype=np.float32)
 
     def step(self, dynamics, action, dt):
         # needs to be much bigger than in normal controller
@@ -509,7 +509,7 @@ class NonlinearPositionController(object):
         max_g = dynamics.thrust_to_weight - 1.0
         low  = np.array([min_g, -max_rp, -max_rp, -max_yaw])
         high = np.array([max_g,  max_rp,  max_rp,  max_yaw])
-        return spaces.Box(low, high)
+        return spaces.Box(low, high, dtype=np.float32)
 
 
 # TODO:
