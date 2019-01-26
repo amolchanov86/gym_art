@@ -138,7 +138,7 @@ class Noise:
 	omega: ground truth of the angular velocity
 	dt: integration step
 	"""
-	def add_noise(self, pos, vel, rot, omega, dt):
+	def add_noise(self, pos, vel, rot, omega, dt=0.01):
 		assert pos.shape == (3,)
 		assert vel.shape == (3,)
 		assert rot.shape == (3,3)
