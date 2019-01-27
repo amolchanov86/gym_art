@@ -327,8 +327,16 @@ class QuadrotorDynamics(object):
 
         ###############################################################
         ## Internal State variables
-        self.since_last_svd = 0
+        self.since_last_ort_check = 0 #counter
+        self.since_last_ort_check_limit = 0.04 #when to check for non-orthogonality
+        
+        self.rot_nonort_limit = 0.01 # How much of non-orthogonality in the R matrix to tolerate
+        self.rot_nonort_coeff_maxsofar = 0. # Statistics on the max number of nonorthogonality that we had
+        
+        self.since_last_svd = 0 #counter
+        self.since_last_svd_limit = 0.5 #in sec - how ofthen mandatory orthogonalization should be applied
 
+        self.eye = np.eye(3)
         ###############################################################
         ## Initializing model
         self.update_model(model_params)
@@ -508,20 +516,28 @@ class QuadrotorDynamics(object):
         # Occasionally orthogonalize the rotation matrix
         # It is necessary, since integration falls apart over time, thus
         # R matrix becomes non orthogonal (inconsistent)
-        self.since_last_svd += 1
-        if self.since_last_svd > 25:
-            try:
-                u, s, v = np.linalg.svd(self.rot)
-                self.rot = np.matmul(u, v)
-                self.since_last_svd = 0
-            except Exception as e:
-                print('Rotation Matrix: ', self.rot, ' actions: ', thrust_cmds)
-                log_error('##########################################################')
-                for key, value in locals().items():
-                    log_error('%s: %s \n' %(key, str(value)))
-                    print('%s: %s \n' %(key, str(value)))
-                raise ValueError("QuadrotorEnv ERROR: SVD did not converge: " + str(e))
-                # log_error('QuadrotorEnv: ' + str(e) + ': ' + 'Rotation matrix: ' + str(self.rot))
+        self.since_last_svd += dt
+        self.since_last_ort_check += dt
+        if self.since_last_ort_check >= self.since_last_ort_check_limit:
+            print("ort check")
+            self.since_last_ort_check = 0.
+            nonort_coeff = np.sum(np.abs(self.rot @ self.rot.T - self.eye))
+            self.rot_nonort_coeff_maxsofar = max(nonort_coeff, self.rot_nonort_coeff_maxsofar)
+            if nonort_coeff > self.rot_nonort_limit or self.since_last_svd > self.since_last_svd_limit:
+                print("svd correct")
+                ## Perform SVD corrdetions
+                try:
+                    u, s, v = np.linalg.svd(self.rot)
+                    self.rot = np.matmul(u, v)
+                    self.since_last_svd = 0
+                except Exception as e:
+                    print('Rotation Matrix: ', self.rot, ' actions: ', thrust_cmds)
+                    log_error('##########################################################')
+                    for key, value in locals().items():
+                        log_error('%s: %s \n' %(key, str(value)))
+                        print('%s: %s \n' %(key, str(value)))
+                    raise ValueError("QuadrotorEnv ERROR: SVD did not converge: " + str(e))
+                    # log_error('QuadrotorEnv: ' + str(e) + ': ' + 'Rotation matrix: ' + str(self.rot))
 
         ###################################
         ## COMPUTING OMEGA UPDATE
@@ -540,6 +556,7 @@ class QuadrotorDynamics(object):
         # 0.03 corresponds to roughly 1 revolution per sec
         omega_damp_quadratic = np.clip(self.damp_omega_quadratic * self.omega ** 2, a_min=0.0, a_max=1.0)
         self.omega = self.omega + (1.0 - omega_damp_quadratic) * dt * omega_dot
+        self.omega = np.clip(self.omega, a_min=-31., a_max=31) # 31rad/s ~ 5 rorations/s
 
         ## When use square damping on torques - use simple integration
         ## since damping is accounted as part of the net torque
@@ -1045,8 +1062,11 @@ class QuadrotorEnv(gym.Env, Serializable):
                                                               a_max=self.room_box[1]))
 
         self.time_remain = self.ep_len - self.tick
-        reward, rew_info = compute_reward_weighted(self.dynamics, self.goal, action, self.dt, self.crashed, self.time_remain, 
-                            rew_coeff=self.rew_coeff)
+        try:
+            reward, rew_info = compute_reward_weighted(self.dynamics, self.goal, action, self.dt, self.crashed, self.time_remain, 
+                                rew_coeff=self.rew_coeff)
+        except:
+            import pdb; pdb.set_trace()
         self.tick += 1
         done = self.tick > self.ep_len #or self.crashed
         sv = self.state_vector()
@@ -1140,6 +1160,8 @@ class QuadrotorEnv(gym.Env, Serializable):
                     rotation = randyaw()
         
         # Setting the generated state
+        print("QuadEnv: init: pos/vel/rot/omega:", pos, vel, rotation, omega)
+        self.init_state = [pos, vel, rotation, omega]
         self.dynamics.set_state(pos, vel, rotation, omega)
 
         # Resetting scene to reflect the state we have just set in dynamics
