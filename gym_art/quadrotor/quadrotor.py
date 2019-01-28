@@ -523,7 +523,6 @@ class QuadrotorDynamics(object):
             nonort_coeff = np.sum(np.abs(self.rot @ self.rot.T - self.eye))
             self.rot_nonort_coeff_maxsofar = max(nonort_coeff, self.rot_nonort_coeff_maxsofar)
             if nonort_coeff > self.rot_nonort_limit or self.since_last_svd > self.since_last_svd_limit:
-                print("svd correct")
                 ## Perform SVD corrdetions
                 try:
                     u, s, v = np.linalg.svd(self.rot)
@@ -1159,7 +1158,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                     rotation = randyaw()
         
         # Setting the generated state
-        print("QuadEnv: init: pos/vel/rot/omega:", pos, vel, rotation, omega)
+        # print("QuadEnv: init: pos/vel/rot/omega:", pos, vel, rotation, omega)
         self.init_state = [pos, vel, rotation, omega]
         self.dynamics.set_state(pos, vel, rotation, omega)
 
