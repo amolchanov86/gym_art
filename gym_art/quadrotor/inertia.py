@@ -214,6 +214,8 @@ class QuadLink(object):
         
         # Dependent parameters
         self.arm_angle = deg2rad(self.params["arms_pos"]["angle"])
+        if self.arm_angle == 0.:
+            self.arm_angle = 0.01
         self.motor_xyz = np.array(self.params["motor_pos"]["xyz"])
         delta_y = self.motor_xyz[1] - self.params["body"]["w"] / 2.
         if "l" not in self.params["arms"]:
@@ -308,6 +310,24 @@ class QuadLink(object):
 if __name__ == "__main__":
     import time
     start_time = time.time()
+    import argparse
+    import yaml
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+        '-c',"--config",
+        help="Config file to test"
+    )
+    args = parser.parse_args()
+
+    def report(quad):
+        print("Time:", time.time()-start_time)
+        print("Quad inertia: \n", quad.I_com)
+        print("Quad mass:", quad.m)
+        print("Quad arm_xyz:", quad.arm_xyz)
+        print("Quad COM: ", quad.com)
+        print("Quad arm_length: ", quad.arm_length)
+        print("Quad prop_pos: \n", quad.prop_pos, "shape:", quad.prop_pos.shape)
 
     ## CrazyFlie parameters
     params = {}
@@ -323,14 +343,8 @@ if __name__ == "__main__":
     # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
 
     quad = QuadLink(params=params, verbose=True)
-
-    print("Time:", time.time()-start_time)
-    print("Quad inertia: \n", quad.I_com)
-    print("Quad mass:", quad.m)
-    print("Quad arm_xyz:", quad.arm_xyz)
-    print("Quad COM: ", quad.com)
-    print("Quad arm_length: ", quad.arm_length)
-    print("Quad prop_pos: \n", quad.prop_pos, "shape:", quad.prop_pos.shape)
+    print("Crazyflie: ")
+    report(quad)
 
     ## Aztec params
     geom_params = {}
@@ -345,11 +359,63 @@ if __name__ == "__main__":
     geom_params["payload_pos"] = {"xy": [0., 0.], "z_sign": -1}
 
     quad = QuadLink(params=geom_params, verbose=True)
+    print("Aztec: ")
+    report(quad)
 
-    print("Time:", time.time()-start_time)
-    print("Quad inertia: \n", quad.I_com)
-    print("Quad mass:", quad.m)
-    print("Quad arm_xyz:", quad.arm_xyz)
-    print("Quad COM: ", quad.com)
-    print("Quad arm_length: ", quad.arm_length)
-    print("Quad prop_pos: \n", quad.prop_pos, "shape:", quad.prop_pos.shape)
+    ## Random params
+    if args.config is not None:
+        yaml_stream = open(args.config, 'r')
+        params_load = yaml.load(yaml_stream)
+
+        quad_load = QuadLink(params=params_load, verbose=True)
+        print("Loaded quad: %s" % args.config)
+        report(quad_load)
+
+
+
+################################################
+## BUGS
+
+#   geom:
+#    body:
+#      l: 0.03606089911004016
+#      w: 0.0335657274378426
+#      h: 0.006102479549661156
+#      m: 0.0062767052677894074
+#    payload:
+#      l: 0.03838432440273057
+#      w: 0.023816859339232426
+#      h: 0.0070768000745466235
+#      m: 0.011730161186989083
+#    arms:
+#      l: 0.03186274210023081
+#      w: 0.004925117851085423
+#      h: 0.003791035497312349
+#      m: 0.0006186316884703438
+#    motors:
+#      h: 0.014114172356543832
+#      r: 0.004954090517124884
+#      m: 0.00019911121838799071
+#    propellers:
+#      h: 0.0003473493979756195
+#      r: 0.018981731819806787
+#      m: 0.0010610363239981538
+#    motor_pos:
+#      xyz: [0.0371103 0.0300385 0.       ]
+#    arms_pos:
+#      angle: 0.0
+#      z: 0.0
+#    payload_pos:
+#      xy: [0. 0.]
+#      z_sign: 0.9631780811491029
+#  damp:
+#    vel: 0.0013677304461958925
+#    omega_quadratic: 0.013233401772593535
+#  noise:
+#    thrust_noise_ratio: 0.00970067152725083
+#  motor:
+#    thrust_to_weight: 2.928398587847958
+#    torque_to_thrust: 0.07219217705972501
+
+# self.dynamics.inertia
+# array([7.80390772e-06,            nan,            nan])
