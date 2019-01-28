@@ -519,7 +519,6 @@ class QuadrotorDynamics(object):
         self.since_last_svd += dt
         self.since_last_ort_check += dt
         if self.since_last_ort_check >= self.since_last_ort_check_limit:
-            print("ort check")
             self.since_last_ort_check = 0.
             nonort_coeff = np.sum(np.abs(self.rot @ self.rot.T - self.eye))
             self.rot_nonort_coeff_maxsofar = max(nonort_coeff, self.rot_nonort_coeff_maxsofar)
