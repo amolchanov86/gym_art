@@ -775,7 +775,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                 dynamics_randomize_every=None, dynamics_randomization_ratio=0., dynamics_randomization_ratio_params=None,
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
                 obs_repr="xyz_vxyz_rot_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
-                rew_coeff=None, sens_noise=None, verbose=False):
+                rew_coeff=None, sense_noise=None, verbose=False):
         np.seterr(under='ignore')
         """
         Args:
@@ -815,7 +815,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.obstacles_num = obstacles_num
         self.raw_control = raw_control
         self.scene = None
-        self.update_sens_noise(sens_noise=sens_noise)
+        self.update_sense_noise(sense_noise=sense_noise)
         
         ## PARAMS
         self.max_init_vel = 1.
@@ -920,18 +920,18 @@ class QuadrotorEnv(gym.Env, Serializable):
             walk_dict(self.dynamics_params_converted, numpy_convert)
             yaml_file.write(yaml.dump(self.dynamics_params_converted, default_flow_style=False))
 
-    def update_sens_noise(self, sens_noise):
-        if isinstance(sens_noise, dict):
-            self.sense_noise = SensorNoise(**sens_noise)
-        elif isinstance(sens_noise, str):
-            if sens_noise == "default":
+    def update_sense_noise(self, sense_noise):
+        if isinstance(sense_noise, dict):
+            self.sense_noise = SensorNoise(**sense_noise)
+        elif isinstance(sense_noise, str):
+            if sense_noise == "default":
                 self.sense_noise = SensorNoise(bypass=False)
             else:
-                ValueError("ERROR: QuadEnv: sens_noise parameter is of unknown type: " + str(sens_noise))
-        elif sens_noise is None:
+                ValueError("ERROR: QuadEnv: sense_noise parameter is of unknown type: " + str(sense_noise))
+        elif sense_noise is None:
             self.sense_noise = SensorNoise(bypass=True)
         else:
-            raise ValueError("ERROR: QuadEnv: sens_noise parameter is of unknown type: " + str(sens_noise))
+            raise ValueError("ERROR: QuadEnv: sense_noise parameter is of unknown type: " + str(sense_noise))
 
 
     def update_dynamics(self, dynamics_params):
@@ -985,7 +985,8 @@ class QuadrotorEnv(gym.Env, Serializable):
             omega=self.dynamics.omega,
             dt=self.dt
         )
-        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, pos[2]])
+        # print("Noise/Signal: ", np.linalg.norm(self.dynamics.omega - omega) / np.linalg.norm(self.dynamics.omega), "omega:", self.dynamics.omega)
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
 
     def state_xyz_vxyz_quat_omega(self):
         self.quat = R2quat(self.dynamics.rot)
@@ -996,7 +997,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             omega=self.dynamics.omega,
             dt=self.dt
         )
-        return np.concatenate([pos - self.goal[:3], vel, quat, omega, pos[2]])
+        return np.concatenate([pos - self.goal[:3], vel, quat, omega, (pos[2],)])
 
     def state_xyz_vxyz_euler_omega(self):
         self.euler = t3d.euler.mat2euler(self.dynamics.rot)
@@ -1007,7 +1008,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             omega=self.dynamics.omega,
             dt=self.dt
         )       
-        return np.concatenate([pos - self.goal[:3], vel, euler, omega, pos[2]])
+        return np.concatenate([pos - self.goal[:3], vel, euler, omega, (pos[2],)])
 
     def get_observation_space(self):
         self.wall_offset = 0.3
@@ -1226,7 +1227,9 @@ class QuadrotorEnv(gym.Env, Serializable):
         return self._step(action)
 
 
-def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, render=True, traj_num=10, plot_step=None, plot_dyn_change=True):
+def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, 
+    render=True, traj_num=10, plot_step=None, plot_dyn_change=True,
+    sense_noise=None):
     import tqdm
     #############################
     # Init plottting
@@ -1243,7 +1246,8 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, r
     plot_obs = False
 
     env = QuadrotorEnv(dynamics_params=quad, raw_control=False, sim_steps=4, 
-        dynamics_randomize_every=dyn_randomize_every, dynamics_randomization_ratio=dyn_randomization_ratio)
+        dynamics_randomize_every=dyn_randomize_every, dynamics_randomization_ratio=dyn_randomization_ratio,
+        sense_noise=sense_noise)
 
     env.max_episode_steps = time_limit
     print('Reseting env ...')
@@ -1335,10 +1339,6 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, r
             plt.title(dyn_param_names[par_i])
             print(dyn_param_names[par_i], "NormVar: ", dyn_par_normvar[-1])
     
-
-
-
-
     print("##############################################################")
     print("Total time: ", time.time() - start_time )
 
@@ -1399,7 +1399,17 @@ def main(argv):
         action="store_true",
         help="Plot the dynamics change from trajectory to trajectory?"
     )
+    parser.add_argument(
+        '-sn',"--sense_noise",
+        action="store_true",
+        help="Add sensor noise?"
+    )
     args = parser.parse_args()
+
+    if args.sense_noise:
+        sense_noise="default"
+    else:
+        sense_noise=None
 
     if args.mode == 0:
         print('Running test rollout ...')
@@ -1410,7 +1420,8 @@ def main(argv):
             render=args.render,
             traj_num=args.traj_num,
             plot_step=args.plot_step,
-            plot_dyn_change=args.plot_dyn_change
+            plot_dyn_change=args.plot_dyn_change,
+            sense_noise=sense_noise
         )
 
 if __name__ == '__main__':
