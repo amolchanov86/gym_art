@@ -986,7 +986,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             omega=self.dynamics.omega,
             dt=self.dt
         )
-        print("Noise/Signal: ", np.linalg.norm(self.dynamics.omega - omega) / np.linalg.norm(self.dynamics.omega), "omega:", self.dynamics.omega)
+        # print("Noise/Signal: ", np.linalg.norm(self.dynamics.omega - omega) / np.linalg.norm(self.dynamics.omega), "omega:", self.dynamics.omega)
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
 
     def state_xyz_vxyz_quat_omega(self):
