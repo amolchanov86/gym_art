@@ -128,6 +128,8 @@ class Noise:
 		self.previous_omega = np.zeros(3)
 
 		self.states_queue = []
+
+		self.omega_noise_comp = []
 	
 
 	"""
@@ -207,8 +209,15 @@ class Noise:
 		pi_g_d = exp(-dt / self.bias_correlation_time)
 
 		self.gyroscope_bias = pi_g_d * self.gyroscope_bias + sigma_b_g_d * normal(0, 1, 3)
-		omega = omega + self.gyroscope_bias + self.random_walk * normal(0, 1, 3) + self.turn_on_bias_sigma * normal(0, 1, 3)
 
+		# noise = self.gyroscope_bias + self.random_walk * normal(0, 1, 3) + self.turn_on_bias_sigma * normal(0, 1, 3)
+		noise = self.gyroscope_bias + self.random_walk * normal(0, 1, 3) #+ self.turn_on_bias_sigma * normal(0, 1, 3)
+		noise_comp = np.array([np.linalg.norm(self.gyroscope_bias), np.linalg.norm(self.random_walk * normal(0, 1, 3)), np.linalg.norm(self.turn_on_bias_sigma * normal(0, 1, 3))]) / np.linalg.norm(noise)
+		
+		self.omega_noise_comp.append(np.abs(noise_comp))
+		print("Noise components: ", np.mean( np.array(self.omega_noise_comp), axis=0))
+
+		omega = omega + noise
 		return omega
 
 
@@ -226,7 +235,7 @@ def test():
 	noise_generator = Noise(noise_normal_position=nnp, noise_uniform_position=nup, 
 					   noise_normal_linear_velocity=nnlv, noise_uniform_linear_velocity=nulv, 
 					   noise_normal_theta=nnt, noise_uniform_theta=nut, measurement_delay=10)
-	dt = 0.01
+	dt = 0.005
 
 	n = 1000
 
@@ -238,9 +247,9 @@ def test():
 	ground_truth_vel_y = np.cos(np.linspace(-20, 20, num=n))
 	ground_truth_vel_z = np.cos(np.linspace(-20, 20, num=n))
 
-	ground_truth_omega_x = np.ones(n)
-	ground_truth_omega_y = np.ones(n)
-	ground_truth_omega_z = np.ones(n)
+	ground_truth_omega_x = np.zeros(n)
+	ground_truth_omega_y = np.zeros(n)
+	ground_truth_omega_z = np.zeros(n)
 
 	rot = np.eye(3)
 	ground_truth_orientation_x = np.sin(np.linspace(-20, 20, num=n)) # np.ones(n)

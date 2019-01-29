@@ -59,7 +59,7 @@ class SensorNoise:
                         vel_norm_std=0., vel_unif_range=0., 
                         quat_norm_std=0., quat_unif_range=0., 
                         gyro_noise_density=0.000175, gyro_random_walk=0.0105, 
-                        gyro_bias_correlation_time=1000., gyro_turn_on_bias_sigma=0.09, bypass=False): 
+                        gyro_bias_correlation_time=1000., bypass=False): 
         """
         Args:
             pos_norm_std (float): std of pos gaus noise component
@@ -71,7 +71,7 @@ class SensorNoise:
             gyro_gyro_noise_density: gyroscope noise, MPU-9250 spec
             gyro_random_walk: gyroscope noise, MPU-9250 spec
             gyro_bias_correlation_time: gyroscope noise, MPU-9250 spec
-            gyro_gyro_turn_on_bias_sigma: gyroscope noise, MPU-9250 spec
+            # gyro_gyro_turn_on_bias_sigma: gyroscope noise, MPU-9250 spec (val 0.09)
             bypass: no noise
         """
 
@@ -87,7 +87,7 @@ class SensorNoise:
         self.gyro_noise_density = gyro_noise_density
         self.gyro_random_walk = gyro_random_walk
         self.gyro_bias_correlation_time = gyro_bias_correlation_time
-        self.gyro_turn_on_bias_sigma = gyro_turn_on_bias_sigma
+        # self.gyro_turn_on_bias_sigma = gyro_turn_on_bias_sigma
         self.gyro_bias = np.zeros(3)
 
         self.bypass = bypass
@@ -154,7 +154,7 @@ class SensorNoise:
         pi_g_d = exp(-dt / self.gyro_bias_correlation_time)
 
         self.gyro_bias = pi_g_d * self.gyro_bias + sigma_b_g_d * normal(0, 1, 3)
-        return omega + self.gyro_bias + self.gyro_random_walk * normal(0, 1, 3) + self.gyro_turn_on_bias_sigma * normal(0, 1, 3)
+        return omega + self.gyro_bias + self.gyro_random_walk * normal(0, 1, 3) # + self.gyro_turn_on_bias_sigma * normal(0, 1, 3)
 
 
 if __name__ == "__main__":
