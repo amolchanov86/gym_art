@@ -29,6 +29,7 @@ from gym_art.quadrotor.quadrotor_obstacles import *
 from gym_art.quadrotor.quadrotor_visualization import *
 from gym_art.quadrotor.quad_utils import *
 from gym_art.quadrotor.inertia import QuadLink
+from gym_art.quadrotor.sensor_noise import SensorNoise
 
 try:
     from garage.core import Serializable
@@ -774,7 +775,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                 dynamics_randomize_every=None, dynamics_randomization_ratio=0., dynamics_randomization_ratio_params=None,
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
                 obs_repr="xyz_vxyz_rot_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
-                rew_coeff=None, verbose=False):
+                rew_coeff=None, sens_noise=None, verbose=False):
         np.seterr(under='ignore')
         """
         Args:
@@ -799,6 +800,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             room_size: [int] env room size. Not the same as the initialization box to allow shorter episodes
             init_random_state: [bool] use random state initialization or horizontal initialization with 0 velocities
             rew_coeff: [dict] weights for different reward components (see compute_weighted_reward() function)
+            sens_noise (dict or str): sensor noise parameters. If None - no noise. If "default" then the default params are loaded. Otherwise one can provide specific params.
         """
         ## ARGS
         self.init_random_state = init_random_state
@@ -813,6 +815,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.obstacles_num = obstacles_num
         self.raw_control = raw_control
         self.scene = None
+        self.update_sens_noise(sens_noise=sens_noise)
         
         ## PARAMS
         self.max_init_vel = 1.
@@ -917,6 +920,20 @@ class QuadrotorEnv(gym.Env, Serializable):
             walk_dict(self.dynamics_params_converted, numpy_convert)
             yaml_file.write(yaml.dump(self.dynamics_params_converted, default_flow_style=False))
 
+    def update_sens_noise(self, sens_noise):
+        if isinstance(sens_noise, dict):
+            self.sense_noise = SensorNoise(**sens_noise)
+        elif isinstance(sens_noise, str):
+            if sens_noise == "default":
+                self.sense_noise = SensorNoise(bypass=False)
+            else:
+                ValueError("ERROR: QuadEnv: sens_noise parameter is of unknown type: " + str(sens_noise))
+        elif sens_noise is None:
+            self.sense_noise = SensorNoise(bypass=True)
+        else:
+            raise ValueError("ERROR: QuadEnv: sens_noise parameter is of unknown type: " + str(sens_noise))
+
+
     def update_dynamics(self, dynamics_params):
         ################################################################################
         ## DYNAMICS
@@ -960,75 +977,98 @@ class QuadrotorEnv(gym.Env, Serializable):
         ## STATE VECTOR FUNCTION
         self.state_vector = getattr(self, "state_" + self.obs_repr)
 
-
-    def state_xyz_vxyz_rot_omega(self):
-        return np.concatenate([self.dynamics.state_vector(), self.goal[:3]])
+    def state_xyz_vxyz_rot_omega(self):        
+        pos, vel, rot, omega = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            dt=self.dt
+        )
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, pos[2]])
 
     def state_xyz_vxyz_quat_omega(self):
         self.quat = R2quat(self.dynamics.rot)
-        return np.concatenate([self.dynamics.pos, self.dynamics.vel, self.quat, self.dynamics.omega, self.goal[:3]])
+        pos, vel, quat, omega = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.quat,
+            omega=self.dynamics.omega,
+            dt=self.dt
+        )
+        return np.concatenate([pos - self.goal[:3], vel, quat, omega, pos[2]])
 
     def state_xyz_vxyz_euler_omega(self):
         self.euler = t3d.euler.mat2euler(self.dynamics.rot)
-        return np.concatenate([self.dynamics.pos, self.dynamics.vel, self.euler, self.dynamics.omega, self.goal[:3]])
+        pos, vel, quat, omega = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.euler,
+            omega=self.dynamics.omega,
+            dt=self.dt
+        )       
+        return np.concatenate([pos - self.goal[:3], vel, euler, omega, pos[2]])
 
     def get_observation_space(self):
         self.wall_offset = 0.3
         if self.obs_repr == "xyz_vxyz_rot_omega":
             ## Creating observation space
             # pos, vel, rot, rot vel
-            self.obs_comp_sizes = [3, 3, 9, 3, 3]
-            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "goal_xyz"]
+            self.obs_comp_sizes = [3, 3, 9, 3, 1]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "z"]
             obs_dim = np.sum(self.obs_comp_sizes)
-            # TODO tighter bounds on some variables
             obs_high =  np.ones(obs_dim)
             obs_low  = -np.ones(obs_dim)
+            
             # xyz room constraints
-            obs_high[0:3] = self.room_box[1]
-            obs_low[0:3]  = self.room_box[0]
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
 
-            # xyz room constraints
-            obs_high[18:21] = self.room_box[1] - self.wall_offset
-            obs_low[18:21]  = self.room_box[0] + self.wall_offset
+            # z - distance to ground
+            obs_high[-1] = self.room_box[1][2] 
+            obs_low[-1] = self.room_box[0][2]
 
+            # # xyz room constraints
+            # obs_high[18:21] = self.room_box[1] - self.wall_offset
+            # obs_low[18:21]  = self.room_box[0] + self.wall_offset
 
         elif self.obs_repr == "xyz_vxyz_euler_omega":
              ## Creating observation space
             # pos, vel, rot, rot vel
-            self.obs_comp_sizes = [3, 3, 3, 3, 3]
-            self.obs_comp_names = ["xyz", "Vxyz", "euler", "Omega", "goal_xyz"]
+            self.obs_comp_sizes = [3, 3, 3, 3, 1]
+            self.obs_comp_names = ["xyz", "Vxyz", "euler", "Omega", "z"]
             obs_dim = np.sum(self.obs_comp_sizes)
-            # TODO tighter bounds on some variables
             obs_high =  np.ones(obs_dim)
             obs_low  = -np.ones(obs_dim)
+            
             # xyz room constraints
-            obs_high[0:3] = self.room_box[1]
-            obs_low[0:3]  = self.room_box[0]
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
 
             # Euler angles
             obs_high[6:9] = np.pi*obs_high[6:9] 
             obs_low[6:9]  = np.pi*obs_low[6:9]
 
-            # goal xyz room offseted
-            obs_high[12:15] = self.room_box[1] - self.wall_offset
-            obs_low[12:15]  = self.room_box[0] + self.wall_offset           
+            # z - distance to ground
+            obs_high[-1] = self.room_box[1][2] 
+            obs_low[-1] = self.room_box[0][2]           
 
         elif self.obs_repr == "state_xyz_vxyz_quat_omega":
              ## Creating observation space
             # pos, vel, rot, rot vel
-            self.obs_comp_sizes = [3, 3, 4, 3, 3]
-            self.obs_comp_names = ["xyz", "Vxyz", "quat", "Omega", "goal_xyz"]
+            self.obs_comp_sizes = [3, 3, 4, 3, 1]
+            self.obs_comp_names = ["xyz", "Vxyz", "quat", "Omega", "z"]
             obs_dim = np.sum(self.obs_comp_sizes)
-            # TODO tighter bounds on some variables
             obs_high =  np.ones(obs_dim)
             obs_low  = -np.ones(obs_dim)
-            # xyz room constraints
-            obs_high[0:3] = self.room_box[1]
-            obs_low[0:3]  = self.room_box[0]
 
-            # goal xyz room offseted
-            obs_high[13:16] = self.room_box[1] - self.wall_offset
-            obs_low[13:16]  = self.room_box[0] + self.wall_offset  
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            # z - distance to ground
+            obs_high[-1] = self.room_box[1][2] 
+            obs_low[-1] = self.room_box[0][2]    
 
 
         self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
