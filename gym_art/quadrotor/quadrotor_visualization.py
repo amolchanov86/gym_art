@@ -195,10 +195,11 @@ class Quadrotor3DScene(object):
 
         ## PROPELLERS 
         # "X" propeller configuration, start fwd left, go clockwise
+        # IDs: https://wiki.bitcraze.io/projects:crazyflie2:userguide:assembly
         link_colors = {
             "body": (0.67843137, 1. , 0.18431373),
             "payload": (0., 0., 1.),
-            "prop_0":(1,0,0), "prop_1":(1,0,0), "prop_2":(0,1,0), "prop_3": (0,1,0),
+            "prop_0":(1,0,0), "prop_1":(0,1,0), "prop_2":(0,1,0), "prop_3": (1,0,0),
             "motor_0":(0,0,0), "motor_1":(0,0,0), "motor_2":(0,0,0), "motor_3": (0,0,0),
             "arm_0":(0,0,1), "arm_1":(0,0,1), "arm_2":(0,0,1), "arm_3": (0,0,1),
             }

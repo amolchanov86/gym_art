@@ -325,6 +325,7 @@ class QuadrotorDynamics(object):
         ###############################################################
         ## PARAMETERS 
         self.prop_ccw = np.array([1., -1., 1., -1.])
+        # cw = -1 ; ccw = 1
 
         ###############################################################
         ## Internal State variables
@@ -391,7 +392,6 @@ class QuadrotorDynamics(object):
 
         # unit: meters^2 ??? maybe wrong
         self.prop_crossproducts = np.cross(self.prop_pos, [0., 0., 1.])
-        # 1 for props turning CCW, -1 for CW
         self.prop_ccw_mx = np.zeros([3,4]) # Matrix allows using matrix multiplication
         self.prop_ccw_mx[2,:] = self.prop_ccw 
 

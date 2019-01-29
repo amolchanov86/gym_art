@@ -185,6 +185,7 @@ class QuadLink(object):
     Initial coordinate system assumes being in the middle of the central body.
     Orientation of axes: x - forward; y - left; z - up
     arm_angle == |/ , i.e. between the x axis and the axis of the arm
+    Quadrotor assumes X configuration.
     """
     def __init__(self, params=None, verbose=False):
         # PARAMETERS (CrazyFlie by default)
@@ -232,18 +233,19 @@ class QuadLink(object):
         
 
         # X signs according to clockwise starting front-left
-        # i.e. the list bodies are counting clockwise: front_left, front_right, back_right, back_left
-        self.x_sign = np.array([1, 1, -1, -1])
-        self.y_sign = np.array([1, -1, -1, 1])
+        # i.e. the list bodies are counting clockwise: front_right, back_right, back_left, front_left
+        # See CrazyFlie doc for more details: https://wiki.bitcraze.io/projects:crazyflie2:userguide:assembly
+        self.x_sign = np.array([1, -1, -1, 1])
+        self.y_sign = np.array([-1, -1, 1, 1])
         self.sign_mx = np.array([self.x_sign, self.y_sign, np.array([1., 1., 1., 1.])])
         self.motors_coord = self.sign_mx * self.motor_xyz[:, None]
         self.props_coord = copy.deepcopy(self.motors_coord)
         self.props_coord[2,:] = (self.props_coord[2,:] + self.params["motors"]["h"] / 2. + self.params["propellers"]["h"])
         self.arm_angles = [
-             self.arm_angle, 
             -self.arm_angle, 
              self.arm_angle, 
-            -self.arm_angle]
+            -self.arm_angle, 
+             self.arm_angle]
         self.arms_coord = self.sign_mx * self.arm_xyz[:, None]
 
         # First defining the bodies
