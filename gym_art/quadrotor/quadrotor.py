@@ -324,8 +324,9 @@ class QuadrotorDynamics(object):
         self.dynamics_steps_num = dynamics_steps_num
         ###############################################################
         ## PARAMETERS 
-        self.prop_ccw = np.array([1., -1., 1., -1.])
-        # cw = -1 ; ccw = 1
+        self.prop_ccw = np.array([-1., 1., -1., 1.])
+        # cw = 1 ; ccw = -1 [ccw, cw, ccw, cw]
+        # Reference: https://docs.google.com/document/d/1wZMZQ6jilDbj0JtfeYt0TonjxoMPIgHwYbrFrMNls84/edit
 
         ###############################################################
         ## Internal State variables

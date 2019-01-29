@@ -55,8 +55,8 @@ def rot2quat(rot):
 	return np.array([qw, qx, qy, qz])
 
 class SensorNoise:
-    def __init__(self, pos_norm_std=0., pos_unif_range=0., 
-                        vel_norm_std=0., vel_unif_range=0., 
+    def __init__(self, pos_norm_std=0.00025, pos_unif_range=0., 
+                        vel_norm_std=0.01, vel_unif_range=0., 
                         quat_norm_std=0., quat_unif_range=0., 
                         gyro_noise_density=0.000175, gyro_random_walk=0.0105, 
                         gyro_bias_correlation_time=1000., bypass=False): 
