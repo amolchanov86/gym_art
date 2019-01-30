@@ -76,7 +76,8 @@ def crazyflie_params():
 
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 2.18,
-                    "torque_to_thrust": 0.05
+                    "torque_to_thrust": 0.05,
+                    "linearity": 0.424
                     }
 
     ## Summarizing
@@ -113,7 +114,8 @@ def defaultquad_params():
     
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 2.8,
-                    "torque_to_thrust": 0.05
+                    "torque_to_thrust": 0.05,
+                    "linearity": 1.0
                     }
 
     ## Summarizing
@@ -144,9 +146,10 @@ def check_quad_param_limits(params, params_init=None):
     ## Damping parameters
     params["damp"]["vel"] = np.clip(params["damp"]["vel"], a_min=0.000001, a_max=1.)
     
-    ## Noise parameters
+    ## Motor parameters
     params["motor"]["thrust_to_weight"] = np.clip(params["motor"]["thrust_to_weight"], a_min=1.2, a_max=None)
     params["motor"]["torque_to_thrust"] = np.clip(params["motor"]["torque_to_thrust"], a_min=0.01, a_max=1.)
+    params["motor"]["linearity"] = np.clip(params["motor"]["linearity"], a_min=0., a_max=1.)
 
     ## Make sure propellers make sense in size
     if params_init is not None:
@@ -284,7 +287,8 @@ def sample_dyn_parameters():
     
     ## Motor parameters
     motor_params = {"thrust_to_weight" : thrust_to_weight,
-                    "torque_to_thrust": np.random.uniform(low=0.03, high=0.07) #0.05 originally
+                    "torque_to_thrust": np.random.uniform(low=0.03, high=0.07), #0.05 originally
+                    "linearity": np.random.normal(loc=0.5, scale=0.1)
                     }
 
     ## Summarizing
@@ -369,6 +373,15 @@ class QuadrotorDynamics(object):
         # i.e. controller frequency
         self.step = getattr(self, 'step%d' % dynamics_steps_num)
 
+    @staticmethod
+    def angvel2thrust(w, linearity=0.424):
+        """
+        Args:
+            linearity (float): linearity factor factor [0 .. 1].
+            CrazyFlie: linearity=0.424
+        """
+        return  (1 - linearity) * w**2 + linearity * w
+
     def update_model(self, model_params):
         self.model = QuadLink(params=model_params["geom"])
         self.model_params = model_params
@@ -379,6 +392,7 @@ class QuadrotorDynamics(object):
         self.inertia = np.diagonal(self.model.I_com)
         self.thrust_to_weight = self.model_params["motor"]["thrust_to_weight"]
         self.torque_to_thrust = self.model_params["motor"]["torque_to_thrust"]
+        self.motor_linearity = self.model_params["motor"]["linearity"]
         self.thrust_noise_ratio = self.model_params["noise"]["thrust_noise_ratio"]
         self.vel_damp = self.model_params["damp"]["vel"]
         self.damp_omega_quadratic = self.model_params["damp"]["omega_quadratic"]
@@ -485,7 +499,8 @@ class QuadrotorDynamics(object):
         ## Convert the motor commands to a force and moment on the body
         thrust_noise = thrust_cmds * self.thrust_noise.noise()
         thrust_cmds = np.clip(thrust_cmds + thrust_noise, 0.0, 1.0)
-        thrusts = self.thrust_max * thrust_cmds
+
+        thrusts = self.thrust_max * self.angvel2thrust(thrust_cmds, linearity=self.motor_linearity)
         #Prop crossproduct give torque directions
         torques = self.prop_crossproducts * thrusts[:,None] # (4,3)=(props, xyz)
 
