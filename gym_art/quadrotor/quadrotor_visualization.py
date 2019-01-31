@@ -155,11 +155,27 @@ class Quadrotor3DScene(object):
 
         self.update_goal_diameter()
         self.chase_cam.view_dist = self.diameter * 15
+
+        ## Goal
         self.goal_transform = r3d.transform_and_color(np.eye(4),
             (0.85, 0.55, 0), r3d.sphere(self.goal_diameter/2, 18))
-
+        
+        goal_arr_len, goal_arr_r  = self.goal_diameter, 0.05 * self.goal_diameter
+        self.goal_arrows = []
+        self.goal_arrows.append(r3d.transform_and_color(
+            np.array([[0,0,1,0],[0,1,0,0],[-1,0,0,0],[0,0,0,1]]), 
+            (1., 0., 0.), r3d.arrow(goal_arr_r, goal_arr_len, 16)))
+        self.goal_arrows.append(r3d.transform_and_color(
+            np.array([[1,0,0,0],[0,0,1,0],[0,-1,0,0],[0,0,0,1]]), 
+            (0., 1., 0.), r3d.arrow(goal_arr_r, goal_arr_len, 16)))
+        self.goal_arrows.append(r3d.transform_and_color(
+            np.eye(4), 
+            (0., 0., 1.), r3d.arrow(goal_arr_r, goal_arr_len, 16)))
+        
         bodies = [r3d.BackToFront([floor, self.shadow_transform]),
-            self.goal_transform, self.quad_transform]
+            self.goal_transform, self.quad_transform] + self.goal_arrows
+        
+            
 
         if self.obstacles:
             bodies += self.obstacles.bodies
