@@ -144,7 +144,8 @@ def check_quad_param_limits(params, params_init=None):
     params["geom"]["arms_pos"]["angle"] = np.clip(params["geom"]["arms_pos"]["angle"], a_min=0., a_max=90.)    
     
     ## Damping parameters
-    params["damp"]["vel"] = np.clip(params["damp"]["vel"], a_min=0.000001, a_max=1.)
+    params["damp"]["vel"] = np.clip(params["damp"]["vel"], a_min=0.00000, a_max=1.)
+    params["damp"]["omega_quadratic"] = np.clip(params["damp"]["omega_quadratic"], a_min=0.00000, a_max=1.)
     
     ## Motor parameters
     params["motor"]["thrust_to_weight"] = np.clip(params["motor"]["thrust_to_weight"], a_min=1.2, a_max=None)
