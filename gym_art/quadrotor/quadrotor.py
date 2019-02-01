@@ -80,7 +80,7 @@ def crazyflie_params():
 
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 2.18,
-                    "torque_to_thrust": 0.05,
+                    "torque_to_thrust": 0.006, #0.005964552
                     "linearity": 1. #0.424
                     }
 
@@ -153,7 +153,7 @@ def check_quad_param_limits(params, params_init=None):
     
     ## Motor parameters
     params["motor"]["thrust_to_weight"] = np.clip(params["motor"]["thrust_to_weight"], a_min=1.2, a_max=None)
-    params["motor"]["torque_to_thrust"] = np.clip(params["motor"]["torque_to_thrust"], a_min=0.01, a_max=1.)
+    params["motor"]["torque_to_thrust"] = np.clip(params["motor"]["torque_to_thrust"], a_min=0.001, a_max=1.)
     params["motor"]["linearity"] = np.clip(params["motor"]["linearity"], a_min=0.999, a_max=1.)
 
     ## Make sure propellers make sense in size
@@ -292,7 +292,7 @@ def sample_dyn_parameters():
     
     ## Motor parameters
     motor_params = {"thrust_to_weight" : thrust_to_weight,
-                    "torque_to_thrust": np.random.uniform(low=0.03, high=0.07), #0.05 originally
+                    "torque_to_thrust": np.random.uniform(low=0.003, high=0.07), #0.05 originally
                     "linearity": np.random.normal(loc=0.5, scale=0.1)
                     }
 
