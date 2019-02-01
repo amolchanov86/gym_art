@@ -292,7 +292,7 @@ def sample_dyn_parameters():
     
     ## Motor parameters
     motor_params = {"thrust_to_weight" : thrust_to_weight,
-                    "torque_to_thrust": np.random.uniform(low=0.003, high=0.07), #0.05 originally
+                    "torque_to_thrust": np.random.uniform(low=0.003, high=0.03), #0.05 originally
                     "linearity": np.random.normal(loc=0.5, scale=0.1)
                     }
 
