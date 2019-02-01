@@ -47,7 +47,11 @@ logger = logging.getLogger(__name__)
 GRAV = 9.81
 EPS = 1e-6 #small constant to avoid divisions by 0 and log(0)
 
-#TODO:
+## WARN:
+# - linearity is set to 1 always, by means of check_quad_param_limits(). 
+# The def. value of linarity for CF is set to 1 as well (due to firmware nonlinearity compensation)
+
+## TODO:
 # -
 # -
 # -
@@ -77,7 +81,7 @@ def crazyflie_params():
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 2.18,
                     "torque_to_thrust": 0.05,
-                    "linearity": 0.424
+                    "linearity": 1. #0.424
                     }
 
     ## Summarizing
@@ -150,7 +154,7 @@ def check_quad_param_limits(params, params_init=None):
     ## Motor parameters
     params["motor"]["thrust_to_weight"] = np.clip(params["motor"]["thrust_to_weight"], a_min=1.2, a_max=None)
     params["motor"]["torque_to_thrust"] = np.clip(params["motor"]["torque_to_thrust"], a_min=0.01, a_max=1.)
-    params["motor"]["linearity"] = np.clip(params["motor"]["linearity"], a_min=0., a_max=1.)
+    params["motor"]["linearity"] = np.clip(params["motor"]["linearity"], a_min=0.999, a_max=1.)
 
     ## Make sure propellers make sense in size
     if params_init is not None:
