@@ -737,6 +737,10 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     # Negative, because the larger the projection the smaller the loss (i.e. the higher the reward)
 
     ##################################################
+    ## Loss yaw
+    loss_yaw = -rew_coeff["yaw"] * dynamics.rot[0,0]
+
+    ##################################################
     ## Loss for constant uncontrolled rotation around vertical axis
     loss_spin_z  = rew_coeff["spin_z"]  * np.abs(dynamics.omega[2])
     loss_spin_xy = rew_coeff["spin_xy"] * np.linalg.norm(dynamics.omega[:2])
@@ -754,6 +758,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
         loss_crash, 
         loss_vel_proj,
         loss_orient,
+        loss_yaw,
         loss_spin_z,
         loss_spin_xy,
         ])
@@ -766,6 +771,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     'rew_crash': -loss_crash, 
     'rew_vel_proj': -loss_vel_proj,
     "rew_orient": -loss_orient,
+    "rew_yaw": -loss_yaw,
     "rew_spin_z": -loss_spin_z,
     "rew_spin_xy": -loss_spin_xy,
     }
@@ -914,7 +920,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.rew_coeff = {
             "pos": 1, "effort": 0.01, "crash": 1, 
             "vel_proj": 0, 
-            "orient": 1, "spin_z": 0.5, "spin_xy": 0.5}
+            "orient": 1, "yaw": 0,
+            "spin_z": 0.5, "spin_xy": 0.5}
 
         if rew_coeff is not None: 
             assert isinstance(rew_coeff, dict)
