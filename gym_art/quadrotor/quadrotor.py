@@ -235,8 +235,8 @@ def sample_dyn_parameters():
     # Hummingbird estimated body / payload / arms / motors/ props density: 588.2 / 173.6 / 1111.1 / 509.3 / 246.6 kg/m^3
     geom_params = {}
     dens_val = np.random.uniform(
-        low=[200., 200., 200., 500., 240.], 
-        high=[2000., 2000., 2000., 2000., 250.])
+        low=[500., 150., 500., 500., 240.], 
+        high=[1500., 1800., 1800., 1800., 250.])
     
     geom_params["body"] = {"density": dens_val[0]}
     geom_params["payload"] = {"density": dens_val[1]}
@@ -255,7 +255,7 @@ def sample_dyn_parameters():
     geom_params["motors"]["h"] = geom_params["motors"]["r"] * np.random.normal(loc=1.0, scale=0.05)
     
     # BODY
-    geom_params["body"]["w"] =  np.random.normal(loc=0.5, scale=0.1) * total_w
+    geom_params["body"]["w"] =  np.random.normal(loc=0.4, scale=0.1) * total_w
     geom_params["body"]["l"] =  np.clip(np.random.normal(loc=1., scale=0.25), a_min=1.0, a_max=None) * geom_params["body"]["w"]
     geom_params["body"]["h"] =  np.random.uniform(low=0.1, high=1.5) * geom_params["body"]["w"]
 
@@ -280,7 +280,7 @@ def sample_dyn_parameters():
     geom_params["propellers"]["r"] = (0.3) * total_w * (thrust_to_weight / 2.0)**0.5
     
     ## Damping parameters
-    damp_vel_scale = np.random.uniform(low=0.1, high=2.)
+    damp_vel_scale = np.random.uniform(low=0.01, high=2.)
     damp_omega_scale = damp_vel_scale * np.random.uniform(low=0.75, high=1.25)
     damp_params = {
         "vel": 0.001 * damp_vel_scale, 
@@ -293,7 +293,8 @@ def sample_dyn_parameters():
     ## Motor parameters
     motor_params = {"thrust_to_weight" : thrust_to_weight,
                     "torque_to_thrust": np.random.uniform(low=0.003, high=0.03), #0.05 originally
-                    "linearity": np.random.normal(loc=0.5, scale=0.1)
+                    "linearity": 1.0
+                    # "linearity": np.random.normal(loc=0.5, scale=0.1)
                     }
 
     ## Summarizing
