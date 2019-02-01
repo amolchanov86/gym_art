@@ -247,7 +247,7 @@ def sample_dyn_parameters():
     ###################################################################
     ## GEOMETRIES
     # MOTORS (and overal size)
-    total_w = np.random.uniform(low=0.07, high=0.7)
+    total_w = np.random.uniform(low=0.07, high=0.3)
     total_l = np.clip(np.random.normal(loc=1., scale=0.25), a_min=1.0, a_max=None) * total_w
     motor_z = np.random.normal(loc=0., scale=total_w / 8.)
     geom_params["motor_pos"] = {"xyz": [total_w / 2., total_l / 2., motor_z]}
