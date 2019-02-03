@@ -38,7 +38,7 @@ see `--help` option if you want to experiment with other parameters.
 
 ## Remarks:
 - I tested everything with the [Garage's](https://github.com/rlworkgroup/garage/) anaconda environment. Hence, please, install Garage if something goes wrong.
-- The current default version of the quadrotor model is roughly approximates AscTech Hummingbird quadrotor.
+- The current `default` version of the quadrotor model is roughly approximates AscTech Hummingbird quadrotor.
 All supported models:
   - [Hummingbird](http://www.asctec.de/en/uav-uas-drones-rpas-roav/asctec-hummingbird/). Parameters were borrowed in large from the [Rotors Simulator](https://github.com/ethz-asl/rotors_simulator). See [Hummingbird URDF](https://github.com/ethz-asl/rotors_simulator/blob/master/rotors_description/urdf/hummingbird.xacro) for more details.
   - [CrazyFlie](http://mikehamer.info/assets/papers/Crazyflie%20Modelling.pdf)
