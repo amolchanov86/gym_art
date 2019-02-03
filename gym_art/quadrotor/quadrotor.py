@@ -476,6 +476,16 @@ class QuadrotorDynamics(object):
         # print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
 
     # multiple dynamics steps
+    def step6(self, thrust_cmds, dt):
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        # print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
+
+    # multiple dynamics steps
     def step8(self, thrust_cmds, dt):
         self.step1(thrust_cmds, dt)
         self.step1(thrust_cmds, dt)
