@@ -79,7 +79,7 @@ def crazyflie_params():
     noise_params["thrust_noise_ratio"] = 0.01
 
     ## Motor parameters
-    motor_params = {"thrust_to_weight" : 2.18,
+    motor_params = {"thrust_to_weight" : 1.9, #2.18
                     "torque_to_thrust": 0.006, #0.005964552
                     "linearity": 1. #0.424
                     }
@@ -337,6 +337,8 @@ class QuadrotorDynamics(object):
         self.prop_ccw = np.array([-1., 1., -1., 1.])
         # cw = 1 ; ccw = -1 [ccw, cw, ccw, cw]
         # Reference: https://docs.google.com/document/d/1wZMZQ6jilDbj0JtfeYt0TonjxoMPIgHwYbrFrMNls84/edit
+        self.omega_max = 40. #rad/s The CF sensor can only show 35 rad/s (2000 deg/s), we allow some extra
+        self.vxyz_max = 3. #m/s
 
         ###############################################################
         ## Internal State variables
@@ -566,7 +568,7 @@ class QuadrotorDynamics(object):
         ## Damping using velocities (I find it more stable numerically)
         ## Linear damping
 
-        # This is only for linear dampling of angular velocity.
+        # This is only for linear damping of angular velocity.
         # omega_damp = 0.999   
         # self.omega = omega_damp * self.omega + dt * omega_dot
 
@@ -577,7 +579,7 @@ class QuadrotorDynamics(object):
         # 0.03 corresponds to roughly 1 revolution per sec
         omega_damp_quadratic = np.clip(self.damp_omega_quadratic * self.omega ** 2, a_min=0.0, a_max=1.0)
         self.omega = self.omega + (1.0 - omega_damp_quadratic) * dt * omega_dot
-        self.omega = np.clip(self.omega, a_min=-31., a_max=31) # 31rad/s ~ 5 rorations/s
+        self.omega = np.clip(self.omega, a_min=-self.omega_max, a_max=self.omega_max)
 
         ## When use square damping on torques - use simple integration
         ## since damping is accounted as part of the net torque
@@ -846,8 +848,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.update_sense_noise(sense_noise=sense_noise)
         
         ## PARAMS
-        self.max_init_vel = 1.
-        self.max_init_omega = 2 * np.pi
+        self.max_init_vel = 1.5 # m/s
+        self.max_init_omega = 6 * np.pi #rad/s
         self.room_box = np.array([[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
         self.state_vector = getattr(self, "state_" + self.obs_repr)
         ## WARN: If you
@@ -1014,8 +1016,8 @@ class QuadrotorEnv(gym.Env, Serializable):
             omega=self.dynamics.omega,
             dt=self.dt
         )
-        # print("Noise/Signal: ", np.linalg.norm(self.dynamics.omega - omega) / np.linalg.norm(self.dynamics.omega), "omega:", self.dynamics.omega)
-        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
+        # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega])
 
     def state_xyz_vxyz_quat_omega(self):
         self.quat = R2quat(self.dynamics.rot)
@@ -1026,7 +1028,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             omega=self.dynamics.omega,
             dt=self.dt
         )
-        return np.concatenate([pos - self.goal[:3], vel, quat, omega, (pos[2],)])
+        return np.concatenate([pos - self.goal[:3], vel, quat, omega])
 
     def state_xyz_vxyz_euler_omega(self):
         self.euler = t3d.euler.mat2euler(self.dynamics.rot)
@@ -1037,15 +1039,15 @@ class QuadrotorEnv(gym.Env, Serializable):
             omega=self.dynamics.omega,
             dt=self.dt
         )       
-        return np.concatenate([pos - self.goal[:3], vel, euler, omega, (pos[2],)])
+        return np.concatenate([pos - self.goal[:3], vel, euler, omega])
 
     def get_observation_space(self):
         self.wall_offset = 0.3
         if self.obs_repr == "xyz_vxyz_rot_omega":
             ## Creating observation space
             # pos, vel, rot, rot vel
-            self.obs_comp_sizes = [3, 3, 9, 3, 1]
-            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "z"]
+            self.obs_comp_sizes = [3, 3, 9, 3]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega"]
             obs_dim = np.sum(self.obs_comp_sizes)
             obs_high =  np.ones(obs_dim)
             obs_low  = -np.ones(obs_dim)
@@ -1054,9 +1056,20 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
             obs_low[0:3]  = -obs_high[0:3]
 
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18] 
+
             # z - distance to ground
-            obs_high[-1] = self.room_box[1][2] 
-            obs_low[-1] = self.room_box[0][2]
+            # obs_high[-1] = self.room_box[1][2] 
+            # obs_low[-1] = self.room_box[0][2]
 
             # # xyz room constraints
             # obs_high[18:21] = self.room_box[1] - self.wall_offset
@@ -1065,8 +1078,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         elif self.obs_repr == "xyz_vxyz_euler_omega":
              ## Creating observation space
             # pos, vel, rot, rot vel
-            self.obs_comp_sizes = [3, 3, 3, 3, 1]
-            self.obs_comp_names = ["xyz", "Vxyz", "euler", "Omega", "z"]
+            self.obs_comp_sizes = [3, 3, 3, 3]
+            self.obs_comp_names = ["xyz", "Vxyz", "euler", "Omega"]
             obs_dim = np.sum(self.obs_comp_sizes)
             obs_high =  np.ones(obs_dim)
             obs_low  = -np.ones(obs_dim)
@@ -1075,19 +1088,27 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
             obs_low[0:3]  = -obs_high[0:3]
 
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
             # Euler angles
             obs_high[6:9] = np.pi*obs_high[6:9] 
             obs_low[6:9]  = np.pi*obs_low[6:9]
 
+            # Omega
+            obs_high[9:12] = self.dynamics.omega_max * obs_high[9:12]
+            obs_low[9:12]  = self.dynamics.omega_max * obs_low[9:12] 
+
             # z - distance to ground
-            obs_high[-1] = self.room_box[1][2] 
-            obs_low[-1] = self.room_box[0][2]           
+            # obs_high[-1] = self.room_box[1][2] 
+            # obs_low[-1] = self.room_box[0][2]           
 
         elif self.obs_repr == "state_xyz_vxyz_quat_omega":
              ## Creating observation space
             # pos, vel, rot, rot vel
-            self.obs_comp_sizes = [3, 3, 4, 3, 1]
-            self.obs_comp_names = ["xyz", "Vxyz", "quat", "Omega", "z"]
+            self.obs_comp_sizes = [3, 3, 4, 3]
+            self.obs_comp_names = ["xyz", "Vxyz", "quat", "Omega"]
             obs_dim = np.sum(self.obs_comp_sizes)
             obs_high =  np.ones(obs_dim)
             obs_low  = -np.ones(obs_dim)
@@ -1096,9 +1117,20 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
             obs_low[0:3]  = -obs_high[0:3]
 
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # Quat
+            # indx range: 6:9
+
+            # Omega
+            obs_high[9:12] = self.dynamics.omega_max * obs_high[9:12]
+            obs_low[9:12]  = self.dynamics.omega_max * obs_low[9:12]           
+
             # z - distance to ground
-            obs_high[-1] = self.room_box[1][2] 
-            obs_low[-1] = self.room_box[0][2]    
+            # obs_high[-1] = self.room_box[1][2] 
+            # obs_low[-1] = self.room_box[0][2]    
 
 
         self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
@@ -1274,7 +1306,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     rollouts_num = traj_num
     plot_obs = False
 
-    env = QuadrotorEnv(dynamics_params=quad, raw_control=False, sim_steps=4, 
+    env = QuadrotorEnv(dynamics_params=quad, raw_control=False, raw_control_zero_middle=True, sim_steps=4, 
         dynamics_randomize_every=dyn_randomize_every, dynamics_randomization_ratio=dyn_randomization_ratio,
         sense_noise=sense_noise)
 
@@ -1302,7 +1334,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
 
     dyn_param_stats = [[] for i in dyn_param_names]
 
-    action = [0.5, 0.5, 0.5, 0.5]
+    action = np.array([0.0, 0.5, 0.0, 0.5])
     rollouts_id = 0
 
     start_time = time.time()
@@ -1325,7 +1357,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
             if render and (t % render_each == 0): env.render()
             s, r, done, info = env.step(action)
             observations.append(s)
-            # print('Step: ', t, ' Obs:', s)
+            print('Step: ', t, ' Obs:', env.dynamics.rot[0,0])
 
             if plot_step is not None and t % plot_step == 0:
                 plt.clf()
