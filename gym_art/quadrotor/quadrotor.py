@@ -927,6 +927,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
         self.tick = 0
         self.crashed = False
+        self.control_freq = sim_freq / sim_steps
 
         #########################################
         ## REWARDS PARAMS
