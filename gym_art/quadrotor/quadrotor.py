@@ -44,7 +44,7 @@ except:
 
 logger = logging.getLogger(__name__)
 
-GRAV = 9.81
+GRAV = 9.81 #default gravitational constant
 EPS = 1e-6 #small constant to avoid divisions by 0 and log(0)
 
 ## WARN:
@@ -329,7 +329,8 @@ class QuadrotorDynamics(object):
     def __init__(self, model_params,
         room_box=None,
         dynamics_steps_num=1, 
-        dim_mode="3D"):
+        dim_mode="3D",
+        gravity=GRAV):
 
         self.dynamics_steps_num = dynamics_steps_num
         ###############################################################
@@ -339,6 +340,7 @@ class QuadrotorDynamics(object):
         # Reference: https://docs.google.com/document/d/1wZMZQ6jilDbj0JtfeYt0TonjxoMPIgHwYbrFrMNls84/edit
         self.omega_max = 40. #rad/s The CF sensor can only show 35 rad/s (2000 deg/s), we allow some extra
         self.vxyz_max = 3. #m/s
+        self.gravity = gravity
 
         ###############################################################
         ## Internal State variables
@@ -496,6 +498,19 @@ class QuadrotorDynamics(object):
         self.step1(thrust_cmds, dt)
         self.step1(thrust_cmds, dt)
 
+    # multiple dynamics steps
+    def step10(self, thrust_cmds, dt):
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+        self.step1(thrust_cmds, dt)
+
     ## Step function integrates based on current derivative values (best fits affine dynamics model)
     # thrust_cmds is motor thrusts given in normalized range [0, 1].
     # 1 represents the max possible thrust of the motor.
@@ -620,7 +635,7 @@ class QuadrotorDynamics(object):
 
         ## Accelerometer measures so called "proper acceleration" 
         # that includes gravity with the opposite sign
-        self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, GRAV])
+        self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, self.gravity])
 
     #######################################################
     ## AFFINE DYNAMICS REPRESENTATION:
@@ -815,7 +830,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                 dynamics_randomize_every=None, dynamics_randomization_ratio=0., dynamics_randomization_ratio_params=None,
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
                 obs_repr="xyz_vxyz_rot_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
-                rew_coeff=None, sense_noise=None, verbose=False):
+                rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV):
         np.seterr(under='ignore')
         """
         Args:
@@ -856,6 +871,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.raw_control = raw_control
         self.scene = None
         self.update_sense_noise(sense_noise=sense_noise)
+        self.gravity = gravity
         
         ## PARAMS
         self.max_init_vel = 1.5 # m/s
@@ -982,7 +998,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         ## Then loading the dynamics
         self.dynamics_params = dynamics_params
         self.dynamics = QuadrotorDynamics(model_params=dynamics_params, 
-                        dynamics_steps_num=self.sim_steps, room_box=self.room_box, dim_mode=self.dim_mode)
+                        dynamics_steps_num=self.sim_steps, room_box=self.room_box, dim_mode=self.dim_mode,
+                        gravity=self.gravity)
         
         if self.verbose:
             print("#################################################")
