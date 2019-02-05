@@ -19,6 +19,15 @@ def cross_vec_mx4(V1,V2):
     x4 = cross(V1,V2[3,:])
     return np.array([x1,x2,x3,x4])
 
+def cross_vec_mx4_(v1,mx4):
+    """
+    Args:
+        v1: vector
+        mx4: [4,3] matrix
+    """
+    # return (np.array([[0, -v1[2], v1[1]], [v1[2], 0, -v1[0]], [-v1[1], v1[0], 0]]) @ mx4.T).T
+    return np.matmul(np.array([[0, -v1[2], v1[1]], [v1[2], 0, -v1[0]], [-v1[1], v1[0], 0]]), mx4.T).T
+
 bla1 = np.random.normal(size=[4,3])
 bla2 = np.random.normal(size=[4,3])
 vec = np.random.normal(size=[3,])
@@ -57,5 +66,15 @@ r2 = cross_vec_mx4(vec,bla2)
 r2 = cross_vec_mx4(vec,bla2)
 r2 = cross_vec_mx4(vec,bla2)
 print(time.time()-st)
+
+st = time.time()
+r3 = cross_vec_mx4_(vec,bla2)
+r3 = cross_vec_mx4_(vec,bla2)
+r3 = cross_vec_mx4_(vec,bla2)
+r3 = cross_vec_mx4_(vec,bla2)
+r3 = cross_vec_mx4_(vec,bla2)
+print(time.time()-st)
+
 print("r1\n",r1,"\n")
-print("r2\n",r2)
+print("r2\n",r2,"\n")
+print("r3\n",r3)
