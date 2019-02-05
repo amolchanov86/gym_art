@@ -130,6 +130,13 @@ def exUxe(e,U):
     """
     return U - (U.T @ rot_z).T * np.repeat(rot_z, U.shape[1], axis=1)
 
+def dict_update_existing(dic, dic_upd):
+    for key in dic_upd.keys():
+        if isinstance(dic[key], dict):
+            dict_update_existing(dic[key], dic_upd[key])
+        else:
+            dic[key] = dic_upd[key]
+
 class OUNoise:
     """Ornstein–Uhlenbeck process"""
     def __init__(self, action_dimension, mu=0, theta=0.15, sigma=0.3):

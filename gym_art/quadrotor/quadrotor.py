@@ -165,6 +165,8 @@ def check_quad_param_limits(params, params_init=None):
     params["motor"]["thrust_to_weight"] = np.clip(params["motor"]["thrust_to_weight"], a_min=1.2, a_max=None)
     params["motor"]["torque_to_thrust"] = np.clip(params["motor"]["torque_to_thrust"], a_min=0.001, a_max=1.)
     params["motor"]["linearity"] = np.clip(params["motor"]["linearity"], a_min=0.999, a_max=1.)
+    params["motor"]["C_drag"] = np.clip(params["motor"]["C_drag"], a_min=0., a_max=None)
+    params["motor"]["C_roll"] = np.clip(params["motor"]["C_roll"], a_min=0., a_max=None)
 
     ## Make sure propellers make sense in size
     if params_init is not None:
@@ -196,7 +198,8 @@ def get_dyn_randomization_params(quad_params, noise_ratio=0., noise_ratio_params
 
     ## Updating noise ratios
     if noise_ratio_params is not None:
-        noise_params.update(noise_ratio_params)
+        # noise_params.update(noise_ratio_params)
+        dict_update_existing(noise_params, noise_ratio_params)
     return noise_params
 
 
@@ -954,7 +957,8 @@ class QuadrotorEnv(gym.Env, Serializable):
             
             ## Now, updating if we are providing modifications
             if dynamics_change is not None:
-                self.dynamics_params_def.update(dynamics_change)
+                # self.dynamics_params_def.update(dynamics_change)
+                dict_update_existing(self.dynamics_params_def, dynamics_change)
 
             ## Setting randomization params
             if self.dynamics_randomize_every is not None:
