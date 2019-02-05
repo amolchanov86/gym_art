@@ -72,7 +72,8 @@ def crazyflie_params():
     # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
 
     ## Damping parameters
-    damp_params = {"vel": 0.001, "omega_quadratic": 0.015}
+    # damp_params = {"vel": 0.001, "omega_quadratic": 0.015}
+    damp_params = {"vel": 0.0, "omega_quadratic": 0.0}
 
     ## Noise parameters
     noise_params = {}
@@ -110,7 +111,8 @@ def defaultquad_params():
     # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
     
     ## Damping parameters
-    damp_params = {"vel": 0.001, "omega_quadratic": 0.015}
+    # damp_params = {"vel": 0.001, "omega_quadratic": 0.015}
+    damp_params = {"vel": 0.0, "omega_quadratic": 0.0}
 
     ## Noise parameters
     noise_params = {}
