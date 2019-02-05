@@ -568,14 +568,16 @@ class QuadrotorDynamics(object):
 
         if self.C_rot_drag != 0 or self.C_rot_roll != 0:
             # v_rotors[3,4]  = (rot[3,3] @ vel[3,])[3,] + (omega[3,] x prop_pos[4,3])[4,3]
-            v_rotors = self.rot.T @ self.vel + np.cross(self.omega, self.model.prop_pos)
+            # v_rotors = self.rot.T @ self.vel + np.cross(self.omega, self.model.prop_pos)
+            v_rotors = self.rot.T @ self.vel + cross_vec_mx4(self.omega, self.model.prop_pos)
             # assert v_rotors.shape == (4,3)
             v_rotors[:,2] = 0. #Projection to the rotor plane
 
             # Drag/Roll of rotors (both in body frame)
             rotor_drag_fi = - self.C_rot_drag * np.sqrt(thrust_cmds)[:,None] * v_rotors #[4,3]
             rotor_drag_force = np.sum(rotor_drag_fi, axis=0)
-            rotor_drag_ti = np.cross(rotor_drag_fi, self.model.prop_pos)#[4,3] x [4,3]
+            # rotor_drag_ti = np.cross(rotor_drag_fi, self.model.prop_pos)#[4,3] x [4,3]
+            rotor_drag_ti = cross_mx4(rotor_drag_fi, self.model.prop_pos)#[4,3] x [4,3]
             rotor_drag_torque = np.sum(rotor_drag_ti, axis=0)
             
             rotor_roll_torque = self.C_rot_roll * np.sqrt(thrust_cmds)[:,None] * v_rotors #[4,3]

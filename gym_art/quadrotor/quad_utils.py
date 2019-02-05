@@ -130,6 +130,23 @@ def exUxe(e,U):
     """
     return U - (U.T @ rot_z).T * np.repeat(rot_z, U.shape[1], axis=1)
 
+def cross_vec(v1,v2):
+    return np.array([[0, -v1[2], v1[1]], [v1[2], 0, -v1[0]], [-v1[1], v1[0], 0]]) @ v2
+
+def cross_mx4(V1,V2):
+    x1 = cross(V1[0,:],V2[0,:])
+    x2 = cross(V1[1,:],V2[1,:])
+    x3 = cross(V1[2,:],V2[2,:])
+    x4 = cross(V1[3,:],V2[3,:])
+    return np.array([x1,x2,x3,x4])
+
+def cross_vec_mx4(V1,V2):
+    x1 = cross(V1,V2[0,:])
+    x2 = cross(V1,V2[1,:])
+    x3 = cross(V1,V2[2,:])
+    x4 = cross(V1,V2[3,:])
+    return np.array([x1,x2,x3,x4])
+
 def dict_update_existing(dic, dic_upd):
     for key in dic_upd.keys():
         if isinstance(dic[key], dict):
