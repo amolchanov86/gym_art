@@ -118,6 +118,18 @@ def randyaw():
     rotz = np.random.uniform(-np.pi, np.pi)
     return rotZ(rotz)[:3,:3]
 
+def exUxe(e,U):
+    """
+    Cross product approximation
+    exUxe = U - (U @ e) * e, where
+    Args:
+        e[3,1] - norm vector (assumes the same norm vector for all vectors in the batch U)
+        U[3,batch_dim] - set of vectors to perform cross product on
+    Returns:
+        [3,batch_dim] - batch-wise cross product approximation
+    """
+    return U - (U.T @ rot_z).T * np.repeat(rot_z, U.shape[1], axis=1)
+
 class OUNoise:
     """Ornstein–Uhlenbeck process"""
     def __init__(self, action_dimension, mu=0, theta=0.15, sigma=0.3):
@@ -142,3 +154,19 @@ class OUNoise:
         self.state = x + dx
         return self.state
 
+
+if __name__ == "__main__":
+    ## Cross product test
+    import time
+    rot_z = np.array([[3],[4],[5]])
+    rot_z = rot_z / np.linalg.norm(rot_z)
+    v_rotors = np.array([[1,2,3,4],[5,6,7,8],[9,8,7,6]])
+
+    start_time = time.time()
+    cr1_ = v_rotors - (v_rotors.T @ rot_z).T * np.repeat(rot_z,4, axis=1)
+    print("cr1 time:", time.time() - start_time)
+
+    start_time = time.time()
+    cr2 = np.cross(rot_z.T, np.cross(v_rotors.T, np.repeat(rot_z,4, axis=1).T)).T
+    print("cr2 time:", time.time() - start_time)
+    print("cr1 == cr2:", np.sum(cr1 - cr2) < 1e-10)

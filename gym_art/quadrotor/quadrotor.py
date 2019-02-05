@@ -7,6 +7,11 @@ http://journals.sagepub.com/doi/pdf/10.1177/0278364911434236
 
 Developers:
 James Preiss, Artem Molchanov, Tao Chen 
+
+References:
+[1] RotorS: https://www.researchgate.net/profile/Fadri_Furrer/publication/309291237_RotorS_-_A_Modular_Gazebo_MAV_Simulator_Framework/links/5a0169c4a6fdcc82a3183f8f/RotorS-A-Modular-Gazebo-MAV-Simulator-Framework.pdf
+[2] CrazyFlie modelling: http://mikehamer.info/assets/papers/Crazyflie%20Modelling.pdf
+[3] HummingBird: http://www.asctec.de/en/uav-uas-drones-rpas-roav/asctec-hummingbird/
 """
 import argparse
 import logging
@@ -57,7 +62,7 @@ EPS = 1e-6 #small constant to avoid divisions by 0 and log(0)
 # -
 
 def crazyflie_params():
-    ## See: http://mikehamer.info/assets/papers/Crazyflie%20Modelling.pdf
+    ## See: Ref[2] for details
     ## Geometric parameters for Inertia and the model
     geom_params = {}
     geom_params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
@@ -82,7 +87,9 @@ def crazyflie_params():
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 1.9, #2.18
                     "torque_to_thrust": 0.006, #0.005964552
-                    "linearity": 1. #0.424
+                    "linearity": 1., #0.424
+                    "C_drag": 0.,
+                    "C_roll": 0.
                     }
 
     ## Summarizing
@@ -96,7 +103,7 @@ def crazyflie_params():
 
 
 def defaultquad_params():
-    # Similar to AscTec Hummingbird: http://www.asctec.de/en/uav-uas-drones-rpas-roav/asctec-hummingbird/
+    # Similar to AscTec Hummingbird: Ref[3]
     ## Geometric parameters for Inertia and the model
     geom_params = {}
     geom_params["body"] = {"l": 0.1, "w": 0.1, "h": 0.085, "m": 0.5}
@@ -121,9 +128,10 @@ def defaultquad_params():
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 2.8,
                     "torque_to_thrust": 0.05,
-                    "linearity": 1.0
+                    "linearity": 1.0,
+                    "C_drag": 0.,
+                    "C_roll": 0.
                     }
-
     ## Summarizing
     params = {
         "geom": geom_params, 
@@ -295,7 +303,9 @@ def sample_dyn_parameters():
     ## Motor parameters
     motor_params = {"thrust_to_weight" : thrust_to_weight,
                     "torque_to_thrust": np.random.uniform(low=0.003, high=0.03), #0.05 originally
-                    "linearity": 1.0
+                    "linearity": 1.0,
+                    "C_drag": 0.,
+                    "C_roll": 0.
                     # "linearity": np.random.normal(loc=0.5, scale=0.1)
                     }
 
@@ -405,9 +415,13 @@ class QuadrotorDynamics(object):
         self.thrust_to_weight = self.model_params["motor"]["thrust_to_weight"]
         self.torque_to_thrust = self.model_params["motor"]["torque_to_thrust"]
         self.motor_linearity = self.model_params["motor"]["linearity"]
+        self.C_rot_drag = self.model_params["motor"]["C_drag"]
+        self.C_rot_roll = self.model_params["motor"]["C_roll"]
+
         self.thrust_noise_ratio = self.model_params["noise"]["thrust_noise_ratio"]
         self.vel_damp = self.model_params["damp"]["vel"]
         self.damp_omega_quadratic = self.model_params["damp"]["omega_quadratic"]
+
 
         ###############################################################
         ## COMPUTED (Dependent) PARAMETERS
@@ -546,14 +560,35 @@ class QuadrotorDynamics(object):
         thrust_torque = np.sum(torques, axis=0) 
 
         ###################################
+        ## Rotor drag and Rolling forces and moments
+        ## See Ref[1] Sec:2.1 for detailes
+
+        if self.C_rot_drag != 0 or self.C_rot_roll != 0:
+            # v_rotors[3,4]  = (rot[3,3] @ vel[3,])[3,] + (omega[3,] x prop_pos[4,3])[4,3]
+            v_rotors = self.rot.T @ self.vel + np.cross(self.omega, self.model.prop_pos)
+            # assert v_rotors.shape == (4,3)
+            v_rotors[:,2] = 0. #Projection to the rotor plane
+
+            # Drag/Roll of rotors (both in body frame)
+            rotor_drag_fi = - self.C_rot_drag * np.sqrt(thrust_cmds)[:,None] * v_rotors #[4,3]
+            rotor_drag_force = np.sum(rotor_drag_fi, axis=0)
+            rotor_drag_ti = np.cross(rotor_drag_fi, self.model.prop_pos)#[4,3] x [4,3]
+            rotor_drag_torque = np.sum(rotor_drag_ti, axis=0)
+            
+            rotor_roll_torque = self.C_rot_roll * np.sqrt(thrust_cmds)[:,None] * v_rotors #[4,3]
+            rotor_roll_torque = np.sum(rotor_roll_torque, axis=0)
+        else:
+            rotor_drag_torque = rotor_drag_force = rotor_roll_torque = np.zeros(3)
+
+        ###################################
         ## (Square) Damping using torques (in case we would like to add damping using torques)
         # damping_torque = - 0.3 * self.omega * np.fabs(self.omega)
-        damping_torque = 0.0
-        torque =  thrust_torque + damping_torque
+        torque =  thrust_torque + rotor_roll_torque + rotor_drag_torque
         thrust = npa(0,0,np.sum(thrusts))
 
         #########################################################
         ## ROTATIONAL DYNAMICS
+
 
         ###################################
         ## Integrating rotations (based on current values)
@@ -627,7 +662,7 @@ class QuadrotorDynamics(object):
         # self.vel[np.equal(self.pos, self.pos_before_clip)] = 0.
 
         ## Computing accelerations
-        acc = [0, 0, -GRAV] + (1.0 / self.mass) * np.matmul(self.rot, thrust)
+        acc = [0, 0, -GRAV] + (1.0 / self.mass) * np.matmul(self.rot, (thrust + rotor_drag_force))
         # acc[mask] = 0. #If we leave the room - stop accelerating
         self.acc = acc
 
@@ -638,6 +673,20 @@ class QuadrotorDynamics(object):
         ## Accelerometer measures so called "proper acceleration" 
         # that includes gravity with the opposite sign
         self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, self.gravity])
+
+    def rotors_drag_roll_glob_frame(self):
+        # omega [3,] x prop_pos [4,3] = v_rot_body [4, 3]
+        # R[3,3] @ prop_pos.T[3,4] = v_rotors[3,4]  
+        v_rotors = self.vel + self.rot @ np.cross(self.omega, self.model.prop_pos).T
+        rot_z = self.rot[:,2]
+
+        # [3,4] = [3,4] - ([3,4].T @ [3,1]).T * [3,4]
+        v_rotors_perp = v_rotors - (v_rotors.T @ rot_z).T * np.repeat(rot_z,4, axis=1)
+
+        # Drag/Roll of rotors
+        rotor_drag = - self.C_rot_drag * np.sqrt(thrust_cmds) * v_rotors_perp #[3,4]
+        rotor_roll_torque =   self.C_rot_roll * np.sqrt(thrust_cmds) * v_rotors_perp #[3,4]
+
 
     #######################################################
     ## AFFINE DYNAMICS REPRESENTATION:
