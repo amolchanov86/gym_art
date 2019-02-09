@@ -88,7 +88,7 @@ def crazyflie_params():
     motor_params = {"thrust_to_weight" : 1.9, #2.18
                     "torque_to_thrust": 0.006, #0.005964552
                     "linearity": 1., #0.424
-                    "C_drag": 0. #3052 * 8.06428e-05, # 0.246
+                    "C_drag": 0., #3052 * 8.06428e-05, # 0.246
                     "C_roll": 0. #3052 * 0.000001 # 0.0003
                     }
 
