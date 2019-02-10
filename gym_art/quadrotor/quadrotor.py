@@ -584,6 +584,8 @@ class QuadrotorDynamics(object):
         ## Rotor drag and Rolling forces and moments
         ## See Ref[1] Sec:2.1 for detailes
 
+        # self.C_rot_drag = 0.246
+        # self.C_rot_roll = 0.0003
         if self.C_rot_drag != 0 or self.C_rot_roll != 0:
             # self.vel = np.zeros_like(self.vel)
             # v_rotors[3,4]  = (rot[3,3] @ vel[3,])[3,] + (omega[3,] x prop_pos[4,3])[4,3]
@@ -607,19 +609,20 @@ class QuadrotorDynamics(object):
             ## Constraints (prevent numerical instabilities)
             vel_norm = np.linalg.norm(vel_body)
             rdf_norm = np.linalg.norm(rotor_drag_force)
-            rdf_norm_clip = np.clip(rdf_norm, a_min=0., a_max=vel_norm*self.mass/2.)
+            rdf_norm_clip = np.clip(rdf_norm, a_min=0., a_max=vel_norm*self.mass/(2*dt))
             if rdf_norm > EPS:
                 rotor_drag_force = (rotor_drag_force / rdf_norm) * rdf_norm_clip
 
             # omega_norm = np.linalg.norm(self.omega)
             rvt_norm = np.linalg.norm(rotor_visc_torque)
-            rvt_norm_clipped = np.clip(rvt_norm, a_min=0., a_max=np.linalg.norm(self.omega*self.inertia))
+            rvt_norm_clipped = np.clip(rvt_norm, a_min=0., a_max=np.linalg.norm(self.omega*self.inertia)/(2*dt))
             if rvt_norm > EPS:
                 rotor_visc_torque = (rotor_visc_torque / rvt_norm) * rvt_norm_clipped
 
             # print("v", self.vel, "\nomega:\n",self.omega, "\nv_rotors:\n", v_rotors, "\nrotor_drag_fi:\n", rotor_drag_fi)
-            # print("Clip:", rvt_norm_clipped/rvt_norm, rdf_norm_clip/rdf_norm)
-            # print("---------------------------------------------------------------")
+            # if rvt_norm_clipped/rvt_norm < 1 or rdf_norm_clip/rdf_norm < 1:
+            #     print("Clip:", rvt_norm_clipped/rvt_norm, rdf_norm_clip/rdf_norm)
+            #     print("---------------------------------------------------------------")
         else:
             rotor_visc_torque = rotor_drag_torque = rotor_drag_force = rotor_roll_torque = np.zeros(3)
 

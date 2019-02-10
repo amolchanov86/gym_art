@@ -80,6 +80,47 @@ class FirstOrdFilter(object):
         self.y_prev = y
         return y
 
+class FirstOrdHistFilter(object):
+    """
+    Filter:
+    x -> y
+    y[t] = dt/T*x + y[t-1] - dt/T
+    """
+    def __init__(self, Tup, Tdown, dt):
+        self.Tup = Tup
+        self.Tdown = Tdown
+        self.dt = dt
+        self.y_prev = 0.
+        self.tau_up = np.clip(4 * self.dt/self.Tup, a_min=0., a_max=1.)
+        self.tau_down = np.clip(4 * self.dt/self.Tdown, a_min=0., a_max=1.)
+    
+    def step(self, x):
+        dx = x - self.y_prev
+        if dx > 0:
+            y =  self.tau_up * (x - self.y_prev) + self.y_prev
+        else:
+            y =  self.tau_down * (x - self.y_prev) + self.y_prev
+        self.y_prev = y
+        return y
+
+class GazeboFilter(object):
+    def __init__(self, Tup=0.0125, Tdown=0.025, dt=0.01):
+        self.Tup = Tup
+        self.Tdown = Tdown
+        self.x_prev = 0
+        self.alpha_up = np.exp(-dt/self.Tup)
+        self.alpha_down = np.exp(-dt/self.Tdown)
+
+    def step(self, x):
+        if x > self.x_prev:
+            y = self.alpha_up*self.x_prev + (1-self.alpha_up)*x
+        else:
+            y = self.alpha_down*self.x_prev + (1-self.alpha_down)*x
+        self.x_prev = y
+        return y
+
+
+
 def filter_fitness(coeff):
     delay = 0.15
     max_val = 1.04
@@ -108,17 +149,25 @@ def filter_fitness(coeff):
     return 0.1 * np.abs(t_peak - delay_step) + 0.1*np.abs(1. - xf[delay_step]) + np.abs(max_val - xf[t_peak])+ 0.01*np.sum(1. - xf[delay_step:delay_step+20]) + 0.5*np.abs(1. - xf[-1]) + slope_int
 
 
+#######################################################
+delay_up = 0.15
+delay_down = 2
+delay_pause = 2.6
+time_s = 4.5
+freq = 100
+x = np.ones([int(time_s * freq)])
+x[int((delay_pause)*freq):] = 0.
+xf = np.zeros([int(time_s * freq)])
+steps = np.linspace(0,time_s, int(time_s * freq))
+
+
 a = 0.3 * np.array([1., 1.])
 b = 0.3 * np.array([1., 1., 1.])
 filt = SecondOrdFilter(a=a,b=b)
-time_s = 1
-freq = 100
-x = np.ones([time_s * freq])
 
-xf = np.zeros([time_s * freq])
-steps = np.linspace(0,time_s, time_s * freq)
-for t in range(time_s * freq-1):
+for t in range(int(time_s * freq-1)):
     xf[t+1] = filt.step(x[t])
+thrust = xf**2
 
 coeff_init = 0.3 * np.ones([5])
 coeff_init[1] = 0.0001
@@ -140,27 +189,51 @@ coeff_init[-1] = 0.001
 
 
 # filt = SecondOrdFilter(a=coeff_opt[:2],b=coeff_opt[2:])
-delay = 0.15
-filt = FirstOrdFilter(T=delay, dt=1./freq)
-for t in range(time_s * freq-1):
-    xf[t+1] = filt.step(x[t])
 
-plt.plot(steps, x, label="x")
-plt.plot(steps, xf, label="x_filt")
-plt.axvline(x=delay)
+# filt = FirstOrdFilter(T=delay, dt=1./freq)
+filt = FirstOrdHistFilter(Tup=delay_up, Tdown=delay_down, dt=1./freq)
+
+for t in range(int(time_s * freq-1)):
+    xf[t+1] = filt.step(x[t])
+thrust = xf**2
+
+delay_up_thrust = 0.2
+delay_down_thrust = 1.5
+filt_thrust = FirstOrdHistFilter(Tup=delay_up_thrust, Tdown=delay_down_thrust, dt=1./freq)
+
+delay_up_gaz = 0.0325 #0.0125
+delay_down_gaz = 0.5 #0.025
+filt_gaz = GazeboFilter(Tup=delay_up_gaz, Tdown=delay_down_gaz, dt=1./freq)
+thrust_filt_approx = np.zeros_like(thrust)
+xf_gaz = np.zeros_like(thrust)
+
+for t in range(int(time_s * freq-1)):
+    thrust_filt_approx[t+1] = filt_thrust.step(x[t])
+    xf_gaz[t+1] = filt_gaz.step(x[t])
+thrust_gaz = xf_gaz**2
+
+
+
+plt.plot(steps, x, label="vel")
+plt.plot(steps, xf, label="vel_filt")
+plt.plot(steps, thrust, label="thrust")
+# plt.plot(steps, thrust_filt_approx, label="thrust_approx")
+plt.plot(steps, thrust_gaz, label="thrust_gazebo")
+plt.axvline(x=delay_up, color="red")
+plt.axvline(x=delay_down + delay_pause, color="red")
 plt.legend()
 plt.show(block=False)
 
 
 x_sin = np.sin(2*np.pi*freq/8*steps)
 x_sin_f = np.zeros_like(x_sin)
-for t in range(time_s * freq-1):
+for t in range(int(time_s * freq-1)):
     x_sin_f[t+1] = filt.step(x_sin[t])
 
 plt.figure(2)
 plt.plot(steps, x_sin, label="x")
 plt.plot(steps, x_sin_f, label="x_filt")
-plt.axvline(x=delay)
+plt.axvline(x=delay_up, color="red")
 plt.legend()
 plt.show(block=False)
 
