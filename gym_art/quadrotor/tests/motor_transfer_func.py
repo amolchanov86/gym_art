@@ -140,7 +140,7 @@ coeff_init[-1] = 0.001
 
 
 # filt = SecondOrdFilter(a=coeff_opt[:2],b=coeff_opt[2:])
-delay = 0.01
+delay = 0.15
 filt = FirstOrdFilter(T=delay, dt=1./freq)
 for t in range(time_s * freq-1):
     xf[t+1] = filt.step(x[t])
@@ -152,7 +152,7 @@ plt.legend()
 plt.show(block=False)
 
 
-x_sin = np.sin(2*np.pi*freq/4*steps)
+x_sin = np.sin(2*np.pi*freq/8*steps)
 x_sin_f = np.zeros_like(x_sin)
 for t in range(time_s * freq-1):
     x_sin_f[t+1] = filt.step(x_sin[t])

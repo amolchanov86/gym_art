@@ -90,7 +90,7 @@ def crazyflie_params():
                     "linearity": 1., #0.424
                     "C_drag": 0.000, #3052 * 8.06428e-05, # 0.246
                     "C_roll": 0.000, #3052 * 0.000001 # 0.0003
-                    "damp_time": 0.15
+                    "damp_time": 0.
                     }
 
     ## Summarizing
@@ -562,7 +562,7 @@ class QuadrotorDynamics(object):
             self.motor_tau = 4*dt/(self.motor_damp_time)
             if self.motor_tau > 1.: self.motor_tau = 1.
             self.thrust_cmds_damp = self.motor_tau * (thrust_cmds - self.thrust_cmds_damp) + self.thrust_cmds_damp
-            print("thrust: ", thrust_cmds, self.thrust_cmds_damp)
+            # print("thrust: ", thrust_cmds, self.thrust_cmds_damp)
         else:
             self.thrust_cmds_damp = thrust_cmds
 
@@ -585,9 +585,11 @@ class QuadrotorDynamics(object):
         ## See Ref[1] Sec:2.1 for detailes
 
         if self.C_rot_drag != 0 or self.C_rot_roll != 0:
+            # self.vel = np.zeros_like(self.vel)
             # v_rotors[3,4]  = (rot[3,3] @ vel[3,])[3,] + (omega[3,] x prop_pos[4,3])[4,3]
             # v_rotors = self.rot.T @ self.vel + np.cross(self.omega, self.model.prop_pos)
-            v_rotors = self.rot.T @ self.vel + cross_vec_mx4(self.omega, self.model.prop_pos)
+            vel_body = self.rot.T @ self.vel
+            v_rotors = vel_body + cross_vec_mx4(self.omega, self.model.prop_pos)
             # assert v_rotors.shape == (4,3)
             v_rotors[:,2] = 0. #Projection to the rotor plane
 
@@ -600,13 +602,31 @@ class QuadrotorDynamics(object):
             
             rotor_roll_torque = self.C_rot_roll * np.sqrt(self.thrust_cmds_damp)[:,None] * v_rotors #[4,3]
             rotor_roll_torque = np.sum(rotor_roll_torque, axis=0)
+            rotor_visc_torque = rotor_drag_torque + rotor_roll_torque
+
+            ## Constraints (prevent numerical instabilities)
+            vel_norm = np.linalg.norm(vel_body)
+            rdf_norm = np.linalg.norm(rotor_drag_force)
+            rdf_norm_clip = np.clip(rdf_norm, a_min=0., a_max=vel_norm*self.mass/2.)
+            if rdf_norm > EPS:
+                rotor_drag_force = (rotor_drag_force / rdf_norm) * rdf_norm_clip
+
+            # omega_norm = np.linalg.norm(self.omega)
+            rvt_norm = np.linalg.norm(rotor_visc_torque)
+            rvt_norm_clipped = np.clip(rvt_norm, a_min=0., a_max=np.linalg.norm(self.omega*self.inertia))
+            if rvt_norm > EPS:
+                rotor_visc_torque = (rotor_visc_torque / rvt_norm) * rvt_norm_clipped
+
+            # print("v", self.vel, "\nomega:\n",self.omega, "\nv_rotors:\n", v_rotors, "\nrotor_drag_fi:\n", rotor_drag_fi)
+            # print("Clip:", rvt_norm_clipped/rvt_norm, rdf_norm_clip/rdf_norm)
+            # print("---------------------------------------------------------------")
         else:
-            rotor_drag_torque = rotor_drag_force = rotor_roll_torque = np.zeros(3)
+            rotor_visc_torque = rotor_drag_torque = rotor_drag_force = rotor_roll_torque = np.zeros(3)
 
         ###################################
         ## (Square) Damping using torques (in case we would like to add damping using torques)
         # damping_torque = - 0.3 * self.omega * np.fabs(self.omega)
-        torque =  thrust_torque + rotor_roll_torque + rotor_drag_torque
+        torque =  thrust_torque + rotor_visc_torque
         thrust = npa(0,0,np.sum(thrusts))
 
         #########################################################
