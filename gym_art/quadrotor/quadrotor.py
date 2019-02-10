@@ -88,8 +88,9 @@ def crazyflie_params():
     motor_params = {"thrust_to_weight" : 1.9, #2.18
                     "torque_to_thrust": 0.006, #0.005964552
                     "linearity": 1., #0.424
-                    "C_drag": 0., #3052 * 8.06428e-05, # 0.246
-                    "C_roll": 0. #3052 * 0.000001 # 0.0003
+                    "C_drag": 0.000, #3052 * 8.06428e-05, # 0.246
+                    "C_roll": 0.000, #3052 * 0.000001 # 0.0003
+                    "damp_time": 0.15
                     }
 
     ## Summarizing
@@ -130,7 +131,8 @@ def defaultquad_params():
                     "torque_to_thrust": 0.05,
                     "linearity": 1.0,
                     "C_drag": 0.,
-                    "C_roll": 0.
+                    "C_roll": 0.,
+                    "damp_time": 0
                     }
     ## Summarizing
     params = {
@@ -167,6 +169,7 @@ def check_quad_param_limits(params, params_init=None):
     params["motor"]["linearity"] = np.clip(params["motor"]["linearity"], a_min=0.999, a_max=1.)
     params["motor"]["C_drag"] = np.clip(params["motor"]["C_drag"], a_min=0., a_max=None)
     params["motor"]["C_roll"] = np.clip(params["motor"]["C_roll"], a_min=0., a_max=None)
+    params["motor"]["damp_time"] = np.clip(params["motor"]["damp_time"], a_min=0., a_max=None)
 
     ## Make sure propellers make sense in size
     if params_init is not None:
@@ -308,7 +311,8 @@ def sample_dyn_parameters():
                     "torque_to_thrust": np.random.uniform(low=0.003, high=0.03), #0.05 originally
                     "linearity": 1.0,
                     "C_drag": 0.,
-                    "C_roll": 0.
+                    "C_roll": 0.,
+                    "damp_time": 0.
                     # "linearity": np.random.normal(loc=0.5, scale=0.1)
                     }
 
@@ -398,6 +402,7 @@ class QuadrotorDynamics(object):
         # i.e. controller frequency
         self.step = getattr(self, 'step%d' % dynamics_steps_num)
 
+
     @staticmethod
     def angvel2thrust(w, linearity=0.424):
         """
@@ -420,6 +425,7 @@ class QuadrotorDynamics(object):
         self.motor_linearity = self.model_params["motor"]["linearity"]
         self.C_rot_drag = self.model_params["motor"]["C_drag"]
         self.C_rot_roll = self.model_params["motor"]["C_roll"]
+        self.motor_damp_time = self.model_params["motor"]["damp_time"]
 
         self.thrust_noise_ratio = self.model_params["noise"]["thrust_noise_ratio"]
         self.vel_damp = self.model_params["damp"]["vel"]
@@ -456,6 +462,8 @@ class QuadrotorDynamics(object):
         self.arm = np.linalg.norm(self.model.motor_xyz[:2])
 
         self.step = getattr(self, 'step%d' % self.dynamics_steps_num)
+
+        self.reset()
 
     # pos, vel, in world coords (meters)
     # rotation is 3x3 matrix (body coords) -> (world coords)dt
@@ -550,14 +558,24 @@ class QuadrotorDynamics(object):
         ###################################
         ## Convert the motor commands to a force and moment on the body
         thrust_noise = thrust_cmds * self.thrust_noise.noise()
-        thrust_cmds = np.clip(thrust_cmds + thrust_noise, 0.0, 1.0)
+        if self.motor_damp_time != 0:
+            self.motor_tau = 4*dt/(self.motor_damp_time)
+            if self.motor_tau > 1.: self.motor_tau = 1.
+            self.thrust_cmds_damp = self.motor_tau * (thrust_cmds - self.thrust_cmds_damp) + self.thrust_cmds_damp
+            print("thrust: ", thrust_cmds, self.thrust_cmds_damp)
+        else:
+            self.thrust_cmds_damp = thrust_cmds
 
-        thrusts = self.thrust_max * self.angvel2thrust(thrust_cmds, linearity=self.motor_linearity)
+        self.thrust_cmds_damp = np.clip(self.thrust_cmds_damp + thrust_noise, 0.0, 1.0)
+
+
+
+        thrusts = self.thrust_max * self.angvel2thrust(self.thrust_cmds_damp, linearity=self.motor_linearity)
         #Prop crossproduct give torque directions
         torques = self.prop_crossproducts * thrusts[:,None] # (4,3)=(props, xyz)
 
         # additional torques along z-axis caused by propeller rotations
-        torques[:, 2] += self.torque_max * self.prop_ccw * thrust_cmds 
+        torques[:, 2] += self.torque_max * self.prop_ccw * self.thrust_cmds_damp 
 
         # net torque: sum over propellers
         thrust_torque = np.sum(torques, axis=0) 
@@ -574,13 +592,13 @@ class QuadrotorDynamics(object):
             v_rotors[:,2] = 0. #Projection to the rotor plane
 
             # Drag/Roll of rotors (both in body frame)
-            rotor_drag_fi = - self.C_rot_drag * np.sqrt(thrust_cmds)[:,None] * v_rotors #[4,3]
+            rotor_drag_fi = - self.C_rot_drag * np.sqrt(self.thrust_cmds_damp)[:,None] * v_rotors #[4,3]
             rotor_drag_force = np.sum(rotor_drag_fi, axis=0)
             # rotor_drag_ti = np.cross(rotor_drag_fi, self.model.prop_pos)#[4,3] x [4,3]
             rotor_drag_ti = cross_mx4(rotor_drag_fi, self.model.prop_pos)#[4,3] x [4,3]
             rotor_drag_torque = np.sum(rotor_drag_ti, axis=0)
             
-            rotor_roll_torque = self.C_rot_roll * np.sqrt(thrust_cmds)[:,None] * v_rotors #[4,3]
+            rotor_roll_torque = self.C_rot_roll * np.sqrt(self.thrust_cmds_damp)[:,None] * v_rotors #[4,3]
             rotor_roll_torque = np.sum(rotor_roll_torque, axis=0)
         else:
             rotor_drag_torque = rotor_drag_force = rotor_roll_torque = np.zeros(3)
@@ -621,7 +639,7 @@ class QuadrotorDynamics(object):
                     self.rot = np.matmul(u, v)
                     self.since_last_svd = 0
                 except Exception as e:
-                    print('Rotation Matrix: ', self.rot, ' actions: ', thrust_cmds)
+                    print('Rotation Matrix: ', self.rot, ' actions damped: ', self.thrust_cmds_damp)
                     log_error('##########################################################')
                     for key, value in locals().items():
                         log_error('%s: %s \n' %(key, str(value)))
@@ -679,6 +697,9 @@ class QuadrotorDynamics(object):
         # that includes gravity with the opposite sign
         self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, self.gravity])
 
+    def reset(self):
+        self.thrust_cmds_damp = np.zeros([4])
+
     def rotors_drag_roll_glob_frame(self):
         # omega [3,] x prop_pos [4,3] = v_rot_body [4, 3]
         # R[3,3] @ prop_pos.T[3,4] = v_rotors[3,4]  
@@ -689,8 +710,8 @@ class QuadrotorDynamics(object):
         v_rotors_perp = v_rotors - (v_rotors.T @ rot_z).T * np.repeat(rot_z,4, axis=1)
 
         # Drag/Roll of rotors
-        rotor_drag = - self.C_rot_drag * np.sqrt(thrust_cmds) * v_rotors_perp #[3,4]
-        rotor_roll_torque =   self.C_rot_roll * np.sqrt(thrust_cmds) * v_rotors_perp #[3,4]
+        rotor_drag = - self.C_rot_drag * np.sqrt(self.thrust_cmds_damp) * v_rotors_perp #[3,4]
+        rotor_roll_torque =   self.C_rot_roll * np.sqrt(self.thrust_cmds_damp) * v_rotors_perp #[3,4]
 
 
     #######################################################
@@ -1348,6 +1369,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         # print("QuadEnv: init: pos/vel/rot/omega:", pos, vel, rotation, omega)
         self.init_state = [pos, vel, rotation, omega]
         self.dynamics.set_state(pos, vel, rotation, omega)
+        self.dynamics.reset()
 
         # Resetting scene to reflect the state we have just set in dynamics
         self.scene.reset(self.goal, self.dynamics)
