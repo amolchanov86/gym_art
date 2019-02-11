@@ -154,7 +154,7 @@ delay_up = 0.15
 delay_down = 2
 delay_pause = 2.6
 time_s = 4.5
-freq = 100
+freq = 500
 x = np.ones([int(time_s * freq)])
 x[int((delay_pause)*freq):] = 0.
 xf = np.zeros([int(time_s * freq)])
@@ -191,11 +191,14 @@ coeff_init[-1] = 0.001
 # filt = SecondOrdFilter(a=coeff_opt[:2],b=coeff_opt[2:])
 
 # filt = FirstOrdFilter(T=delay, dt=1./freq)
+import time
 filt = FirstOrdHistFilter(Tup=delay_up, Tdown=delay_down, dt=1./freq)
 
+st = time.time()
 for t in range(int(time_s * freq-1)):
     xf[t+1] = filt.step(x[t])
 thrust = xf**2
+print("Hist filter time: ", time.time() - st)
 
 delay_up_thrust = 0.2
 delay_down_thrust = 1.5
@@ -207,12 +210,13 @@ filt_gaz = GazeboFilter(Tup=delay_up_gaz, Tdown=delay_down_gaz, dt=1./freq)
 thrust_filt_approx = np.zeros_like(thrust)
 xf_gaz = np.zeros_like(thrust)
 
+# thrust_filt_approx[t+1] = filt_thrust.step(x[t])
+
+st = time.time()
 for t in range(int(time_s * freq-1)):
-    thrust_filt_approx[t+1] = filt_thrust.step(x[t])
     xf_gaz[t+1] = filt_gaz.step(x[t])
 thrust_gaz = xf_gaz**2
-
-
+print("Gaz filter time: ", time.time() - st)
 
 plt.plot(steps, x, label="vel")
 plt.plot(steps, xf, label="vel_filt")
@@ -221,8 +225,7 @@ plt.plot(steps, thrust, label="thrust")
 plt.plot(steps, thrust_gaz, label="thrust_gazebo")
 plt.axvline(x=delay_up, color="red")
 plt.axvline(x=delay_down + delay_pause, color="red")
-plt.legend()
-plt.show(block=False)
+
 
 
 x_sin = np.sin(2*np.pi*freq/8*steps)
@@ -230,12 +233,12 @@ x_sin_f = np.zeros_like(x_sin)
 for t in range(int(time_s * freq-1)):
     x_sin_f[t+1] = filt.step(x_sin[t])
 
-plt.figure(2)
-plt.plot(steps, x_sin, label="x")
-plt.plot(steps, x_sin_f, label="x_filt")
-plt.axvline(x=delay_up, color="red")
-plt.legend()
-plt.show(block=False)
+# plt.figure(2)
+# plt.plot(steps, x_sin, label="x")
+# plt.plot(steps, x_sin_f, label="x_filt")
+# plt.axvline(x=delay_up, color="red")
+# plt.legend()
+# plt.show(block=False)
 
 # num = [1]
 # den = [0.075 1]
@@ -247,6 +250,43 @@ plt.show(block=False)
 # t = np.linspace(0,1,t_num)
 # x = copy(t)
 # x[int(t_num/2):] = 1.
+
+
+delay_up = 0.0325
+delay_down = 0.5
+t_switch = int((delay_pause)*freq)
+steps_num = int(time_s * freq-1)
+rot_thrust = np.zeros([int(time_s * freq),4])
+rot_thrust[t_switch:,:2] = 0.
+rot_thrust[:t_switch,:2] = 1.
+rot_thrust[t_switch:,2:] = 1.
+rot_thrust[:t_switch,2:] = 0.
+
+rot_vel = rot_thrust**0.5
+rot_vel_filt = np.zeros_like(rot_vel)
+rot_vel_filt[:10,2:] = 1.
+
+def filter_step(rot, rot_prev, alpha_up, alpha_down):
+    alpha = alpha_up * np.ones([4,])
+    alpha[rot < rot_prev] = alpha_down
+    return alpha * rot_prev + (1.-alpha)*rot
+
+for t in range(steps_num):
+    rot_vel_filt[t+1] = filter_step(rot_vel[t], rot_vel_filt[t], 
+        alpha_up=np.exp(-1./freq / delay_up), 
+        alpha_down=np.exp(-1/ freq / delay_down))
+rot_thrust_filt = rot_vel_filt**2
+    
+plt.figure(3)
+for i in range(4):
+    plt.plot(steps, rot_thrust_filt[:,i], label="thrust_%d" % i)
+
+plt.legend()
+plt.show(block=False)
+
+
+
+
 
 
 input("Enter ...")

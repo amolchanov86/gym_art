@@ -12,6 +12,7 @@ References:
 [1] RotorS: https://www.researchgate.net/profile/Fadri_Furrer/publication/309291237_RotorS_-_A_Modular_Gazebo_MAV_Simulator_Framework/links/5a0169c4a6fdcc82a3183f8f/RotorS-A-Modular-Gazebo-MAV-Simulator-Framework.pdf
 [2] CrazyFlie modelling: http://mikehamer.info/assets/papers/Crazyflie%20Modelling.pdf
 [3] HummingBird: http://www.asctec.de/en/uav-uas-drones-rpas-roav/asctec-hummingbird/
+[4] CrazyFlie thrusters transition functions: https://www.bitcraze.io/2015/02/measuring-propeller-rpm-part-3/
 """
 import argparse
 import logging
@@ -82,7 +83,7 @@ def crazyflie_params():
 
     ## Noise parameters
     noise_params = {}
-    noise_params["thrust_noise_ratio"] = 0.01
+    noise_params["thrust_noise_ratio"] = 0.05
 
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 1.9, #2.18
@@ -90,7 +91,8 @@ def crazyflie_params():
                     "linearity": 1., #0.424
                     "C_drag": 0.000, #3052 * 8.06428e-05, # 0.246
                     "C_roll": 0.000, #3052 * 0.000001 # 0.0003
-                    "damp_time": 0.
+                    "damp_time_up": 0.15, #0.15 - See: [4] for details on motor damping. Note: these are rotational velocity damp params.
+                    "damp_time_down": 2.0, #2.0
                     }
 
     ## Summarizing
@@ -124,7 +126,7 @@ def defaultquad_params():
 
     ## Noise parameters
     noise_params = {}
-    noise_params["thrust_noise_ratio"] = 0.01
+    noise_params["thrust_noise_ratio"] = 0.05
     
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 2.8,
@@ -132,7 +134,8 @@ def defaultquad_params():
                     "linearity": 1.0,
                     "C_drag": 0.,
                     "C_roll": 0.,
-                    "damp_time": 0
+                    "damp_time_up": 0,
+                    "damp_time_down": 0
                     }
     ## Summarizing
     params = {
@@ -169,7 +172,8 @@ def check_quad_param_limits(params, params_init=None):
     params["motor"]["linearity"] = np.clip(params["motor"]["linearity"], a_min=0.999, a_max=1.)
     params["motor"]["C_drag"] = np.clip(params["motor"]["C_drag"], a_min=0., a_max=None)
     params["motor"]["C_roll"] = np.clip(params["motor"]["C_roll"], a_min=0., a_max=None)
-    params["motor"]["damp_time"] = np.clip(params["motor"]["damp_time"], a_min=0., a_max=None)
+    params["motor"]["damp_time_up"] = np.clip(params["motor"]["damp_time_up"], a_min=0., a_max=None)
+    params["motor"]["damp_time_down"] = np.clip(params["motor"]["damp_time_down"], a_min=0., a_max=None)
 
     ## Make sure propellers make sense in size
     if params_init is not None:
@@ -312,7 +316,8 @@ def sample_dyn_parameters():
                     "linearity": 1.0,
                     "C_drag": 0.,
                     "C_roll": 0.,
-                    "damp_time": 0.
+                    "damp_time_up": 0.,
+                    "damp_time_down": 0.
                     # "linearity": np.random.normal(loc=0.5, scale=0.1)
                     }
 
@@ -425,7 +430,8 @@ class QuadrotorDynamics(object):
         self.motor_linearity = self.model_params["motor"]["linearity"]
         self.C_rot_drag = self.model_params["motor"]["C_drag"]
         self.C_rot_roll = self.model_params["motor"]["C_roll"]
-        self.motor_damp_time = self.model_params["motor"]["damp_time"]
+        self.motor_damp_time_up = self.model_params["motor"]["damp_time_up"]
+        self.motor_damp_time_down = self.model_params["motor"]["damp_time_down"]
 
         self.thrust_noise_ratio = self.model_params["noise"]["thrust_noise_ratio"]
         self.vel_damp = self.model_params["damp"]["vel"]
@@ -554,21 +560,27 @@ class QuadrotorDynamics(object):
         # uncomment for debugging. they are slow
         #assert np.all(thrust_cmds >= 0)
         #assert np.all(thrust_cmds <= 1)
+        thrust_cmds = np.clip(thrust_cmds, a_min=0., a_max=1.)
 
         ###################################
-        ## Convert the motor commands to a force and moment on the body
+        ## Filtering the thruster and adding noise
+        self.motor_tau_up = 4*dt/(self.motor_damp_time_up + EPS)
+        self.motor_tau_down = 4*dt/(self.motor_damp_time_down + EPS)
+        motor_tau = self.motor_tau_up * np.ones([4,])
+        motor_tau[thrust_cmds < self.thrust_cmds_damp] = self.motor_tau_down 
+        motor_tau[motor_tau > 1.] = 1.
+
+        ## Since NN commands thrusts we need to convert to rot vel and back
+        # WARNING: Unfortunately if the linearity != 1 then filtering using square root is not quite correct
+        # since it likely means that you are using rotational velocities as an input and hence
+        # you are filtering square roots of angular velocities
+        thrust_rot = thrust_cmds**0.5
+        self.thrust_rot_damp = motor_tau * (thrust_rot - self.thrust_rot_damp) + self.thrust_rot_damp       
+        self.thrust_cmds_damp = self.thrust_rot_damp**2
+
+        ## Adding noise
         thrust_noise = thrust_cmds * self.thrust_noise.noise()
-        if self.motor_damp_time != 0:
-            self.motor_tau = 4*dt/(self.motor_damp_time)
-            if self.motor_tau > 1.: self.motor_tau = 1.
-            self.thrust_cmds_damp = self.motor_tau * (thrust_cmds - self.thrust_cmds_damp) + self.thrust_cmds_damp
-            # print("thrust: ", thrust_cmds, self.thrust_cmds_damp)
-        else:
-            self.thrust_cmds_damp = thrust_cmds
-
-        self.thrust_cmds_damp = np.clip(self.thrust_cmds_damp + thrust_noise, 0.0, 1.0)
-
-
+        self.thrust_cmds_damp = np.clip(self.thrust_cmds_damp + thrust_noise, 0.0, 1.0)        
 
         thrusts = self.thrust_max * self.angvel2thrust(self.thrust_cmds_damp, linearity=self.motor_linearity)
         #Prop crossproduct give torque directions
@@ -584,8 +596,8 @@ class QuadrotorDynamics(object):
         ## Rotor drag and Rolling forces and moments
         ## See Ref[1] Sec:2.1 for detailes
 
-        # self.C_rot_drag = 0.246
-        # self.C_rot_roll = 0.0003
+        # self.C_rot_drag = 0.1
+        # self.C_rot_roll = 0.000 # 0.0003
         if self.C_rot_drag != 0 or self.C_rot_roll != 0:
             # self.vel = np.zeros_like(self.vel)
             # v_rotors[3,4]  = (rot[3,3] @ vel[3,])[3,] + (omega[3,] x prop_pos[4,3])[4,3]
@@ -722,6 +734,7 @@ class QuadrotorDynamics(object):
 
     def reset(self):
         self.thrust_cmds_damp = np.zeros([4])
+        self.thrust_rot_damp = np.zeros([4])
 
     def rotors_drag_roll_glob_frame(self):
         # omega [3,] x prop_pos [4,3] = v_rot_body [4, 3]
@@ -1417,10 +1430,38 @@ class QuadrotorEnv(gym.Env, Serializable):
     def step(self, action):
         return self._step(action)
 
+class DummyPolicy(object):
+    def __init__(self):
+        self.action = np.zeros([4,])
+        self.dt = 0.
+    
+    def step(x):
+        return self.action
+    def reset():
+        pass
+
+class UpDownPolicy(object):
+    def __init__(self, dt=0.01, switch_time=2.5):
+        self.t = 0
+        self.dt=dt
+        self.switch_time = switch_time
+        self.action_up =  np.ones([4,])
+        self.action_up[:2] = 0.
+        self.action_down =  np.zeros([4,])
+        self.action_down[:2] = 1.
+    
+    def step(self, x):
+        self.t += self.dt
+        if self.t < self.switch_time:
+            return self.action_up
+        else:
+            return self.action_down
+    def reset(self):
+        self.t = 0.
 
 def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, 
-    render=True, traj_num=10, plot_step=None, plot_dyn_change=True,
-    sense_noise=None):
+    render=True, traj_num=10, plot_step=None, plot_dyn_change=True, plot_thrusts=False,
+    sense_noise=None, policy_type="mellinger"):
     import tqdm
     #############################
     # Init plottting
@@ -1436,9 +1477,22 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     rollouts_num = traj_num
     plot_obs = False
 
-    env = QuadrotorEnv(dynamics_params=quad, raw_control=False, raw_control_zero_middle=True, sim_steps=4, 
+    if policy_type == "mellinger":
+        raw_control=False
+        raw_control_zero_middle=True
+        policy = DummyPolicy() #since internal Mellinger takes care of the policy
+    elif policy_type == "updown":
+        raw_control=True
+        raw_control_zero_middle=False
+        policy = UpDownPolicy()
+
+
+    env = QuadrotorEnv(dynamics_params=quad, raw_control=raw_control, raw_control_zero_middle=raw_control_zero_middle, 
         dynamics_randomize_every=dyn_randomize_every, dynamics_randomization_ratio=dyn_randomization_ratio,
         sense_noise=sense_noise)
+
+
+    policy.dt = 1./ env.control_freq
 
     env.max_episode_steps = time_limit
     print('Reseting env ...')
@@ -1472,9 +1526,12 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     for rollouts_id in tqdm.tqdm(range(rollouts_num)):
         rollouts_id += 1
         s = env.reset()
+        policy.reset()
         ## Diagnostics
         observations = []
         velocities = []
+        actions = []
+        thrusts = []
 
         ## Collecting dynamics params
         if plot_dyn_change:
@@ -1485,7 +1542,11 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
         t = 0
         while True:
             if render and (t % render_each == 0): env.render()
+            action = policy.step(s)
             s, r, done, info = env.step(action)
+            
+            actions.append(action)
+            thrusts.append(env.dynamics.thrust_cmds_damp)
             observations.append(s)
             print('Step: ', t, ' Obs:', env.dynamics.rot[0,0])
 
@@ -1505,6 +1566,18 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
 
             if done: break
             t += 1
+
+        if plot_thrusts:
+            plt.figure(3, figsize=(10, 10))
+            ep_time = np.linspace(0, policy.dt * len(actions), len(actions))
+            actions = np.array(actions)
+            thrusts = np.array(thrusts)
+            for i in range(4):
+                plt.plot(ep_time, actions[:,i], label="Thrust desired %d" % i)
+                plt.plot(ep_time, thrusts[:,i], label="Thrust produced %d" % i)
+            plt.legend()
+            plt.show(block=False)
+            input("Press Enter to continue...")
 
     if plot_dyn_change:
         dyn_par_normvar = []
@@ -1545,10 +1618,10 @@ def main(argv):
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         '-m',"--mode",
-        type=int,
-        default=0,
+        default="mellinger",
         help="Test mode: "
-             "0 - rollout with default controller"
+             "mellinger - rollout with mellinger controller"
+             "updown - rollout with UpDown controller (to test step responses)"
     )
     parser.add_argument(
         '-q',"--quad",
@@ -1591,6 +1664,11 @@ def main(argv):
         help="Plot the dynamics change from trajectory to trajectory?"
     )
     parser.add_argument(
+        '-pltact',"--plot_actions",
+        action="store_true",
+        help="Plot actions commanded and thrusts produced after damping"
+    )
+    parser.add_argument(
         '-sn',"--sense_noise",
         action="store_true",
         help="Add sensor noise?"
@@ -1602,18 +1680,19 @@ def main(argv):
     else:
         sense_noise=None
 
-    if args.mode == 0:
-        print('Running test rollout ...')
-        test_rollout(
-            quad=args.quad, 
-            dyn_randomize_every=args.dyn_randomize_every,
-            dyn_randomization_ratio=args.dyn_randomization_ratio,
-            render=args.render,
-            traj_num=args.traj_num,
-            plot_step=args.plot_step,
-            plot_dyn_change=args.plot_dyn_change,
-            sense_noise=sense_noise
-        )
+    print('Running test rollout ...')
+    test_rollout(
+        quad=args.quad, 
+        dyn_randomize_every=args.dyn_randomize_every,
+        dyn_randomization_ratio=args.dyn_randomization_ratio,
+        render=args.render,
+        traj_num=args.traj_num,
+        plot_step=args.plot_step,
+        plot_dyn_change=args.plot_dyn_change,
+        plot_thrusts=args.plot_actions,
+        sense_noise=sense_noise,
+        policy_type=args.mode
+    )
 
 if __name__ == '__main__':
     main(sys.argv)
