@@ -89,10 +89,10 @@ def crazyflie_params():
     motor_params = {"thrust_to_weight" : 1.9, #2.18
                     "torque_to_thrust": 0.006, #0.005964552
                     "linearity": 1., #0.424
-                    "C_drag": 0.000, #3052 * 8.06428e-05, # 0.246
+                    "C_drag": 0.000, # 3052 * 9.1785e-07  #3052 * 8.06428e-05, # 0.246
                     "C_roll": 0.000, #3052 * 0.000001 # 0.0003
-                    "damp_time_up": 0.15, #0.15 - See: [4] for details on motor damping. Note: these are rotational velocity damp params.
-                    "damp_time_down": 2.0, #2.0
+                    "damp_time_up": 0., #0.15, #0.15 - See: [4] for details on motor damping. Note: these are rotational velocity damp params.
+                    "damp_time_down": 0. #2.0, #2.0
                     }
 
     ## Summarizing
@@ -496,6 +496,17 @@ class QuadrotorDynamics(object):
         return pos, vel, rot, omega
         # self.set_state(pos, vel, rot, omega)
 
+    # generate a random state (meters, meters/sec, radians/sec)
+    def pitch_roll_restricted_random_state(self, box, vel_max=15.0, omega_max=2*np.pi, pitch_max=0.5, roll_max=0.5, yaw_max=3.14):
+        pos = np.random.uniform(low=-box, high=box, size=(3,))
+        vel = np.random.uniform(low=-vel_max, high=vel_max, size=(3,))
+        omega = np.random.uniform(low=-omega_max, high=omega_max, size=(3,))
+        pitch = np.random.uniform(low=-pitch_max, high=pitch_max)
+        roll = np.random.uniform(low=-roll_max, high=roll_max)
+        yaw = np.random.uniform(low=-yaw_max, high=yaw_max) 
+        rot = t3d.euler.euler2mat(roll, pitch, yaw)
+        return pos, vel, rot, omega
+
     # multiple dynamics steps
     def step2(self, thrust_cmds, dt):
         self.step1(thrust_cmds, dt)
@@ -596,8 +607,8 @@ class QuadrotorDynamics(object):
         ## Rotor drag and Rolling forces and moments
         ## See Ref[1] Sec:2.1 for detailes
 
-        # self.C_rot_drag = 0.1
-        # self.C_rot_roll = 0.000 # 0.0003
+        # self.C_rot_drag = 0.0028
+        # self.C_rot_roll = 0.003 # 0.0003
         if self.C_rot_drag != 0 or self.C_rot_roll != 0:
             # self.vel = np.zeros_like(self.vel)
             # v_rotors[3,4]  = (rot[3,3] @ vel[3,])[3,] + (omega[3,] x prop_pos[4,3])[4,3]
@@ -614,7 +625,7 @@ class QuadrotorDynamics(object):
             rotor_drag_ti = cross_mx4(rotor_drag_fi, self.model.prop_pos)#[4,3] x [4,3]
             rotor_drag_torque = np.sum(rotor_drag_ti, axis=0)
             
-            rotor_roll_torque = self.C_rot_roll * np.sqrt(self.thrust_cmds_damp)[:,None] * v_rotors #[4,3]
+            rotor_roll_torque = - self.C_rot_roll * self.prop_ccw[:,None] * np.sqrt(self.thrust_cmds_damp)[:,None] * v_rotors #[4,3]
             rotor_roll_torque = np.sum(rotor_roll_torque, axis=0)
             rotor_visc_torque = rotor_drag_torque + rotor_roll_torque
 
@@ -987,8 +998,12 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.gravity = gravity
         
         ## PARAMS
-        self.max_init_vel = 1.5 # m/s
-        self.max_init_omega = 6 * np.pi #rad/s
+        self.max_init_vel = 0.5 # m/s
+        self.max_init_omega = np.pi #rad/s
+        self.pitch_max = 0.523 #rad
+        self.roll_max = 0.523  #rad
+        self.yaw_max = np.pi   #rad
+
         self.room_box = np.array([[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
         self.state_vector = getattr(self, "state_" + self.obs_repr)
         ## WARN: If you
@@ -1388,7 +1403,14 @@ class QuadrotorEnv(gym.Env, Serializable):
                 rotation = np.array(((c, 0., -s), (0., 1., 0.), (s, 0., c)))
             else:
                 # It already sets the state internally
-                _, vel, rotation, omega = self.dynamics.random_state(box=self.room_size, vel_max=self.max_init_vel, omega_max=self.max_init_omega)
+                # _, vel, rotation, omega = self.dynamics.random_state(box=self.room_size, vel_max=self.max_init_vel, omega_max=self.max_init_omega)
+                _, vel, rotation, omega = self.dynamics.pitch_roll_restricted_random_state(
+                        box=self.room_size, 
+                        vel_max=self.max_init_vel, 
+                        omega_max=self.max_init_omega,
+                        pitch_max=self.pitch_max,
+                        roll_max=self.roll_max,
+                        yaw_max=self.yaw_max)
         else:
             ## INIT HORIZONTALLY WITH 0 VEL and OMEGA
             vel, omega = npa(0, 0, 0), npa(0, 0, 0)
@@ -1431,13 +1453,13 @@ class QuadrotorEnv(gym.Env, Serializable):
         return self._step(action)
 
 class DummyPolicy(object):
-    def __init__(self):
+    def __init__(self, dt=0.01, switch_time=2.5):
         self.action = np.zeros([4,])
         self.dt = 0.
     
-    def step(x):
+    def step(self, x):
         return self.action
-    def reset():
+    def reset(self):
         pass
 
 class UpDownPolicy(object):
@@ -1461,7 +1483,7 @@ class UpDownPolicy(object):
 
 def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, 
     render=True, traj_num=10, plot_step=None, plot_dyn_change=True, plot_thrusts=False,
-    sense_noise=None, policy_type="mellinger"):
+    sense_noise=None, policy_type="mellinger", init_random_state=False):
     import tqdm
     #############################
     # Init plottting
@@ -1489,7 +1511,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
 
     env = QuadrotorEnv(dynamics_params=quad, raw_control=raw_control, raw_control_zero_middle=raw_control_zero_middle, 
         dynamics_randomize_every=dyn_randomize_every, dynamics_randomization_ratio=dyn_randomization_ratio,
-        sense_noise=sense_noise)
+        sense_noise=sense_noise, init_random_state=init_random_state)
 
 
     policy.dt = 1./ env.control_freq
@@ -1673,6 +1695,11 @@ def main(argv):
         action="store_true",
         help="Add sensor noise?"
     )
+    parser.add_argument(
+        '-irs',"--init_random_state",
+        action="store_true",
+        help="Add sensor noise?"
+    )
     args = parser.parse_args()
 
     if args.sense_noise:
@@ -1691,7 +1718,8 @@ def main(argv):
         plot_dyn_change=args.plot_dyn_change,
         plot_thrusts=args.plot_actions,
         sense_noise=sense_noise,
-        policy_type=args.mode
+        policy_type=args.mode,
+        init_random_state=args.init_random_state
     )
 
 if __name__ == '__main__':
