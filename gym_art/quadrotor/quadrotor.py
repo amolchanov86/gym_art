@@ -575,6 +575,8 @@ class QuadrotorDynamics(object):
 
         ###################################
         ## Filtering the thruster and adding noise
+        # I use the multiplier 4, since 4*T ~ time for a step response to finish, where
+        # T is a time constant of the first-order filter
         self.motor_tau_up = 4*dt/(self.motor_damp_time_up + EPS)
         self.motor_tau_down = 4*dt/(self.motor_damp_time_down + EPS)
         motor_tau = self.motor_tau_up * np.ones([4,])
@@ -583,7 +585,7 @@ class QuadrotorDynamics(object):
 
         ## Since NN commands thrusts we need to convert to rot vel and back
         # WARNING: Unfortunately if the linearity != 1 then filtering using square root is not quite correct
-        # since it likely means that you are using rotational velocities as an input and hence
+        # since it likely means that you are using rotational velocities as an input instead of the thrust and hence
         # you are filtering square roots of angular velocities
         thrust_rot = thrust_cmds**0.5
         self.thrust_rot_damp = motor_tau * (thrust_rot - self.thrust_rot_damp) + self.thrust_rot_damp       
@@ -1570,7 +1572,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
             actions.append(action)
             thrusts.append(env.dynamics.thrust_cmds_damp)
             observations.append(s)
-            print('Step: ', t, ' Obs:', env.dynamics.rot[0,0])
+            # print('Step: ', t, ' Obs:', env.dynamics.rot[0,0])
 
             if plot_step is not None and t % plot_step == 0:
                 plt.clf()
