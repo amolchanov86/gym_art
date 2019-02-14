@@ -914,11 +914,15 @@ class QuadrotorEnv(gym.Env, Serializable):
             "vel_proj": 0, 
             "orient": 1, "yaw": 0,
             "spin_z": 0.5, "spin_xy": 0.5}
+        rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
         if rew_coeff is not None: 
             assert isinstance(rew_coeff, dict)
             assert set(rew_coeff.keys()).issubset(set(self.rew_coeff.keys()))
             self.rew_coeff.update(rew_coeff)
+        
+        orig_keys = list(rew_coeff_orig.keys())
+        assert np.all([key in orig_keys for key in self.rew_coeff.keys()])
 
         #########################################
         ## RESET
