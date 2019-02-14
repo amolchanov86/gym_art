@@ -490,8 +490,15 @@ class QuadrotorDynamics(object):
     # generate a random state (meters, meters/sec, radians/sec)
     def random_state(self, box, vel_max=15.0, omega_max=2*np.pi):
         pos = np.random.uniform(low=-box, high=box, size=(3,))
+        
         vel = np.random.uniform(low=-vel_max, high=vel_max, size=(3,))
+        vel_magn = np.random.uniform(low=0., high=vel_max)
+        vel = vel_magn / (np.linalg.norm(vel) + EPS) * vel
+        
         omega = np.random.uniform(low=-omega_max, high=omega_max, size=(3,))
+        omega_magn = np.random.uniform(low=0., high=omega_max)
+        omega = omega_magn / (np.linalg.norm(omega) + EPS) * omega
+        
         rot = rand_uniform_rot3d()
         return pos, vel, rot, omega
         # self.set_state(pos, vel, rot, omega)
@@ -499,8 +506,15 @@ class QuadrotorDynamics(object):
     # generate a random state (meters, meters/sec, radians/sec)
     def pitch_roll_restricted_random_state(self, box, vel_max=15.0, omega_max=2*np.pi, pitch_max=0.5, roll_max=0.5, yaw_max=3.14):
         pos = np.random.uniform(low=-box, high=box, size=(3,))
+        
         vel = np.random.uniform(low=-vel_max, high=vel_max, size=(3,))
+        vel_magn = np.random.uniform(low=0., high=vel_max)
+        vel = vel_magn / (np.linalg.norm(vel) + EPS) * vel
+        
         omega = np.random.uniform(low=-omega_max, high=omega_max, size=(3,))
+        omega_magn = np.random.uniform(low=0., high=omega_max)
+        omega = omega_magn / (np.linalg.norm(omega) + EPS) * omega
+        
         pitch = np.random.uniform(low=-pitch_max, high=pitch_max)
         roll = np.random.uniform(low=-roll_max, high=roll_max)
         yaw = np.random.uniform(low=-yaw_max, high=yaw_max) 
@@ -571,8 +585,8 @@ class QuadrotorDynamics(object):
         # uncomment for debugging. they are slow
         #assert np.all(thrust_cmds >= 0)
         #assert np.all(thrust_cmds <= 1)
-        thrust_cmds = np.clip(thrust_cmds, a_min=0., a_max=1.)
 
+        thrust_cmds = np.clip(thrust_cmds, a_min=0., a_max=1.)
         ###################################
         ## Filtering the thruster and adding noise
         # I use the multiplier 4, since 4*T ~ time for a step response to finish, where
@@ -1000,11 +1014,11 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.gravity = gravity
         
         ## PARAMS
-        self.max_init_vel = 0.5 # m/s
-        self.max_init_omega = np.pi #rad/s
-        self.pitch_max = 0.523 #rad
-        self.roll_max = 0.523  #rad
-        self.yaw_max = np.pi   #rad
+        self.max_init_vel = 1. # m/s
+        self.max_init_omega = 2 * np.pi #rad/s
+        # self.pitch_max = 1. #rad
+        # self.roll_max = 1.  #rad
+        # self.yaw_max = np.pi   #rad
 
         self.room_box = np.array([[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
         self.state_vector = getattr(self, "state_" + self.obs_repr)
@@ -1405,14 +1419,14 @@ class QuadrotorEnv(gym.Env, Serializable):
                 rotation = np.array(((c, 0., -s), (0., 1., 0.), (s, 0., c)))
             else:
                 # It already sets the state internally
-                # _, vel, rotation, omega = self.dynamics.random_state(box=self.room_size, vel_max=self.max_init_vel, omega_max=self.max_init_omega)
-                _, vel, rotation, omega = self.dynamics.pitch_roll_restricted_random_state(
-                        box=self.room_size, 
-                        vel_max=self.max_init_vel, 
-                        omega_max=self.max_init_omega,
-                        pitch_max=self.pitch_max,
-                        roll_max=self.roll_max,
-                        yaw_max=self.yaw_max)
+                _, vel, rotation, omega = self.dynamics.random_state(box=self.room_size, vel_max=self.max_init_vel, omega_max=self.max_init_omega)
+                # _, vel, rotation, omega = self.dynamics.pitch_roll_restricted_random_state(
+                #         box=self.room_size, 
+                #         vel_max=self.max_init_vel, 
+                #         omega_max=self.max_init_omega,
+                #         pitch_max=self.pitch_max,
+                #         roll_max=self.roll_max,
+                #         yaw_max=self.yaw_max)
         else:
             ## INIT HORIZONTALLY WITH 0 VEL and OMEGA
             vel, omega = npa(0, 0, 0), npa(0, 0, 0)
