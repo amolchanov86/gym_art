@@ -125,8 +125,8 @@ def sample_dyn_parameters():
     ###################################################################
     ## GEOMETRIES
     # MOTORS (and overal size)
-    total_w = np.random.uniform(low=0.07, high=0.3)
-    total_l = np.clip(np.random.normal(loc=1., scale=0.25), a_min=1.0, a_max=None) * total_w
+    total_w = np.random.uniform(low=0.07, high=0.2)
+    total_l = np.clip(np.random.normal(loc=1., scale=0.1), a_min=1.0, a_max=None) * total_w
     motor_z = np.random.normal(loc=0., scale=total_w / 8.)
     geom_params["motor_pos"] = {"xyz": [total_w / 2., total_l / 2., motor_z]}
     geom_params["motors"]["r"] = total_w * np.random.normal(loc=0.05, scale=0.005)
@@ -158,19 +158,22 @@ def sample_dyn_parameters():
     geom_params["propellers"]["r"] = (0.3) * total_w * (thrust_to_weight / 2.0)**0.5
     
     ## Damping parameters
-    damp_vel_scale = np.random.uniform(low=0.01, high=2.)
-    damp_omega_scale = damp_vel_scale * np.random.uniform(low=0.75, high=1.25)
+    # damp_vel_scale = np.random.uniform(low=0.01, high=2.)
+    # damp_omega_scale = damp_vel_scale * np.random.uniform(low=0.75, high=1.25)
+    # damp_params = {
+    #     "vel": 0.001 * damp_vel_scale, 
+    #     "omega_quadratic": 0.015 * damp_omega_scale}
     damp_params = {
-        "vel": 0.001 * damp_vel_scale, 
-        "omega_quadratic": 0.015 * damp_omega_scale}
+        "vel": 0.0, 
+        "omega_quadratic": 0.0}
 
     ## Noise parameters
     noise_params = {}
-    noise_params["thrust_noise_ratio"] = np.random.uniform(low=0.001, high=0.02) #0.01
+    noise_params["thrust_noise_ratio"] = np.random.uniform(low=0.01, high=0.05) #0.01
     
     ## Motor parameters
     motor_params = {"thrust_to_weight" : thrust_to_weight,
-                    "torque_to_thrust": np.random.uniform(low=0.003, high=0.03), #0.05 originally
+                    "torque_to_thrust": np.random.uniform(low=0.005, high=0.03), #0.05 originally
                     "linearity": 1.0,
                     "C_drag": 0.,
                     "C_roll": 0.,
