@@ -182,6 +182,7 @@ class QuadrotorDynamics(object):
         self.omega_max = 40. #rad/s The CF sensor can only show 35 rad/s (2000 deg/s), we allow some extra
         self.vxyz_max = 3. #m/s
         self.gravity = gravity
+        self.acc_max = 3. * GRAV
 
         ###############################################################
         ## Internal State variables
@@ -686,7 +687,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     ##################################################
     ## log to create a sharp peak at the goal
     dist = np.linalg.norm(goal - dynamics.pos)
-    loss_pos = rew_coeff["pos"] * (np.log(dist + 0.1) + 0.1 * dist)
+    loss_pos = rew_coeff["pos"] * (np.log(dist + rew_coeff["pos_offset"]) + 0.1 * dist)
     # loss_pos = dist
 
     # dynamics_pos = dynamics.pos
@@ -910,7 +911,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         #########################################
         ## REWARDS PARAMS
         self.rew_coeff = {
-            "pos": 1, "effort": 0.01, "crash": 1, 
+            "pos": 1, "pos_offset": 0.1,
+            "effort": 0.01, "crash": 1, 
             "vel_proj": 0, 
             "orient": 1, "yaw": 0,
             "spin_z": 0.5, "spin_xy": 0.5}
@@ -1004,34 +1006,49 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.state_vector = getattr(self, "state_" + self.obs_repr)
 
     def state_xyz_vxyz_rot_omega(self):        
-        pos, vel, rot, omega = self.sense_noise.add_noise(
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
             vel=self.dynamics.vel,
             rot=self.dynamics.rot,
             omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
             dt=self.dt
         )
         # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega])
 
+    def state_xyz_vxyz_rot_omega_acc_act(self):        
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, acc, self.actions[1]])
+
     def state_xyz_vxyz_quat_omega(self):
         self.quat = R2quat(self.dynamics.rot)
-        pos, vel, quat, omega = self.sense_noise.add_noise(
+        pos, vel, quat, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
             vel=self.dynamics.vel,
             rot=self.quat,
             omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
             dt=self.dt
         )
         return np.concatenate([pos - self.goal[:3], vel, quat, omega])
 
     def state_xyz_vxyz_euler_omega(self):
         self.euler = t3d.euler.mat2euler(self.dynamics.rot)
-        pos, vel, quat, omega = self.sense_noise.add_noise(
+        pos, vel, quat, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
             vel=self.dynamics.vel,
             rot=self.euler,
             omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
             dt=self.dt
         )       
         return np.concatenate([pos - self.goal[:3], vel, euler, omega])
@@ -1069,6 +1086,38 @@ class QuadrotorEnv(gym.Env, Serializable):
             # # xyz room constraints
             # obs_high[18:21] = self.room_box[1] - self.wall_offset
             # obs_low[18:21]  = self.room_box[0] + self.wall_offset
+
+        elif self.obs_repr == "xyz_vxyz_rot_omega_acc_act":
+            ## Creating observation space
+            # pos, vel, rot, rot vel
+            self.obs_comp_sizes = [3, 3, 9, 3, 3, 4]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "Acc", "Act"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18] 
+        
+            # Acc
+            obs_high[18:21] = self.dynamics.acc_max * obs_high[18:21]
+            obs_low[18:21]  = self.dynamics.acc_max * obs_low[18:21] 
+
+            # Action
+            obs_high[21:25] = self.action_space.high
+            obs_low[21:25]  = self.action_space.low
 
         elif self.obs_repr == "xyz_vxyz_euler_omega":
              ## Creating observation space
@@ -1136,6 +1185,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         return [seed]
 
     def _step(self, action):
+        self.actions[1] = self.actions[0]
+        self.actions[0] = copy.deepcopy(action)
         # print('actions: ', action)
         # if not self.crashed:
         # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
@@ -1274,6 +1325,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         # Reseting some internal state (counters, etc)
         self.crashed = False
         self.tick = 0
+        self.actions = [np.zeros([4,]), np.zeros([4,])]
 
         state = self.state_vector()
         return state
@@ -1321,7 +1373,7 @@ class UpDownPolicy(object):
 
 def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, 
     render=True, traj_num=10, plot_step=None, plot_dyn_change=True, plot_thrusts=False,
-    sense_noise=None, policy_type="mellinger", init_random_state=False):
+    sense_noise=None, policy_type="mellinger", init_random_state=False, obs_repr="xyz_vxyz_rot_omega"):
     import tqdm
     #############################
     # Init plottting
@@ -1349,7 +1401,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
 
     env = QuadrotorEnv(dynamics_params=quad, raw_control=raw_control, raw_control_zero_middle=raw_control_zero_middle, 
         dynamics_randomize_every=dyn_randomize_every, dynamics_randomization_ratio=dyn_randomization_ratio,
-        sense_noise=sense_noise, init_random_state=init_random_state)
+        sense_noise=sense_noise, init_random_state=init_random_state, obs_repr=obs_repr)
 
 
     policy.dt = 1./ env.control_freq
@@ -1530,13 +1582,20 @@ def main(argv):
     )
     parser.add_argument(
         '-sn',"--sense_noise",
-        action="store_true",
-        help="Add sensor noise?"
+        action="store_false",
+        help="Add sensor noise? Use this flag to turn the noise off"
     )
     parser.add_argument(
         '-irs',"--init_random_state",
         action="store_true",
         help="Add sensor noise?"
+    )
+    parser.add_argument(
+        '-o',"--obs_repr",
+        default="xyz_vxyz_rot_omega_acc_act",
+        help="State components. Options:\n" +
+             "xyz_vxyz_rot_omega" +
+             "xyz_vxyz_rot_omega_acc_act"
     )
     args = parser.parse_args()
 
@@ -1557,7 +1616,8 @@ def main(argv):
         plot_thrusts=args.plot_actions,
         sense_noise=sense_noise,
         policy_type=args.mode,
-        init_random_state=args.init_random_state
+        init_random_state=args.init_random_state,
+        obs_repr=args.obs_repr,
     )
 
 if __name__ == '__main__':

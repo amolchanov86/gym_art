@@ -59,7 +59,8 @@ class SensorNoise:
                         vel_norm_std=0.01, vel_unif_range=0., 
                         quat_norm_std=0., quat_unif_range=0., 
                         gyro_noise_density=0.000175, gyro_random_walk=0.0105, 
-                        gyro_bias_correlation_time=1000., bypass=False): 
+                        gyro_bias_correlation_time=1000., bypass=False,
+                        acc_static_noise_std=0.01, acc_dynamic_noise_ratio=0.005): 
         """
         Args:
             pos_norm_std (float): std of pos gaus noise component
@@ -90,11 +91,14 @@ class SensorNoise:
         # self.gyro_turn_on_bias_sigma = gyro_turn_on_bias_sigma
         self.gyro_bias = np.zeros(3)
 
+        self.acc_static_noise_std = acc_static_noise_std
+        self.acc_dynamic_noise_ratio = acc_dynamic_noise_ratio
+
         self.bypass = bypass
 
-    def add_noise(self, pos, vel, rot, omega, dt):
+    def add_noise(self, pos, vel, rot, omega, acc, dt):
         if self.bypass:
-            return pos, vel, rot, omega
+            return pos, vel, rot, omega, acc
         # """
         # Args: 
         #     pos: ground truth of the position in world frame
@@ -142,8 +146,12 @@ class SensorNoise:
             noisy_rot = quatXquat(rot, quat_theta)
         else:
             raise ValueError("ERROR: SensNoise: Unknown rotation type: " + str(rot))
+        
+        ## Accelerometer noise
+        noisy_acc = acc + normal(loc=0., scale=self.acc_static_noise_std, size=3) + \
+                    acc * normal(loc=0., scale=self.acc_dynamic_noise_ratio, size=3)
 
-        return noisy_pos, noisy_vel, noisy_rot, noisy_omega
+        return noisy_pos, noisy_vel, noisy_rot, noisy_omega, noisy_acc
 
     ## copy from rotorS imu plugin
     def add_noise_to_omega(self, omega, dt):
