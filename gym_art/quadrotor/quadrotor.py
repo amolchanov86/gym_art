@@ -922,6 +922,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             self.rew_coeff.update(rew_coeff)
         
         orig_keys = list(rew_coeff_orig.keys())
+        # Checking to make sure we didn't provide some false rew_coeffs (for example by misspelling one of the params)
         assert np.all([key in orig_keys for key in self.rew_coeff.keys()])
 
         #########################################
