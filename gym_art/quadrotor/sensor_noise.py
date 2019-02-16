@@ -60,7 +60,7 @@ class SensorNoise:
                         quat_norm_std=0., quat_unif_range=0., 
                         gyro_noise_density=0.000175, gyro_random_walk=0.0105, 
                         gyro_bias_correlation_time=1000., bypass=False,
-                        acc_static_noise_std=0.01, acc_dynamic_noise_ratio=0.005): 
+                        acc_static_noise_std=0.002, acc_dynamic_noise_ratio=0.005): 
         """
         Args:
             pos_norm_std (float): std of pos gaus noise component

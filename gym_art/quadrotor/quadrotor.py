@@ -13,6 +13,7 @@ References:
 [2] CrazyFlie modelling: http://mikehamer.info/assets/papers/Crazyflie%20Modelling.pdf
 [3] HummingBird: http://www.asctec.de/en/uav-uas-drones-rpas-roav/asctec-hummingbird/
 [4] CrazyFlie thrusters transition functions: https://www.bitcraze.io/2015/02/measuring-propeller-rpm-part-3/
+[5] HummingBird modelling: https://digitalrepository.unm.edu/cgi/viewcontent.cgi?referer=https://www.google.com/&httpsredir=1&article=1189&context=ece_etds
 """
 import argparse
 import logging
@@ -90,7 +91,7 @@ def crazyflie_params():
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 1.9, #2.18
                     "torque_to_thrust": 0.006, #0.005964552
-                    "linearity": 1., #0.424
+                    "linearity": 1., #0.424 for CrazyFlie w/o correction in firmware (See [2])
                     "C_drag": 0.000, # 3052 * 9.1785e-07  #3052 * 8.06428e-05, # 0.246
                     "C_roll": 0.000, #3052 * 0.000001 # 0.0003
                     "damp_time_up": 0., #0.15, #0.15 - See: [4] for details on motor damping. Note: these are rotational velocity damp params.
@@ -133,7 +134,7 @@ def defaultquad_params():
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 2.8,
                     "torque_to_thrust": 0.05,
-                    "linearity": 1.0,
+                    "linearity": 1.0, # 0.0476 for Hummingbird (See [5]) if we want to use RPMs instead of force.
                     "C_drag": 0.,
                     "C_roll": 0.,
                     "damp_time_up": 0,
@@ -683,7 +684,7 @@ class QuadrotorDynamics(object):
 
 
 # reasonable reward function for hovering at a goal and not flying too high
-def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, rew_coeff):
+def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, rew_coeff, action_prev):
     ##################################################
     ## log to create a sharp peak at the goal
     dist = np.linalg.norm(goal - dynamics.pos)
@@ -701,6 +702,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     ##################################################
     # penalize amount of control effort
     loss_effort = rew_coeff["effort"] * np.linalg.norm(action)
+    loss_act_change = rew_coeff["action_change"] * np.linalg.norm(action-action_prev)
 
     ##################################################
     ## loss velocity
@@ -747,6 +749,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
         loss_yaw,
         loss_spin_z,
         loss_spin_xy,
+        loss_act_change
         ])
     
 
@@ -760,6 +763,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     "rew_yaw": -loss_yaw,
     "rew_spin_z": -loss_spin_z,
     "rew_spin_xy": -loss_spin_xy,
+    "rew_act_change": -loss_act_change
     }
 
     # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
@@ -911,10 +915,11 @@ class QuadrotorEnv(gym.Env, Serializable):
         #########################################
         ## REWARDS PARAMS
         self.rew_coeff = {
-            "pos": 1, "pos_offset": 0.1,
-            "effort": 0.01, "crash": 1, 
-            "vel_proj": 0, 
-            "orient": 1, "yaw": 0,
+            "pos": 1., "pos_offset": 0.1,
+            "effort": 0.01, "action_change": 0.,
+            "crash": 1., 
+            "vel_proj": 0., 
+            "orient": 1., "yaw": 0.,
             "spin_z": 0.5, "spin_xy": 0.5}
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
@@ -1029,6 +1034,18 @@ class QuadrotorEnv(gym.Env, Serializable):
         # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, acc, self.actions[1]])
 
+    def state_xyz_vxyz_rot_omega_act(self):        
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, self.actions[1]])
+
     def state_xyz_vxyz_quat_omega(self):
         self.quat = R2quat(self.dynamics.rot)
         pos, vel, quat, omega, acc = self.sense_noise.add_noise(
@@ -1119,6 +1136,34 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_high[21:25] = self.action_space.high
             obs_low[21:25]  = self.action_space.low
 
+        elif self.obs_repr == "xyz_vxyz_rot_omega_act":
+            ## Creating observation space
+            # pos, vel, rot, rot vel
+            self.obs_comp_sizes = [3, 3, 9, 3, 3, 4]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "Acc", "Act"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18] 
+
+            # Action
+            obs_high[18:21] = self.action_space.high
+            obs_low[18:21]  = self.action_space.low
+
         elif self.obs_repr == "xyz_vxyz_euler_omega":
              ## Creating observation space
             # pos, vel, rot, rot vel
@@ -1187,7 +1232,18 @@ class QuadrotorEnv(gym.Env, Serializable):
     def _step(self, action):
         self.actions[1] = self.actions[0]
         self.actions[0] = copy.deepcopy(action)
-        # print('actions: ', action)
+        # print('actions_norm: ', np.linalg.norm(self.actions[0]-self.actions[1]))
+
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+                    pos=self.dynamics.pos,
+                    vel=self.dynamics.vel,
+                    rot=self.dynamics.rot,
+                    omega=self.dynamics.omega,
+                    acc=self.dynamics.accelerometer,
+                    dt=self.dt
+                )
+        print("accelerations:", self.dynamics.accelerometer, "noise_raio:", np.abs(self.dynamics.accelerometer-acc)/np.abs(self.dynamics.accelerometer))
+
         # if not self.crashed:
         # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
         self.controller.step_func(dynamics=self.dynamics,
@@ -1208,11 +1264,8 @@ class QuadrotorEnv(gym.Env, Serializable):
                                                               a_max=self.room_box[1]))
 
         self.time_remain = self.ep_len - self.tick
-        try:
-            reward, rew_info = compute_reward_weighted(self.dynamics, self.goal, action, self.dt, self.crashed, self.time_remain, 
-                                rew_coeff=self.rew_coeff)
-        except:
-            import pdb; pdb.set_trace()
+        reward, rew_info = compute_reward_weighted(self.dynamics, self.goal, action, self.dt, self.crashed, self.time_remain, 
+                            rew_coeff=self.rew_coeff, action_prev=self.actions[1])
         self.tick += 1
         done = self.tick > self.ep_len #or self.crashed
         sv = self.state_vector()
@@ -1460,7 +1513,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
             actions.append(action)
             thrusts.append(env.dynamics.thrust_cmds_damp)
             observations.append(s)
-            # print('Step: ', t, ' Obs:', env.dynamics.rot[0,0])
+            print('Step: ', t, ' Obs:', s)
 
             if plot_step is not None and t % plot_step == 0:
                 plt.clf()
@@ -1595,7 +1648,8 @@ def main(argv):
         default="xyz_vxyz_rot_omega_acc_act",
         help="State components. Options:\n" +
              "xyz_vxyz_rot_omega" +
-             "xyz_vxyz_rot_omega_acc_act"
+             "xyz_vxyz_rot_omega_act" +
+             "xyz_vxyz_rot_omega_acc_act" 
     )
     args = parser.parse_args()
 
