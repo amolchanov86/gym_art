@@ -927,6 +927,8 @@ class QuadrotorEnv(gym.Env, Serializable):
             assert isinstance(rew_coeff, dict)
             assert set(rew_coeff.keys()).issubset(set(self.rew_coeff.keys()))
             self.rew_coeff.update(rew_coeff)
+        for key in self.rew_coeff.keys():
+            self.rew_coeff[key] = float(self.rew_coeff[key])
         
         orig_keys = list(rew_coeff_orig.keys())
         # Checking to make sure we didn't provide some false rew_coeffs (for example by misspelling one of the params)
@@ -1139,8 +1141,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         elif self.obs_repr == "xyz_vxyz_rot_omega_act":
             ## Creating observation space
             # pos, vel, rot, rot vel
-            self.obs_comp_sizes = [3, 3, 9, 3, 3, 4]
-            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "Acc", "Act"]
+            self.obs_comp_sizes = [3, 3, 9, 3, 4]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "Act"]
             obs_dim = np.sum(self.obs_comp_sizes)
             obs_high =  np.ones(obs_dim)
             obs_low  = -np.ones(obs_dim)
@@ -1161,8 +1163,8 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18] 
 
             # Action
-            obs_high[18:21] = self.action_space.high
-            obs_low[18:21]  = self.action_space.low
+            obs_high[18:22] = self.action_space.high
+            obs_low[18:22]  = self.action_space.low
 
         elif self.obs_repr == "xyz_vxyz_euler_omega":
              ## Creating observation space
@@ -1242,7 +1244,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                     acc=self.dynamics.accelerometer,
                     dt=self.dt
                 )
-        print("accelerations:", self.dynamics.accelerometer, "noise_raio:", np.abs(self.dynamics.accelerometer-acc)/np.abs(self.dynamics.accelerometer))
+        # print("accelerations:", self.dynamics.accelerometer, "noise_raio:", np.abs(self.dynamics.accelerometer-acc)/np.abs(self.dynamics.accelerometer))
 
         # if not self.crashed:
         # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
