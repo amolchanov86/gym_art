@@ -1232,7 +1232,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         return [seed]
 
     def _step(self, action):
-        self.actions[1] = self.actions[0]
+        self.actions[1] = copy.deepcopy(self.actions[0])
         self.actions[0] = copy.deepcopy(action)
         # print('actions_norm: ', np.linalg.norm(self.actions[0]-self.actions[1]))
 
