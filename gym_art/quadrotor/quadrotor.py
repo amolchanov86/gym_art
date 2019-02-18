@@ -702,7 +702,8 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     ##################################################
     # penalize amount of control effort
     loss_effort = rew_coeff["effort"] * np.linalg.norm(action)
-    loss_act_change = rew_coeff["action_change"] * np.linalg.norm(action-action_prev)
+    dact = action - action_prev
+    loss_act_change = rew_coeff["action_change"] * (dact[0]**2 + dact[1]**2 + dact[2]**2 + dact[3]**2)**0.5
 
     ##################################################
     ## loss velocity
@@ -730,9 +731,10 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
 
     ##################################################
     ## Loss for constant uncontrolled rotation around vertical axis
-    loss_spin_z  = rew_coeff["spin_z"]  * np.abs(dynamics.omega[2])
+    loss_spin_z  = rew_coeff["spin_z"]  * abs(dynamics.omega[2])
     loss_spin_xy = rew_coeff["spin_xy"] * np.linalg.norm(dynamics.omega[:2])
-    loss_spin = rew_coeff["spin"] * np.linalg.norm(dynamics.omega) 
+    # loss_spin = rew_coeff["spin"] * np.linalg.norm(dynamics.omega) 
+    loss_spin = rew_coeff["spin"] * (dynamics.omega[0]**2 + dynamics.omega[1]**2 + dynamics.omega[2]**2)**0.5 
 
     ##################################################
     ## loss crash
