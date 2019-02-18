@@ -718,6 +718,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     # loss_vel_proj = - rew_coeff["vel_proj"] * dist * vel_proj
 
     # loss_vel_proj = 0. 
+    loss_vel = rew_coeff["vel"] * np.linalg.norm(dynamics.vel)
 
     ##################################################
     ## Loss orientation
@@ -752,7 +753,8 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
         loss_spin,
         loss_spin_z,
         loss_spin_xy,
-        loss_act_change
+        loss_act_change,
+        loss_vel
         ])
     
 
@@ -766,7 +768,8 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     "rew_spin": -loss_spin,
     "rew_spin_z": -loss_spin_z,
     "rew_spin_xy": -loss_spin_xy,
-    "rew_act_change": -loss_act_change
+    "rew_act_change": -loss_act_change,
+    "rew_vel": -loss_vel
     }
 
     # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
@@ -923,7 +926,8 @@ class QuadrotorEnv(gym.Env, Serializable):
             "crash": 1., 
             "orient": 1., "yaw": 0.,
             "spin_z": 0.5, "spin_xy": 0.5,
-            "spin": 0.}
+            "spin": 0.,
+            "vel": 0.}
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
         if rew_coeff is not None: 
