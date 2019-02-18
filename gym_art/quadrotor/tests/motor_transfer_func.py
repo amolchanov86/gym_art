@@ -119,6 +119,11 @@ class GazeboFilter(object):
         self.x_prev = y
         return y
 
+def Ta2gaz(Ta, dt):
+    return -dt / np.log(1 - 4*dt/Ta)
+
+def Tgaz2a(Tg, dt):
+    return 4*dt/(1-np.exp(-dt/Tg))
 
 
 def filter_fitness(coeff):
@@ -204,7 +209,7 @@ delay_up_thrust = 0.2
 delay_down_thrust = 1.5
 filt_thrust = FirstOrdHistFilter(Tup=delay_up_thrust, Tdown=delay_down_thrust, dt=1./freq)
 
-delay_up_gaz = 0.0325 #0.0125
+delay_up_gaz = 0.034940 #0.0125
 delay_down_gaz = 0.5 #0.025
 filt_gaz = GazeboFilter(Tup=delay_up_gaz, Tdown=delay_down_gaz, dt=1./freq)
 thrust_filt_approx = np.zeros_like(thrust)
