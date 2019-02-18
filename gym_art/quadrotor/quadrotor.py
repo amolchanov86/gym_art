@@ -688,7 +688,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     ##################################################
     ## log to create a sharp peak at the goal
     dist = np.linalg.norm(goal - dynamics.pos)
-    loss_pos = rew_coeff["pos"] * (np.log(dist + rew_coeff["pos_offset"]) + 0.1 * dist)
+    loss_pos = rew_coeff["pos"] * (rew_coeff["pos_log_weight"] * np.log(dist + rew_coeff["pos_offset"]) + rew_coeff["pos_linear_weight"] * dist)
     # loss_pos = dist
 
     # dynamics_pos = dynamics.pos
@@ -716,7 +716,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     # vel_proj = np.dot(dx, vel_clipped)
     # loss_vel_proj = - rew_coeff["vel_proj"] * dist * vel_proj
 
-    loss_vel_proj = 0. 
+    # loss_vel_proj = 0. 
 
     ##################################################
     ## Loss orientation
@@ -732,6 +732,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     ## Loss for constant uncontrolled rotation around vertical axis
     loss_spin_z  = rew_coeff["spin_z"]  * np.abs(dynamics.omega[2])
     loss_spin_xy = rew_coeff["spin_xy"] * np.linalg.norm(dynamics.omega[:2])
+    loss_spin = rew_coeff["spin"] * np.linalg.norm(dynamics.omega) 
 
     ##################################################
     ## loss crash
@@ -744,9 +745,9 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
         loss_pos, 
         loss_effort, 
         loss_crash, 
-        loss_vel_proj,
         loss_orient,
         loss_yaw,
+        loss_spin,
         loss_spin_z,
         loss_spin_xy,
         loss_act_change
@@ -758,9 +759,9 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     'rew_pos': -loss_pos, 
     'rew_action': -loss_effort, 
     'rew_crash': -loss_crash, 
-    'rew_vel_proj': -loss_vel_proj,
     "rew_orient": -loss_orient,
     "rew_yaw": -loss_yaw,
+    "rew_spin": -loss_spin,
     "rew_spin_z": -loss_spin_z,
     "rew_spin_xy": -loss_spin_xy,
     "rew_act_change": -loss_act_change
@@ -915,12 +916,12 @@ class QuadrotorEnv(gym.Env, Serializable):
         #########################################
         ## REWARDS PARAMS
         self.rew_coeff = {
-            "pos": 1., "pos_offset": 0.1,
+            "pos": 1., "pos_offset": 0.1, "pos_log_weight": 1., "pos_linear_weight": 0.1,
             "effort": 0.01, "action_change": 0.,
             "crash": 1., 
-            "vel_proj": 0., 
             "orient": 1., "yaw": 0.,
-            "spin_z": 0.5, "spin_xy": 0.5}
+            "spin_z": 0.5, "spin_xy": 0.5,
+            "spin": 0.}
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
         if rew_coeff is not None: 
