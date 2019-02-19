@@ -1,0 +1,31 @@
+body:
+  l: 0.04
+  w: 0.04
+  h: 0.04
+  m: 0.04
+payload:
+  l: 0.055
+  w: 0.015
+  h: 0.015
+  m: 0.029
+arms:
+  l: 0.0625
+  w: 0.009
+  h: 0.003
+  m: 0.006
+motors:
+  h: 0.012
+  r: 0.007
+  m: 0.006
+propellers:
+  h: 0.007
+  r: 0.035
+  m: 0.0012
+motor_pos:
+  xyz: [0.045, 0.045, 0.]
+arms_pos:
+  angle: 45.0
+  z: 0.0
+payload_pos:
+  xy: [0., 0.]
+  z_sign: -1

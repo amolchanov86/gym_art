@@ -230,6 +230,7 @@ plt.plot(steps, thrust, label="thrust")
 plt.plot(steps, thrust_gaz, label="thrust_gazebo")
 plt.axvline(x=delay_up, color="red")
 plt.axvline(x=delay_down + delay_pause, color="red")
+plt.legend()
 
 
 
