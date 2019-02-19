@@ -14,6 +14,7 @@ References:
 [3] HummingBird: http://www.asctec.de/en/uav-uas-drones-rpas-roav/asctec-hummingbird/
 [4] CrazyFlie thrusters transition functions: https://www.bitcraze.io/2015/02/measuring-propeller-rpm-part-3/
 [5] HummingBird modelling: https://digitalrepository.unm.edu/cgi/viewcontent.cgi?referer=https://www.google.com/&httpsredir=1&article=1189&context=ece_etds
+[6] Rotation b/w matrices: http://www.boris-belousov.net/2016/12/01/quat-dist/#using-rotation-matrices
 """
 import argparse
 import logging
@@ -723,12 +724,12 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     ##################################################
     ## Loss orientation
     loss_orient = -rew_coeff["orient"] * dynamics.rot[2,2] 
+    loss_yaw = -rew_coeff["yaw"] * dynamics.rot[0,0]
     # Projection of the z-body axis to z-world axis
     # Negative, because the larger the projection the smaller the loss (i.e. the higher the reward)
-
-    ##################################################
-    ## Loss yaw
-    loss_yaw = -rew_coeff["yaw"] * dynamics.rot[0,0]
+    rot_cos = ((dynamics.rot[0,0] +  dynamics.rot[1,1] +  dynamics.rot[2,2]) - 1.)/2.
+    #We have to clip since rotation matrix falls out of orthogonalization from time to time
+    loss_rotation = rew_coeff["rot"] * np.arccos(np.clip(rot_cos, -1.,1.)) #angle = arccos((trR-1)/2) See: [6]
 
     ##################################################
     ## Loss for constant uncontrolled rotation around vertical axis
@@ -750,6 +751,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
         loss_crash, 
         loss_orient,
         loss_yaw,
+        loss_rotation,
         loss_spin,
         loss_spin_z,
         loss_spin_xy,
@@ -765,6 +767,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     'rew_crash': -loss_crash, 
     "rew_orient": -loss_orient,
     "rew_yaw": -loss_yaw,
+    "rew_rot": -loss_rotation,
     "rew_spin": -loss_spin,
     "rew_spin_z": -loss_spin_z,
     "rew_spin_xy": -loss_spin_xy,
@@ -924,7 +927,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             "pos": 1., "pos_offset": 0.1, "pos_log_weight": 1., "pos_linear_weight": 0.1,
             "effort": 0.01, "action_change": 0.,
             "crash": 1., 
-            "orient": 1., "yaw": 0.,
+            "orient": 1., "yaw": 0., "rot": 0.,
             "spin_z": 0.5, "spin_xy": 0.5,
             "spin": 0.,
             "vel": 0.}
