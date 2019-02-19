@@ -94,8 +94,8 @@ def crazyflie_params():
                     "linearity": 1., #0.424 for CrazyFlie w/o correction in firmware (See [2])
                     "C_drag": 0.000, # 3052 * 9.1785e-07  #3052 * 8.06428e-05, # 0.246
                     "C_roll": 0.000, #3052 * 0.000001 # 0.0003
-                    "damp_time_up": 0., #0.15, #0.15 - See: [4] for details on motor damping. Note: these are rotational velocity damp params.
-                    "damp_time_down": 0. #2.0, #2.0
+                    "damp_time_up": 0.15, #0.15, #0.15 - See: [4] for details on motor damping. Note: these are rotational velocity damp params.
+                    "damp_time_down": 0.15 #2.0, #2.0
                     }
 
     ## Summarizing
