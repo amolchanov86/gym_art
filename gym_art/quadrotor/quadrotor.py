@@ -91,8 +91,9 @@ def crazyflie_params():
 
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 1.9, #2.18
+                    "assymetry": [1.0, 1.0, 1.0, 1.0],
                     "torque_to_thrust": 0.006, #0.005964552
-                    "linearity": 1., #0.424 for CrazyFlie w/o correction in firmware (See [2])
+                    "linearity": 1.0, #0.424 for CrazyFlie w/o correction in firmware (See [2])
                     "C_drag": 0.000, # 3052 * 9.1785e-07  #3052 * 8.06428e-05, # 0.246
                     "C_roll": 0.000, #3052 * 0.000001 # 0.0003
                     "damp_time_up": 0.15, #0.15, #0.15 - See: [4] for details on motor damping. Note: these are rotational velocity damp params.
@@ -134,6 +135,7 @@ def defaultquad_params():
     
     ## Motor parameters
     motor_params = {"thrust_to_weight" : 2.8,
+                    "assymetry": [1.0, 1.0, 1.0, 1.0], 
                     "torque_to_thrust": 0.05,
                     "linearity": 1.0, # 0.0476 for Hummingbird (See [5]) if we want to use RPMs instead of force.
                     "C_drag": 0.,
@@ -260,7 +262,13 @@ class QuadrotorDynamics(object):
 
         ###############################################################
         ## COMPUTED (Dependent) PARAMETERS
-        self.thrust_max = GRAV * self.mass * self.thrust_to_weight / 4.0
+        try:
+            self.motor_assymetry = np.array(self.model_params["motor"]["assymetry"])
+        except:
+            self.motor_assymetry = np.array([1.0, 1.0, 1.0, 1.0])
+            print("WARNING: Motor assymetry was not setup. Setting assymetry to:", self.motor_assymetry)
+        self.motor_assymetry = self.motor_assymetry * 4./np.sum(self.motor_assymetry) #re-normalizing to sum-up to 4
+        self.thrust_max = GRAV * self.mass * self.thrust_to_weight * self.motor_assymetry / 4.0
         self.torque_max = self.torque_to_thrust * self.thrust_max # propeller torque scales
 
         # Propeller positions in X configurations
@@ -1525,7 +1533,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
             actions.append(action)
             thrusts.append(env.dynamics.thrust_cmds_damp)
             observations.append(s)
-            print('Step: ', t, ' Obs:', s)
+            # print('Step: ', t, ' Obs:', s)
 
             if plot_step is not None and t % plot_step == 0:
                 plt.clf()
