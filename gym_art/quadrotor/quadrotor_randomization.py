@@ -28,7 +28,7 @@ def check_quad_param_limits(params, params_init=None):
     params["motor"]["thrust_to_weight"] = np.clip(params["motor"]["thrust_to_weight"], a_min=1.2, a_max=None)
     params["motor"]["torque_to_thrust"] = np.clip(params["motor"]["torque_to_thrust"], a_min=0.001, a_max=1.)
     params["motor"]["linearity"] = np.clip(params["motor"]["linearity"], a_min=0.999, a_max=1.)
-    params["motor"]["assymetry"] = np.clip(params["motor"]["assymetry"], a_min=0.7, a_max=1.3)
+    params["motor"]["assymetry"] = np.clip(params["motor"]["assymetry"], a_min=0.9, a_max=1.1)
     params["motor"]["C_drag"] = np.clip(params["motor"]["C_drag"], a_min=0., a_max=None)
     params["motor"]["C_roll"] = np.clip(params["motor"]["C_roll"], a_min=0., a_max=None)
     params["motor"]["damp_time_up"] = np.clip(params["motor"]["damp_time_up"], a_min=0., a_max=None)
