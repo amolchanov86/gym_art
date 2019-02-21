@@ -178,7 +178,7 @@ def sample_dyn_parameters():
     
     ## Motor parameters
     damp_time_up = np.random.uniform(low=0.1, high=0.2)
-    damp_time_down_scale = np.random.uniform(low=1.0, high=2.5)
+    damp_time_down_scale = np.random.uniform(low=1.0, high=2.0)
     motor_params = {"thrust_to_weight" : thrust_to_weight,
                     "torque_to_thrust": np.random.uniform(low=0.005, high=0.025), #0.05 originally
                     "assymetry": [1.0, 1.0, 1.0, 1.0],
