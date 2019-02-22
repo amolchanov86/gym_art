@@ -784,7 +784,12 @@ class QuadrotorEnv(gym.Env, Serializable):
         ## DYNAMICS (and randomization)
         if dynamics_params == "random":
             self.dynamics_params_def = None
-            self.dynamics_params = sample_dyn_parameters()
+            self.dyn_sampler = sample_random_dyn
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "random_lowinertia":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_random_dyn_lowinertia
+            self.dynamics_params = self.dyn_sampler()            
         else:
             ## Setting the quad dynamics params
             if isinstance(dynamics_params, str):
@@ -1215,7 +1220,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             - MUST call reset() after this function
         """
         if self.dynamics_params_def is None:
-            self.dynamics_params = sample_dyn_parameters()
+            self.dynamics_params = self.dyn_sampler()
         else:
             ## Generating new params
             self.dynamics_params = perturb_dyn_parameters(

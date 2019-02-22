@@ -100,7 +100,7 @@ def perturb_dyn_parameters(params, noise_params, sampler="normal"):
 
     return params_new
 
-def sample_dyn_parameters():
+def sample_random_dyn():
     """
     The function samples parameters for all possible quadrotors
     Args:
@@ -181,6 +181,110 @@ def sample_dyn_parameters():
     damp_time_down_scale = np.random.uniform(low=1.0, high=2.0)
     motor_params = {"thrust_to_weight" : thrust_to_weight,
                     "torque_to_thrust": np.random.uniform(low=0.005, high=0.025), #0.05 originally
+                    "assymetry": np.random.uniform(low=0.9, high=1.1, size=4),
+                    "linearity": 1.0,
+                    "C_drag": 0.,
+                    "C_roll": 0.,
+                    "damp_time_up": damp_time_up,
+                    "damp_time_down": damp_time_down_scale * damp_time_up
+                    # "linearity": np.random.normal(loc=0.5, scale=0.1)
+                    }
+
+    ## Summarizing
+    params = {
+        "geom": geom_params, 
+        "damp": damp_params, 
+        "noise": noise_params,
+        "motor": motor_params
+    }
+
+    ## Checking everything
+    params = check_quad_param_limits(params=params)
+    return params
+
+
+def sample_random_dyn_lowinertia():
+    """
+    The function samples parameters for all possible quadrotors
+    Args:
+        scale (float): scale of sampling
+    Returns:
+        dict: sampled quadrotor parameters
+    """
+    ###################################################################
+    ## DENSITIES (body, payload, arms, motors, propellers)
+    # Crazyflie estimated body / payload / arms / motors / props density: 1388.9 / 1785.7 / 1777.8 / 1948.8 / 246.6 kg/m^3
+    # Hummingbird estimated body / payload / arms / motors/ props density: 588.2 / 173.6 / 1111.1 / 509.3 / 246.6 kg/m^3
+    geom_params = {}
+    dens_val = np.random.uniform(
+        low=[1500., 1500., 100., 100., 10.], 
+        high=[2500., 2500., 200., 200., 20.])
+    
+    geom_params["body"] = {"density": dens_val[0]}
+    geom_params["payload"] = {"density": dens_val[1]}
+    geom_params["arms"] = {"density": dens_val[2]}
+    geom_params["motors"] = {"density": dens_val[3]}
+    geom_params["propellers"] = {"density": dens_val[4]}
+
+    ###################################################################
+    ## GEOMETRIES
+    # MOTORS (and overal size)
+    total_w = np.random.uniform(low=0.05, high=0.2)
+    total_l = np.clip(np.random.normal(loc=1., scale=0.1), a_min=1.0, a_max=None) * total_w
+    motor_z = np.random.normal(loc=0., scale=total_w / 8.)
+    geom_params["motor_pos"] = {"xyz": [total_w / 2., total_l / 2., motor_z]}
+    geom_params["motors"]["r"] = total_w * np.random.normal(loc=0.1, scale=0.01)
+    geom_params["motors"]["h"] = geom_params["motors"]["r"] * np.random.normal(loc=1.0, scale=0.05)
+    
+    # BODY
+    w_low, w_high = 0.2, 0.4
+    w_coeff = np.random.uniform(low=w_low, high=w_high)
+    geom_params["body"]["w"] = w_coeff * total_w
+    ## Promotes more elangeted bodies when they are more narrow
+    l_scale = (1. - (w_coeff - w_low) / (w_high - w_low))
+    geom_params["body"]["l"] =  np.clip(np.random.normal(loc=1., scale=l_scale), a_min=1.0, a_max=2.0) * geom_params["body"]["w"]
+    geom_params["body"]["h"] =  np.random.uniform(low=0.25, high=1.0) * geom_params["body"]["w"]
+
+    # PAYLOAD
+    pl_scl = np.random.uniform(low=0.50, high=1.0, size=2)
+    pl_scl_h = np.random.uniform(low=0.25, high=0.75, size=1)
+    geom_params["payload"]["w"] =  pl_scl[0] * geom_params["body"]["w"]
+    geom_params["payload"]["l"] =  pl_scl[1] * geom_params["body"]["l"]
+    geom_params["payload"]["h"] =  pl_scl_h[0] * geom_params["body"]["h"]
+    geom_params["payload_pos"] = {
+            "xy": np.random.normal(loc=0., scale=geom_params["body"]["w"] / 10., size=2), 
+            "z_sign": np.sign(np.random.uniform(low=-1, high=1))}
+    # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
+
+    # ARMS
+    geom_params["arms"]["w"] = total_w * np.random.normal(loc=0.05, scale=0.005)
+    geom_params["arms"]["h"] = total_w * np.random.normal(loc=0.05, scale=0.005)
+    geom_params["arms_pos"] = {"angle": np.random.normal(loc=45., scale=10.), "z": motor_z - geom_params["motors"]["h"]/2.}
+    
+    # PROPS
+    thrust_to_weight = np.random.uniform(low=1.8, high=2.5)
+    geom_params["propellers"]["h"] = 0.01
+    geom_params["propellers"]["r"] = (0.3) * total_w * (thrust_to_weight / 2.0)**0.5
+    
+    ## Damping parameters
+    # damp_vel_scale = np.random.uniform(low=0.01, high=2.)
+    # damp_omega_scale = damp_vel_scale * np.random.uniform(low=0.75, high=1.25)
+    # damp_params = {
+    #     "vel": 0.001 * damp_vel_scale, 
+    #     "omega_quadratic": 0.015 * damp_omega_scale}
+    damp_params = {
+        "vel": 0.0, 
+        "omega_quadratic": 0.0}
+
+    ## Noise parameters
+    noise_params = {}
+    noise_params["thrust_noise_ratio"] = np.random.uniform(low=0.05, high=0.1) #0.01
+    
+    ## Motor parameters
+    damp_time_up = np.random.uniform(low=0.1, high=0.2)
+    damp_time_down_scale = np.random.uniform(low=1.0, high=2.0)
+    motor_params = {"thrust_to_weight" : thrust_to_weight,
+                    "torque_to_thrust": np.random.uniform(low=0.005, high=0.02), #0.05 originally
                     "assymetry": np.random.uniform(low=0.9, high=1.1, size=4),
                     "linearity": 1.0,
                     "C_drag": 0.,

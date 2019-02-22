@@ -88,7 +88,6 @@ def defaultquad_params():
 def crazyflie_lowinertia_params():
     ## See: Ref[2] for details
     ## Geometric parameters for Inertia and the model
-    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     geom_params = {}
     geom_params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.014}
     geom_params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
