@@ -217,8 +217,8 @@ def sample_random_dyn_lowinertia():
     # Hummingbird estimated body / payload / arms / motors/ props density: 588.2 / 173.6 / 1111.1 / 509.3 / 246.6 kg/m^3
     geom_params = {}
     dens_val = np.random.uniform(
-        low=[1500., 1500., 100., 100., 10.], 
-        high=[2500., 2500., 200., 200., 20.])
+        low=[1500., 1500., 150., 150., 15.], 
+        high=[2500., 2500., 250., 250., 25.])
     
     geom_params["body"] = {"density": dens_val[0]}
     geom_params["payload"] = {"density": dens_val[1]}
