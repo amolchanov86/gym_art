@@ -1446,7 +1446,7 @@ class UpDownPolicy(object):
 
 def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, 
     render=True, traj_num=10, plot_step=None, plot_dyn_change=True, plot_thrusts=False,
-    sense_noise=None, policy_type="mellinger", init_random_state=False, obs_repr="xyz_vxyz_rot_omega"):
+    sense_noise=None, policy_type="mellinger", init_random_state=False, obs_repr="xyz_vxyz_rot_omega",csv_filename=None):
     import tqdm
     #############################
     # Init plottting
@@ -1517,6 +1517,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
         velocities = []
         actions = []
         thrusts = []
+        csv_data = []
 
         ## Collecting dynamics params
         if plot_dyn_change:
@@ -1534,6 +1535,8 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
             thrusts.append(env.dynamics.thrust_cmds_damp)
             observations.append(s)
             # print('Step: ', t, ' Obs:', s)
+            quat = R2quat(rot=s[6:15])
+            csv_data.append(np.concatenate([np.array([1.0/env.control_freq * t]), s[0:3], quat]))
 
             if plot_step is not None and t % plot_step == 0:
                 plt.clf()
@@ -1563,6 +1566,14 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
             plt.legend()
             plt.show(block=False)
             input("Press Enter to continue...")
+        
+        if csv_filename is not None:
+            import csv
+            with open(csv_filename, mode="w") as csv_file:
+                csv_writer = csv.writer(csv_file, delimiter=',')
+                for row in csv_data:
+                    csv_writer.writerow([i for i in row])
+
 
     if plot_dyn_change:
         dyn_par_normvar = []
@@ -1664,6 +1675,10 @@ def main(argv):
         help="Add sensor noise?"
     )
     parser.add_argument(
+        '-csv',"--csv_filename",
+        help="Filename for qudrotor data"
+    )
+    parser.add_argument(
         '-o',"--obs_repr",
         default="xyz_vxyz_rot_omega_acc_act",
         help="State components. Options:\n" +
@@ -1692,6 +1707,7 @@ def main(argv):
         policy_type=args.mode,
         init_random_state=args.init_random_state,
         obs_repr=args.obs_repr,
+        csv_filename=args.csv_filename,
     )
 
 if __name__ == '__main__':
