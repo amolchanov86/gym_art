@@ -314,6 +314,7 @@ if __name__ == "__main__":
     start_time = time.time()
     import argparse
     import yaml
+    from gym_art.quadrotor.quad_models import *
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
@@ -332,21 +333,21 @@ if __name__ == "__main__":
         print("Quad prop_pos: \n", quad.prop_pos, "shape:", quad.prop_pos.shape)
 
     ## CrazyFlie parameters
-    params = {}
-    params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
-    params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
-    params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
-    params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
-    params["propellers"] = {"h":0.002, "r":0.022, "m":0.00075}
+    # params = {}
+    # params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
+    # params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
+    # params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
+    # params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
+    # params["propellers"] = {"h":0.002, "r":0.022, "m":0.00075}
     
-    params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
-    params["arms_pos"] = {"angle": 45., "z": 0.}
-    params["payload_pos"] = {"xy": [0., 0.], "z_sign": 1}
+    # params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
+    # params["arms_pos"] = {"angle": 45., "z": 0.}
+    # params["payload_pos"] = {"xy": [0., 0.], "z_sign": 1}
     # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
 
-    quad = QuadLink(params=params, verbose=True)
+    quad_crazyflie = QuadLink(params=crazyflie_params()["geom"], verbose=True)
     print("Crazyflie: ")
-    report(quad)
+    report(quad_crazyflie)
 
     ## Aztec params
     geom_params = {}
@@ -363,6 +364,13 @@ if __name__ == "__main__":
     quad = QuadLink(params=geom_params, verbose=True)
     print("Aztec: ")
     report(quad)
+
+    ## Crazyflie with lowered inertia
+    quad = QuadLink(params=crazyflie_lowinertia_params()["geom"], verbose=True)
+    print("Crazyflie lowered inertia: ")
+    print("factor: ", quad_crazyflie.I_com / quad.I_com)
+    report(quad)
+
 
     ## Random params
     if args.config is not None:
