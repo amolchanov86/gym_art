@@ -305,3 +305,105 @@ def sample_random_dyn_lowinertia():
     ## Checking everything
     params = check_quad_param_limits(params=params)
     return params
+
+
+
+    # def sample_random_nondim_dyn():
+    #     """
+    #     The function samples parameters for all possible non-dimensional quadrotors
+    #     Args:
+    #         scale (float): scale of sampling
+    #     Returns:
+    #         dict: sampled quadrotor parameters
+    #     """
+    #     ###################################################################
+    #     ## DENSITIES (body, payload, arms, motors, propellers)
+    #     # Crazyflie estimated body / payload / arms / motors / props density: 1388.9 / 1785.7 / 1777.8 / 1948.8 / 246.6 kg/m^3
+    #     # Hummingbird estimated body / payload / arms / motors/ props density: 588.2 / 173.6 / 1111.1 / 509.3 / 246.6 kg/m^3
+    #     geom_params = {}
+       
+    #     geom_params["body"] = {"mass": 1.0}
+    #     geom_params["payload"] = {"mass": 0}
+    #     geom_params["arms"]    = {"mass": 0.}
+    #     geom_params["motors"]  = {"mass": 0.}
+    #     geom_params["propellers"] = {"mass": 0.}
+
+    #     ###################################################################
+    #     ## GEOMETRIES
+    #     # MOTORS (and overal size)
+    #     roll_authority = np.random.uniform(low=600, high=1200) #for our current low inertia CF ~ 1050
+    #     pitch_authority = np.random.uniform(low=0.8, high=1.0) * roll_authority
+    #     total_w = np.random.uniform(low=0.5, high=0.5)
+    #     total_l = total_w
+    #     motor_z = np.random.normal(loc=0., scale=total_w / 8.)
+    #     geom_params["motor_pos"] = {"xyz": [total_w / 2., total_l / 2., motor_z]}
+    #     geom_params["motors"]["r"] = total_w * np.random.normal(loc=0.1, scale=0.01)
+    #     geom_params["motors"]["h"] = geom_params["motors"]["r"] * np.random.normal(loc=1.0, scale=0.05)
+
+    #     # BODY
+    #     geom_params["body"]["w"] = np.random.uniform(low=1.0, high=1.0)
+    #     ## Promotes more elangeted bodies when they are more narrow
+    #     geom_params["body"]["l"] =  np.random.uniform(low=1.0, high=2.0) * geom_params["body"]["w"]
+    #     geom_params["body"]["h"] =  np.random.uniform(low=0.1, high=1.0) * geom_params["body"]["w"]
+        
+
+
+    #     # PAYLOAD
+    #     pl_scl = np.random.uniform(low=0.25, high=1.0, size=3)
+    #     geom_params["payload"]["w"] =  pl_scl[0] * geom_params["body"]["w"]
+    #     geom_params["payload"]["l"] =  pl_scl[1] * geom_params["body"]["l"]
+    #     geom_params["payload"]["h"] =  pl_scl[2] * geom_params["body"]["h"]
+    #     geom_params["payload_pos"] = {
+    #             "xy": np.random.normal(loc=0., scale=geom_params["body"]["w"] / 10., size=2), 
+    #             "z_sign": np.sign(np.random.uniform(low=-1, high=1))}
+    #     # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
+
+    #     # ARMS
+    #     geom_params["arms"]["w"] = total_w * np.random.normal(loc=0.05, scale=0.005)
+    #     geom_params["arms"]["h"] = total_w * np.random.normal(loc=0.05, scale=0.005)
+    #     geom_params["arms_pos"] = {"angle": np.random.normal(loc=45., scale=10.), "z": motor_z - geom_params["motors"]["h"]/2.}
+        
+    #     # PROPS
+    #     thrust_to_weight = np.random.uniform(low=1.8, high=2.5)
+    #     geom_params["propellers"]["h"] = 0.01
+    #     geom_params["propellers"]["r"] = (0.3) * total_w * (thrust_to_weight / 2.0)**0.5
+        
+    #     ## Damping parameters
+    #     # damp_vel_scale = np.random.uniform(low=0.01, high=2.)
+    #     # damp_omega_scale = damp_vel_scale * np.random.uniform(low=0.75, high=1.25)
+    #     # damp_params = {
+    #     #     "vel": 0.001 * damp_vel_scale, 
+    #     #     "omega_quadratic": 0.015 * damp_omega_scale}
+    #     damp_params = {
+    #         "vel": 0.0, 
+    #         "omega_quadratic": 0.0}
+
+    #     ## Noise parameters
+    #     noise_params = {}
+    #     noise_params["thrust_noise_ratio"] = np.random.uniform(low=0.01, high=0.05) #0.01
+        
+    #     ## Motor parameters
+    #     damp_time_up = np.random.uniform(low=0.1, high=0.2)
+    #     damp_time_down_scale = np.random.uniform(low=1.0, high=2.0)
+    #     motor_params = {"thrust_to_weight" : thrust_to_weight,
+    #                     "torque_to_thrust": np.random.uniform(low=0.005, high=0.025), #0.05 originally
+    #                     "assymetry": np.random.uniform(low=0.9, high=1.1, size=4),
+    #                     "linearity": 1.0,
+    #                     "C_drag": 0.,
+    #                     "C_roll": 0.,
+    #                     "damp_time_up": damp_time_up,
+    #                     "damp_time_down": damp_time_down_scale * damp_time_up
+    #                     # "linearity": np.random.normal(loc=0.5, scale=0.1)
+    #                     }
+
+    #     ## Summarizing
+    #     params = {
+    #         "geom": geom_params, 
+    #         "damp": damp_params, 
+    #         "noise": noise_params,
+    #         "motor": motor_params
+    #     }
+
+    #     ## Checking everything
+    #     params = check_quad_param_limits(params=params)
+    #     return params
