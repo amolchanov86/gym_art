@@ -648,6 +648,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     rot_cos = ((dynamics.rot[0,0] +  dynamics.rot[1,1] +  dynamics.rot[2,2]) - 1.)/2.
     #We have to clip since rotation matrix falls out of orthogonalization from time to time
     loss_rotation = rew_coeff["rot"] * np.arccos(np.clip(rot_cos, -1.,1.)) #angle = arccos((trR-1)/2) See: [6]
+    loss_attitude = rew_coeff["attitude"] * np.arccos(np.clip(dynamics.rot[2,2], -1.,1.))
 
     ##################################################
     ## Loss for constant uncontrolled rotation around vertical axis
@@ -670,6 +671,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
         loss_orient,
         loss_yaw,
         loss_rotation,
+        loss_attitude,
         loss_spin,
         # loss_spin_z,
         # loss_spin_xy,
@@ -686,6 +688,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     "rew_orient": -loss_orient,
     "rew_yaw": -loss_yaw,
     "rew_rot": -loss_rotation,
+    "rew_attitude": -loss_attitude,
     "rew_spin": -loss_spin,
     # "rew_spin_z": -loss_spin_z,
     # "rew_spin_xy": -loss_spin_xy,
@@ -851,7 +854,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             "effort": 0.01, 
             # "action_change": 0.,
             "crash": 1., 
-            "orient": 1., "yaw": 0., "rot": 0.,
+            "orient": 1., "yaw": 0., "rot": 0., "attitude": 0.,
             # "spin_z": 0.5, "spin_xy": 0.5,
             "spin": 0.,
             "vel": 0.}
