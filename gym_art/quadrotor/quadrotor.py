@@ -789,10 +789,14 @@ class QuadrotorEnv(gym.Env, Serializable):
             self.dynamics_params_def = None
             self.dyn_sampler = sample_random_dyn
             self.dynamics_params = self.dyn_sampler()
-        elif dynamics_params == "random_lowinertia":
+        elif dynamics_params == "random_t2w_15_25":
             self.dynamics_params_def = None
-            self.dyn_sampler = sample_random_dyn_lowinertia
-            self.dynamics_params = self.dyn_sampler()            
+            self.dyn_sampler = sample_random_thrust2weight_15_25
+            self.dynamics_params = self.dyn_sampler()  
+        elif dynamics_params == "random_t2w_15_35":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_random_thrust2weight_15_35
+            self.dynamics_params = self.dyn_sampler()
         else:
             ## Setting the quad dynamics params
             if isinstance(dynamics_params, str):

@@ -177,8 +177,8 @@ def sample_random_dyn():
     noise_params["thrust_noise_ratio"] = np.random.uniform(low=0.01, high=0.05) #0.01
     
     ## Motor parameters
-    damp_time_up = np.random.uniform(low=0.1, high=0.2)
-    damp_time_down_scale = np.random.uniform(low=1.0, high=2.0)
+    damp_time_up = np.random.uniform(low=0.15, high=0.2)
+    damp_time_down_scale = np.random.uniform(low=1.0, high=1.0)
     motor_params = {"thrust_to_weight" : thrust_to_weight,
                     "torque_to_thrust": np.random.uniform(low=0.005, high=0.025), #0.05 originally
                     "assymetry": np.random.uniform(low=0.9, high=1.1, size=4),
@@ -200,6 +200,22 @@ def sample_random_dyn():
 
     ## Checking everything
     params = check_quad_param_limits(params=params)
+    return params
+
+def sample_random_dyn_nodelay():
+    params = sample_random_dyn()
+    params["motor"]["damp_time_up"] = 0.
+    params["motor"]["damp_time_down"] = 0.
+    return params
+
+def sample_random_thrust2weight_15_25():
+    params = sample_random_dyn()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=2.5)
+    return params
+
+def sample_random_thrust2weight_15_35():
+    params = sample_random_dyn()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
     return params
 
 
