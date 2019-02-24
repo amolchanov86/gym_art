@@ -3,6 +3,7 @@ from numpy.linalg import norm
 from copy import deepcopy
 
 from gym_art.quadrotor.quad_utils import *
+from gym_art.quadrotor.quad_models import *
 
 def clip_params_positive(params):
     def clip_positive(key, item):
@@ -215,6 +216,21 @@ def sample_random_thrust2weight_15_25():
 
 def sample_random_thrust2weight_15_35():
     params = sample_random_dyn()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
+    return params
+
+def sample_crazyflie_thrust2weight_18_25():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.8, high=2.5)
+    return params
+
+def sample_crazyflie_thrust2weight_15_25():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=2.5)
+    return params
+
+def sample_crazyflie_thrust2weight_15_35():
+    params = crazyflie_params()
     params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
     return params
 
