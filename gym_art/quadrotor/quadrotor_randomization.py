@@ -219,6 +219,23 @@ def sample_random_thrust2weight_15_35():
     params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
     return params
 
+def sample_random_thrust2weight_20_30():
+    params = sample_random_dyn()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=2.0, high=3.0)
+    return params
+
+def sample_random_thrust2weight_20_40():
+    params = sample_random_dyn()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=2.0, high=4.0)
+    return params
+
+def sample_random_thrust2weight_20_50():
+    params = sample_random_dyn()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=2.0, high=5.0)
+    return params
+
+
+
 def sample_crazyflie_thrust2weight_18_25():
     params = crazyflie_params()
     params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.8, high=2.5)
@@ -232,6 +249,21 @@ def sample_crazyflie_thrust2weight_15_25():
 def sample_crazyflie_thrust2weight_15_35():
     params = crazyflie_params()
     params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
+    return params
+
+def sample_crazyflie_thrust2weight_20_30():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=2.0, high=3.0)
+    return params
+
+def sample_crazyflie_thrust2weight_20_40():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=2.0, high=4.0)
+    return params
+
+def sample_crazyflie_thrust2weight_20_50():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=2.0, high=5.0)
     return params
 
 

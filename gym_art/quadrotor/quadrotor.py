@@ -797,6 +797,18 @@ class QuadrotorEnv(gym.Env, Serializable):
             self.dynamics_params_def = None
             self.dyn_sampler = sample_random_thrust2weight_15_35
             self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "random_t2w_20_30":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_random_thrust2weight_20_30
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "random_t2w_20_40":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_random_thrust2weight_20_40
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "random_t2w_20_50":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_random_thrust2weight_20_50
+            self.dynamics_params = self.dyn_sampler()
         elif dynamics_params == "crazyflie_t2w_18_25":
             self.dynamics_params_def = None
             self.dyn_sampler = sample_crazyflie_thrust2weight_18_25
@@ -808,6 +820,18 @@ class QuadrotorEnv(gym.Env, Serializable):
         elif dynamics_params == "crazyflie_t2w_15_35":
             self.dynamics_params_def = None
             self.dyn_sampler = sample_crazyflie_thrust2weight_15_35
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "crazyflie_t2w_20_30":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_crazyflie_thrust2weight_20_30
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "crazyflie_t2w_20_40":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_crazyflie_thrust2weight_20_40
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "crazyflie_t2w_20_50":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_crazyflie_thrust2weight_20_50
             self.dynamics_params = self.dyn_sampler()
         else:
             ## Setting the quad dynamics params
