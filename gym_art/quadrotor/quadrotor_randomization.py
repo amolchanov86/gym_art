@@ -28,7 +28,7 @@ def check_quad_param_limits(params, params_init=None):
     ## Motor parameters
     params["motor"]["thrust_to_weight"] = np.clip(params["motor"]["thrust_to_weight"], a_min=1.2, a_max=None)
     params["motor"]["torque_to_thrust"] = np.clip(params["motor"]["torque_to_thrust"], a_min=0.001, a_max=1.)
-    params["motor"]["linearity"] = np.clip(params["motor"]["linearity"], a_min=0.999, a_max=1.)
+    params["motor"]["linearity"] = np.clip(params["motor"]["linearity"], a_min=0., a_max=1.)
     params["motor"]["assymetry"] = np.clip(params["motor"]["assymetry"], a_min=0.9, a_max=1.1)
     params["motor"]["C_drag"] = np.clip(params["motor"]["C_drag"], a_min=0., a_max=None)
     params["motor"]["C_roll"] = np.clip(params["motor"]["C_roll"], a_min=0., a_max=None)
@@ -232,6 +232,11 @@ def sample_random_thrust2weight_20_40():
 def sample_random_thrust2weight_20_50():
     params = sample_random_dyn()
     params["motor"]["thrust_to_weight"] = np.random.uniform(low=2.0, high=5.0)
+    return params
+
+def sample_random_with_linearity():
+    params = sample_random_dyn()
+    params["motor"]["linearity"] = np.random.uniform(low=0., high=1.)
     return params
 
 
