@@ -15,6 +15,7 @@ References:
 [4] CrazyFlie thrusters transition functions: https://www.bitcraze.io/2015/02/measuring-propeller-rpm-part-3/
 [5] HummingBird modelling: https://digitalrepository.unm.edu/cgi/viewcontent.cgi?referer=https://www.google.com/&httpsredir=1&article=1189&context=ece_etds
 [6] Rotation b/w matrices: http://www.boris-belousov.net/2016/12/01/quat-dist/#using-rotation-matrices
+[7] Rodrigues' rotation formula: https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
 """
 import argparse
 import logging
@@ -416,35 +417,54 @@ class QuadrotorDynamics(object):
         ###################################
         ## Integrating rotations (based on current values)
         omega_vec = np.matmul(self.rot, self.omega) # Change from body2world frame
-        x, y, z = omega_vec
-        omega_mat_deriv = np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
+        wx, wy, wz = omega_vec
+        omega_norm = np.linalg.norm(omega_vec)
+        if omega_norm != 0:
+            # See [7]
+            K = np.array([[0, -wz, wy], [wz, 0, -wx], [-wy, wx, 0]]) / omega_norm
+            rot_angle = omega_norm * dt
+            dRdt = self.eye + np.sin(rot_angle) * K + (1. - np.cos(rot_angle)) * (K @ K)
+            self.rot = dRdt @ self.rot
 
+        ## The old way of matrix integration
         # ROtation matrix derivative
-        dRdt = np.matmul(omega_mat_deriv, self.rot)
-        self.rot += dt * dRdt
+        # omega_mat_deriv = np.array([[0, -wz, wy], [wz, 0, -wx], [-wy, wx, 0]])
+        # dRdt = np.matmul(omega_mat_deriv, self.rot)
+        # self.rot += dt * dRdt
 
+        self.since_last_svd += dt
+        if self.since_last_svd > self.since_last_svd_limit:
+            ## Perform SVD orthogonolization
+            # try:
+            u, s, v = np.linalg.svd(self.rot)
+            self.rot = np.matmul(u, v)
+            self.since_last_svd = 0
+
+        #####################################################################
+        ## THE OLD ADAPTIVE SVD
         # Occasionally orthogonalize the rotation matrix
         # It is necessary, since integration falls apart over time, thus
         # R matrix becomes non orthogonal (inconsistent)
-        self.since_last_svd += dt
-        self.since_last_ort_check += dt
-        if self.since_last_ort_check >= self.since_last_ort_check_limit:
-            self.since_last_ort_check = 0.
-            nonort_coeff = np.sum(np.abs(self.rot @ self.rot.T - self.eye))
-            self.rot_nonort_coeff_maxsofar = max(nonort_coeff, self.rot_nonort_coeff_maxsofar)
-            if nonort_coeff > self.rot_nonort_limit or self.since_last_svd > self.since_last_svd_limit:
-                ## Perform SVD orthogonolization
-                try:
-                    u, s, v = np.linalg.svd(self.rot)
-                    self.rot = np.matmul(u, v)
-                    self.since_last_svd = 0
-                except Exception as e:
-                    print('Rotation Matrix: ', self.rot, ' actions damped: ', self.thrust_cmds_damp)
-                    log_error('##########################################################')
-                    for key, value in locals().items():
-                        log_error('%s: %s \n' %(key, str(value)))
-                        print('%s: %s \n' %(key, str(value)))
-                    raise ValueError("QuadrotorEnv ERROR: SVD did not converge: " + str(e))
+        # self.since_last_svd += dt
+        # self.since_last_ort_check += dt
+        # if self.since_last_ort_check >= self.since_last_ort_check_limit:
+        #     self.since_last_ort_check = 0.
+        #     nonort_coeff = np.sum(np.abs(self.rot @ self.rot.T - self.eye))
+        #     self.rot_nonort_coeff_maxsofar = max(nonort_coeff, self.rot_nonort_coeff_maxsofar)
+        #     if nonort_coeff > self.rot_nonort_limit or self.since_last_svd > self.since_last_svd_limit:
+        #         ## Perform SVD orthogonolization
+        #         try:
+        #             print("SVD: since last: %f " % self.since_last_svd)
+        #             u, s, v = np.linalg.svd(self.rot)
+        #             self.rot = np.matmul(u, v)
+        #             self.since_last_svd = 0
+        #         except Exception as e:
+        #             print('Rotation Matrix: ', self.rot, ' actions damped: ', self.thrust_cmds_damp)
+        #             log_error('##########################################################')
+        #             for key, value in locals().items():
+        #                 log_error('%s: %s \n' %(key, str(value)))
+        #                 print('%s: %s \n' %(key, str(value)))
+        #             raise ValueError("QuadrotorEnv ERROR: SVD did not converge: " + str(e))
                     # log_error('QuadrotorEnv: ' + str(e) + ': ' + 'Rotation matrix: ' + str(self.rot))
 
         ###################################
