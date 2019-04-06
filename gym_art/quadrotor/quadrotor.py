@@ -1025,6 +1025,22 @@ class QuadrotorEnv(gym.Env, Serializable):
         # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega])
 
+    def state_xyzr_vxyzr_rot_omega(self):
+        """
+        xyz and Vxyz are given in a body frame
+        """        
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        e_xyz_rel = self.rot.T @ (pos - self.goal[:3])
+        vel_rel = self.rot.T @ vel
+        return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega])
+
     def state_xyz_vxyz_rot_omega_acc_act(self):        
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
@@ -1075,7 +1091,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
     def get_observation_space(self):
         self.wall_offset = 0.3
-        if self.obs_repr == "xyz_vxyz_rot_omega":
+        if self.obs_repr == "xyz_vxyz_rot_omega" or self.obs_repr == "xyzr_vxyzr_rot_omega":
             ## Creating observation space
             # pos, vel, rot, rot vel
             self.obs_comp_sizes = [3, 3, 9, 3]
