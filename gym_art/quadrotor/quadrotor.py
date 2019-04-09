@@ -1044,6 +1044,23 @@ class QuadrotorEnv(gym.Env, Serializable):
         )
         return np.concatenate([pos - self.goal[:3], vel, quat, omega])
 
+    def state_xyzr_vxyzr_quat_omega(self):
+        """
+        xyz and Vxyz are given in a body frame
+        """   
+        self.quat = R2quat(self.dynamics.rot)
+        pos, vel, quat, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.quat,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
+        vel_rel = self.dynamics.rot.T @ vel
+        return np.concatenate([e_xyz_rel, vel_rel, quat, omega])
+
     def state_xyz_vxyz_euler_omega(self):
         self.euler = t3d.euler.mat2euler(self.dynamics.rot)
         pos, vel, quat, omega, acc = self.sense_noise.add_noise(
@@ -1179,7 +1196,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             # obs_high[-1] = self.room_box[1][2] 
             # obs_low[-1] = self.room_box[0][2]           
 
-        elif self.obs_repr == "state_xyz_vxyz_quat_omega":
+        elif self.obs_repr == "xyz_vxyz_quat_omega" or self.obs_repr == "xyzr_vxyzr_quat_omega":
              ## Creating observation space
             # pos, vel, rot, rot vel
             self.obs_comp_sizes = [3, 3, 4, 3]
