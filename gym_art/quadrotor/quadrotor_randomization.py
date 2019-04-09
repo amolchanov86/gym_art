@@ -160,6 +160,7 @@ def sample_random_dyn():
     
     # PROPS
     thrust_to_weight = np.random.uniform(low=1.8, high=2.5)
+    # thrust_to_weight = np.random.uniform(low=2.3, high=2.5)
     geom_params["propellers"]["h"] = 0.01
     geom_params["propellers"]["r"] = (0.3) * total_w * (thrust_to_weight / 2.0)**0.5
     
@@ -212,6 +213,7 @@ def sample_random_dyn_nodelay():
 def sample_random_thrust2weight_15_25():
     params = sample_random_dyn()
     params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=2.5)
+    # params["motor"]["thrust_to_weight"] = np.random.uniform(low=2.8, high=2.8)
     return params
 
 def sample_random_thrust2weight_15_35():

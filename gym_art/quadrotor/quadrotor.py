@@ -426,12 +426,6 @@ class QuadrotorDynamics(object):
             dRdt = self.eye + np.sin(rot_angle) * K + (1. - np.cos(rot_angle)) * (K @ K)
             self.rot = dRdt @ self.rot
 
-        ## The old way of matrix integration
-        # ROtation matrix derivative
-        # omega_mat_deriv = np.array([[0, -wz, wy], [wz, 0, -wx], [-wy, wx, 0]])
-        # dRdt = np.matmul(omega_mat_deriv, self.rot)
-        # self.rot += dt * dRdt
-
         self.since_last_svd += dt
         if self.since_last_svd > self.since_last_svd_limit:
             ## Perform SVD orthogonolization
@@ -439,33 +433,6 @@ class QuadrotorDynamics(object):
             u, s, v = np.linalg.svd(self.rot)
             self.rot = np.matmul(u, v)
             self.since_last_svd = 0
-
-        #####################################################################
-        ## THE OLD ADAPTIVE SVD
-        # Occasionally orthogonalize the rotation matrix
-        # It is necessary, since integration falls apart over time, thus
-        # R matrix becomes non orthogonal (inconsistent)
-        # self.since_last_svd += dt
-        # self.since_last_ort_check += dt
-        # if self.since_last_ort_check >= self.since_last_ort_check_limit:
-        #     self.since_last_ort_check = 0.
-        #     nonort_coeff = np.sum(np.abs(self.rot @ self.rot.T - self.eye))
-        #     self.rot_nonort_coeff_maxsofar = max(nonort_coeff, self.rot_nonort_coeff_maxsofar)
-        #     if nonort_coeff > self.rot_nonort_limit or self.since_last_svd > self.since_last_svd_limit:
-        #         ## Perform SVD orthogonolization
-        #         try:
-        #             print("SVD: since last: %f " % self.since_last_svd)
-        #             u, s, v = np.linalg.svd(self.rot)
-        #             self.rot = np.matmul(u, v)
-        #             self.since_last_svd = 0
-        #         except Exception as e:
-        #             print('Rotation Matrix: ', self.rot, ' actions damped: ', self.thrust_cmds_damp)
-        #             log_error('##########################################################')
-        #             for key, value in locals().items():
-        #                 log_error('%s: %s \n' %(key, str(value)))
-        #                 print('%s: %s \n' %(key, str(value)))
-        #             raise ValueError("QuadrotorEnv ERROR: SVD did not converge: " + str(e))
-                    # log_error('QuadrotorEnv: ' + str(e) + ': ' + 'Rotation matrix: ' + str(self.rot))
 
         ###################################
         ## COMPUTING OMEGA UPDATE
@@ -1037,8 +1004,8 @@ class QuadrotorEnv(gym.Env, Serializable):
             acc=self.dynamics.accelerometer,
             dt=self.dt
         )
-        e_xyz_rel = self.rot.T @ (pos - self.goal[:3])
-        vel_rel = self.rot.T @ vel
+        e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
+        vel_rel = self.dynamics.rot.T @ vel
         return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega])
 
     def state_xyz_vxyz_rot_omega_acc_act(self):        
