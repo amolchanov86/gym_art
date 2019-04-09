@@ -1110,6 +1110,24 @@ class QuadrotorEnv(gym.Env, Serializable):
         return np.concatenate([e_xyz_rel, vel_rel, quat, omega])
 
     @staticmethod
+    def state_xyzr_vxyzr_quat_omega_h(self):
+        """
+        xyz and Vxyz are given in a body frame
+        """   
+        self.quat = R2quat(self.dynamics.rot)
+        pos, vel, quat, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.quat,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
+        vel_rel = self.dynamics.rot.T @ vel
+        return np.concatenate([e_xyz_rel, vel_rel, quat, omega, (pos[2],)])
+
+    @staticmethod
     def state_xyz_vxyz_euler_omega(self):
         self.euler = t3d.euler.mat2euler(self.dynamics.rot)
         pos, vel, quat, omega, acc = self.sense_noise.add_noise(
@@ -1300,6 +1318,35 @@ class QuadrotorEnv(gym.Env, Serializable):
             # z - distance to ground
             # obs_high[-1] = self.room_box[1][2] 
             # obs_low[-1] = self.room_box[0][2]    
+
+        elif self.obs_repr == "xyzr_vxyzr_quat_omega_h":
+             ## Creating observation space
+            # pos, vel, rot, rot vel
+            self.obs_comp_sizes = [3, 3, 4, 3, 1]
+            self.obs_comp_names = ["xyz", "Vxyz", "quat", "Omega", "h"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # Quat
+            # indx range: 6:9
+
+            # Omega
+            obs_high[9:12] = self.dynamics.omega_max * obs_high[9:12]
+            obs_low[9:12]  = self.dynamics.omega_max * obs_low[9:12]           
+
+            # h - distance to ground
+            obs_high[-1] = self.room_box[1][2] 
+            obs_low[-1] = self.room_box[0][2]  
+
 
 
         self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
