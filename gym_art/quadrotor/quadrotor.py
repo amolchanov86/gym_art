@@ -719,7 +719,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                 dynamics_randomize_every=None, dynamics_randomization_ratio=0., dynamics_randomization_ratio_params=None,
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
                 obs_repr="xyz_vxyz_rot_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
-                rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV, resample_goal=True):
+                rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV, resample_goal=False):
         np.seterr(under='ignore')
         """
         Args:
