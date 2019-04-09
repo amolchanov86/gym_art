@@ -137,7 +137,8 @@ class QuadrotorDynamics(object):
 
         ## Selecting how many sim steps should be done b/w controller calls
         # i.e. controller frequency
-        self.step = getattr(self, 'step%d' % dynamics_steps_num)
+        self._step = getattr(self, 'step%d' % dynamics_steps_num)
+        # self.step = getattr(QuadrotorDynamics, 'step%d' % dynamics_steps_num)
 
 
     @staticmethod
@@ -206,7 +207,7 @@ class QuadrotorDynamics(object):
 
         self.arm = np.linalg.norm(self.model.motor_xyz[:2])
 
-        self.step = getattr(self, 'step%d' % self.dynamics_steps_num)
+        self._step = getattr(self, 'step%d' % self.dynamics_steps_num)
 
         self.reset()
 
@@ -260,53 +261,61 @@ class QuadrotorDynamics(object):
         rot = t3d.euler.euler2mat(roll, pitch, yaw)
         return pos, vel, rot, omega
 
+    def step(self, thrust_cmds, dt):
+        self._step(self, thrust_cmds, dt)
+
     # multiple dynamics steps
+    @staticmethod
     def step2(self, thrust_cmds, dt):
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
 
 
     # multiple dynamics steps
+    @staticmethod
     def step4(self, thrust_cmds, dt):
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
         # print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
 
     # multiple dynamics steps
+    @staticmethod
     def step6(self, thrust_cmds, dt):
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
         # print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
 
     # multiple dynamics steps
+    @staticmethod
     def step8(self, thrust_cmds, dt):
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
 
     # multiple dynamics steps
+    @staticmethod
     def step10(self, thrust_cmds, dt):
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
-        self.step1(thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
+        self.step1(self, thrust_cmds, dt)
 
     ## Step function integrates based on current derivative values (best fits affine dynamics model)
     # thrust_cmds is motor thrusts given in normalized range [0, 1].
@@ -319,6 +328,7 @@ class QuadrotorDynamics(object):
     # goal_pos - global
     # from numba import jit, autojit
     # @autojit
+    @staticmethod
     def step1(self, thrust_cmds, dt):
         # print("thrust_cmds:", thrust_cmds)
         # uncomment for debugging. they are slow
@@ -709,7 +719,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                 dynamics_randomize_every=None, dynamics_randomization_ratio=0., dynamics_randomization_ratio_params=None,
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
                 obs_repr="xyz_vxyz_rot_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
-                rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV):
+                rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV, resample_goal=True):
         np.seterr(under='ignore')
         """
         Args:
@@ -751,6 +761,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.scene = None
         self.update_sense_noise(sense_noise=sense_noise)
         self.gravity = gravity
+        self.resample_goal = resample_goal
         
         ## PARAMS
         self.max_init_vel = 1. # m/s
@@ -980,6 +991,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         ## STATE VECTOR FUNCTION
         self.state_vector = getattr(self, "state_" + self.obs_repr)
 
+    ## NOTE: the state_* methods are static because otherwise getattr memorizes self
+    @staticmethod
     def state_xyz_vxyz_rot_omega(self):        
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
@@ -992,6 +1005,20 @@ class QuadrotorEnv(gym.Env, Serializable):
         # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega])
 
+    @staticmethod
+    def state_xyz_vxyz_rot_omega_h(self):        
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
+        # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega])
+
+    @staticmethod
     def state_xyzr_vxyzr_rot_omega(self):
         """
         xyz and Vxyz are given in a body frame
@@ -1008,6 +1035,24 @@ class QuadrotorEnv(gym.Env, Serializable):
         vel_rel = self.dynamics.rot.T @ vel
         return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega])
 
+    @staticmethod
+    def state_xyzr_vxyzr_rot_omega_h(self):
+        """
+        xyz and Vxyz are given in a body frame
+        """        
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
+        vel_rel = self.dynamics.rot.T @ vel
+        return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega, (pos[2],)])
+
+    @staticmethod
     def state_xyz_vxyz_rot_omega_acc_act(self):        
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
@@ -1020,6 +1065,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, acc, self.actions[1]])
 
+    @staticmethod
     def state_xyz_vxyz_rot_omega_act(self):        
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
@@ -1032,6 +1078,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, self.actions[1]])
 
+    @staticmethod
     def state_xyz_vxyz_quat_omega(self):
         self.quat = R2quat(self.dynamics.rot)
         pos, vel, quat, omega, acc = self.sense_noise.add_noise(
@@ -1044,6 +1091,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         )
         return np.concatenate([pos - self.goal[:3], vel, quat, omega])
 
+    @staticmethod
     def state_xyzr_vxyzr_quat_omega(self):
         """
         xyz and Vxyz are given in a body frame
@@ -1061,6 +1109,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         vel_rel = self.dynamics.rot.T @ vel
         return np.concatenate([e_xyz_rel, vel_rel, quat, omega])
 
+    @staticmethod
     def state_xyz_vxyz_euler_omega(self):
         self.euler = t3d.euler.mat2euler(self.dynamics.rot)
         pos, vel, quat, omega, acc = self.sense_noise.add_noise(
@@ -1106,6 +1155,34 @@ class QuadrotorEnv(gym.Env, Serializable):
             # # xyz room constraints
             # obs_high[18:21] = self.room_box[1] - self.wall_offset
             # obs_low[18:21]  = self.room_box[0] + self.wall_offset
+
+        elif self.obs_repr == "xyz_vxyz_rot_omega_h" or self.obs_repr == "xyzr_vxyzr_rot_omega_h":
+            ## Creating observation space
+            # pos, vel, rot, rot vel
+            self.obs_comp_sizes = [3, 3, 9, 3, 1]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "h"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18] 
+
+            # h - distance to ground
+            obs_high[-1] = self.room_box[1][2] 
+            obs_low[-1] = self.room_box[0][2]
 
         elif self.obs_repr == "xyz_vxyz_rot_omega_acc_act":
             ## Creating observation space
@@ -1253,7 +1330,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                                 action=action,
                                 goal=self.goal,
                                 dt=self.dt,
-                                observation=np.expand_dims(self.state_vector(), axis=0))
+                                observation=np.expand_dims(self.state_vector(self), axis=0))
         # self.oracle.step(self.dynamics, self.goal, self.dt)
         # self.scene.update_state(self.dynamics, self.goal)
 
@@ -1271,7 +1348,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                             rew_coeff=self.rew_coeff, action_prev=self.actions[1])
         self.tick += 1
         done = self.tick > self.ep_len #or self.crashed
-        sv = self.state_vector()
+        sv = self.state_vector(self)
 
         self.traj_count += int(done)
         # print('state', sv, 'goal', self.goal)
@@ -1300,6 +1377,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
 
     def _reset(self):
+        ## I have to update state vector 
         ##############################################################
         ## DYNAMICS RANDOMIZATION AND UPDATE       
         if self.dynamics_randomize_every is not None and \
@@ -1317,7 +1395,10 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         ##############################################################
         ## GOAL
-        self.goal = np.array([0., 0., 2.])
+        if self.resample_goal:
+            self.goal = np.array([0., 0., np.random.uniform(0.5, 2.0)])
+        else:
+            self.goal = np.array([0., 0., 2.])
 
         ## CURRICULUM (NOT REALLY NEEDED ANYMORE)
         # from 0.5 to 10 after 100k episodes (a form of curriculum)
@@ -1383,7 +1464,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.tick = 0
         self.actions = [np.zeros([4,]), np.zeros([4,])]
 
-        state = self.state_vector()
+        state = self.state_vector(self)
         return state
 
     def _render(self, mode='human', close=False):
