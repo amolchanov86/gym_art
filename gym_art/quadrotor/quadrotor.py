@@ -618,8 +618,8 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     ##################################################
     # penalize amount of control effort
     loss_effort = rew_coeff["effort"] * np.linalg.norm(action)
-    # dact = action - action_prev
-    # loss_act_change = rew_coeff["action_change"] * (dact[0]**2 + dact[1]**2 + dact[2]**2 + dact[3]**2)**0.5
+    dact = action - action_prev
+    loss_act_change = rew_coeff["action_change"] * (dact[0]**2 + dact[1]**2 + dact[2]**2 + dact[3]**2)**0.5
 
     ##################################################
     ## loss velocity
@@ -672,7 +672,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
         loss_spin,
         # loss_spin_z,
         # loss_spin_xy,
-        # loss_act_change,
+        loss_act_change,
         loss_vel
         ])
     
@@ -894,7 +894,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.rew_coeff = {
             "pos": 1., "pos_offset": 0.1, "pos_log_weight": 1., "pos_linear_weight": 0.1,
             "effort": 0.01, 
-            # "action_change": 0.,
+            "action_change": 0.,
             "crash": 1., 
             "orient": 1., "yaw": 0., "rot": 0., "attitude": 0.,
             # "spin_z": 0.5, "spin_xy": 0.5,
@@ -912,6 +912,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         orig_keys = list(rew_coeff_orig.keys())
         # Checking to make sure we didn't provide some false rew_coeffs (for example by misspelling one of the params)
         assert np.all([key in orig_keys for key in self.rew_coeff.keys()])
+        # print("rew_coeff:", self.rew_coeff)
 
         #########################################
         ## RESET
