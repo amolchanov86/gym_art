@@ -1,13 +1,11 @@
 import numpy as np
 from numpy.linalg import norm
-from copy import deepcopy
-
 import gym
 from gym import spaces
 from gym_art.quadrotor.quad_utils import *
 
 GRAV = 9.81
-
+import line_profiler
 # like raw motor control, but shifted such that a zero action
 # corresponds to the amount of thrust needed to hover.
 class ShiftedMotorControl(object):
@@ -21,6 +19,7 @@ class ShiftedMotorControl(object):
         return spaces.Box(low, high, dtype=np.float32)
 
     # modifies the dynamics in place.
+    #@profile
     def step(self, dynamics, action, dt):
         action = (action + 1.0) / dynamics.thrust_to_weight
         action[action < 0] = 0
@@ -49,12 +48,13 @@ class RawControl(object):
         return spaces.Box(self.low, self.high, dtype=np.float32)
 
     # modifies the dynamics in place.
+    #@profile
     def step(self, dynamics, action, goal, dt, observation=None):
         action = self.scale * (action + self.bias)
         action = np.clip(action, a_min=self.low, a_max=self.high)
         dynamics.step(action, dt)
         self.action = action.copy()
-
+    #@profile
     def step_tf(self, dynamics, action, goal, dt, observation=None):
         # print('bias/scale: ', self.scale, self.bias)
         action = self.scale * (action + self.bias)
@@ -84,12 +84,13 @@ class RawControl(object):
         return spaces.Box(self.low, self.high, dtype=np.float32)
 
     # modifies the dynamics in place.
+    #@profile
     def step(self, dynamics, action, goal, dt, observation=None):
         action = self.scale * (action + self.bias)
         action = np.clip(action, a_min=self.low, a_max=self.high)
         dynamics.step(action, dt)
         self.action = action.copy()
-
+    #@profile
     def step_tf(self, dynamics, action, goal, dt, observation=None):
         # print('bias/scale: ', self.scale, self.bias)
         action = self.scale * (action + self.bias)
@@ -127,6 +128,7 @@ class VerticalControl(object):
         return spaces.Box(self.low, self.high, dtype=np.float32)
 
     # modifies the dynamics in place.
+    #@profile
     def step3D(self, dynamics, action, goal, dt, observation=None):
         # print('action: ', action)
         action = self.scale * (action + self.bias)
@@ -134,6 +136,7 @@ class VerticalControl(object):
         dynamics.step(np.array([action[0]]*4), dt)
 
     # modifies the dynamics in place.
+    #@profile
     def step1D(self, dynamics, action, goal, dt, observation=None):
         # print('action: ', action)
         action = self.scale * (action + self.bias)
@@ -168,6 +171,7 @@ class VertPlaneControl(object):
         return spaces.Box(self.low, self.high, dtype=np.float32)
 
     # modifies the dynamics in place.
+    #@profile
     def step3D(self, dynamics, action, goal, dt, observation=None):
         # print('action: ', action)
         action = self.scale * (action + self.bias)
@@ -175,6 +179,7 @@ class VertPlaneControl(object):
         dynamics.step(np.array([action[0], action[0], action[1], action[1]]), dt)
 
     # modifies the dynamics in place.
+    #@profile
     def step2D(self, dynamics, action, goal, dt, observation=None):
         # print('action: ', action)
         action = self.scale * (action + self.bias)
@@ -216,6 +221,7 @@ class OmegaThrustControl(object):
         return spaces.Box(low, high, dtype=np.float32)
 
     # modifies the dynamics in place.
+    #@profile
     def step(self, dynamics, action, dt):
         kp = 5.0 # could be more aggressive
         omega_err = dynamics.omega - action[1:]
@@ -239,7 +245,8 @@ class VelocityYawControl(object):
         dymax = 4 * np.pi # radians / sec
         high = np.array([vmax, vmax, vmax, dymax])
         return spaces.Box(-high, high, dtype=np.float32)
-
+           
+    #@profile
     def step(self, dynamics, action, dt):
         # needs to be much bigger than in normal controller
         # so the random initial actions in RL create some signal
@@ -265,7 +272,8 @@ class VelocityYawControl(object):
 
         dw_des = -kp_a * e_R - kd_a * e_w
         # we want this acceleration, but we can only accelerate in one direction!
-        thrust_mag = np.dot(acc_des, dynamics.rot[:,2])
+        #thrust_mag = np.dot(acc_des, dynamics.rot[:,2])
+        thrust_mag = get_blas_funcs("thrust_mag", [acc_des, dynamics.rot[:,2]])
 
         des = np.append(thrust_mag, dw_des)
         thrusts = np.matmul(self.Jinv, des)
@@ -277,6 +285,7 @@ class VelocityYawControl(object):
 # using the controller from Mellinger et al. 2011
 import tensorflow as tf
 class NonlinearPositionController(object):
+    #@profile
     def __init__(self, dynamics, tf_control=True):
         jacobian = quadrotor_jacobian(dynamics)
         self.Jinv = np.linalg.inv(jacobian)
@@ -302,9 +311,12 @@ class NonlinearPositionController(object):
             self.step_func = self.step
 
     # modifies the dynamics in place.
+    #@profile
     def step(self, dynamics, goal, dt, action=None, observation=None):
         to_goal = goal - dynamics.pos
-        goal_dist = norm(to_goal)
+        #goal_dist = np.sqrt(np.cumsum(np.square(to_goal)))[2]
+        goal_dist = (to_goal[0]**2 + to_goal[1]**2 + to_goal[2]**2)**0.5
+        ##goal_dist = norm(to_goal)
         e_p = -clamp_norm(to_goal, 4.0)
         e_v = dynamics.vel
         # print('Mellinger: ', e_p, e_v, type(e_p), type(e_v))
@@ -340,6 +352,7 @@ class NonlinearPositionController(object):
         thrust_mag = np.dot(acc_des, R[:,2])
 
         des = np.append(thrust_mag, dw_des)
+        
         # print('Jinv:', self.Jinv)
         thrusts = np.matmul(self.Jinv, des)
         thrusts[thrusts < 0] = 0
@@ -347,7 +360,6 @@ class NonlinearPositionController(object):
 
         dynamics.step(thrusts, dt)
         self.action = thrusts.copy()
-
 
     def step_tf(self, dynamics, goal, dt, action=None, observation=None):
         # print('step tf')
@@ -372,7 +384,6 @@ class NonlinearPositionController(object):
                                                                  self.goal_xyz_tf: goal_xyz})
         self.action = result[0].squeeze()
         dynamics.step(self.action, dt)
-
     def step_graph_construct(self, Jinv_=None, observation_provided=False):
         # import tensorflow as tf
         self.observation_provided = observation_provided

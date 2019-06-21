@@ -33,7 +33,9 @@ def cross(a, b):
 
 # returns (normalized vector, original norm)
 def normalize(x):
-    n = norm(x)
+    #n = norm(x)
+    n = (x[0]**2 + x[1]**2 + x[2]**2)**0.5#np.sqrt(np.cumsum(np.square(x)))[2]
+
     if n < 0.00001:
         return x, 0
     return x / n, n
@@ -59,7 +61,9 @@ def npa(*args):
     return np.array(args)
 
 def clamp_norm(x, maxnorm):
-    n = np.linalg.norm(x)
+    #n = np.linalg.norm(x)
+   # n = np.sqrt(np.cumsum(np.square(x)))[2]
+    n = (x[0]**2 + x[1]**2 + x[2]**2)**0.5
     return x if n <= maxnorm else (maxnorm / n) * x
 
 # project a vector into the x-y plane and normalize it.

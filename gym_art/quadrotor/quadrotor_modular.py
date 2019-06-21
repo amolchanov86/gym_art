@@ -458,107 +458,6 @@ def default_dynamics(sim_steps, room_box, dim_mode, noise_scale):
         thrust_noise_ratio=noise_scale)
 
 
-# the Crazyflie dynamics (http://mikehamer.info/assets/papers/Crazyflie%20Modelling.pdf)
-# TODO: dictionary of dynamic models of real quadrotors
-def crazyflie_dynamics(sim_steps, room_box, dim_mode, noise_scale):
-    mass = 0.028    # [kg]
-    arm_length = 0.092 / 2.0 # [m]
-    inertia = npa(1.657171e-5, 1.657171e-5, 2.9261652e-5)   # [kg * m^2]
-    thrust_to_weight = (0.1597 * 4) / (mass * GRAV)# max thrust produced by one rotor is about 0.1597 N
-    torque_to_thrust = 0.005964552
-    return QuadrotorDynamics(mass, arm_length, inertia, 
-        thrust_to_weight=thrust_to_weight,
-        torque_to_thrust=torque_to_thrust,
-        dynamics_steps_num=sim_steps,
-        room_box=room_box,
-        dim_mode=dim_mode,
-        thrust_noise_ratio=noise_scale)
-
-
-# reasonable reward function for hovering at a goal and not flying too high
-def compute_reward(dynamics, goal, action, dt, crashed, time_remain):
-    ##################################################
-    ## log to create a sharp peak at the goal
-    dist = np.linalg.norm(goal - dynamics.pos)
-    loss_pos = np.log(dist + 0.1) + 0.1 * dist
-    # loss_pos = dist
-
-    # dynamics_pos = dynamics.pos
-    # print('dynamics.pos', dynamics.pos)
-
-    ##################################################
-    ## penalize altitude above this threshold
-    # max_alt = 6.0
-    # loss_alt = np.exp(2*(dynamics.pos[2] - max_alt))
-
-    ##################################################
-    # penalize amount of control effort
-    loss_effort = 0.01 * np.linalg.norm(action)
-
-    ##################################################
-    ## loss velocity
-    dx = goal - dynamics.pos
-    dx = dx / (np.linalg.norm(dx) + EPS)
-    
-    ## normalized
-    # vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
-    # vel_proj = np.dot(dx, vel_direct)
-    
-    vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
-    vel_magn = np.clip(np.linalg.norm(dynamics.vel),-1, 1)
-    vel_clipped = vel_magn * vel_direct 
-    vel_proj = np.dot(dx, vel_clipped)
-
-    loss_vel_proj = - dist * vel_proj
-    # print('vel_proj:', vel_proj)
-    # print('loss_vel_proj:', loss_vel_proj)
-
-    ##################################################
-    ## Loss orientation
-    loss_orient = -dynamics.rot[2,2] #Projection of the z-body axis to z-world axis
-
-    ##################################################
-    ## Loss for constant uncontrolled rotation around vertical axis
-    loss_spin = np.abs(dynamics.omega[2]) + 0.5 * np.linalg.norm(dynamics.omega)
-
-    ##################################################
-    ## loss crash
-    loss_crash = float(crashed)
-
-    # reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
-    # rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
-
-    reward = -dt * np.sum([
-        loss_pos, 
-        loss_effort, 
-        loss_crash, 
-        loss_vel_proj,
-        loss_orient,
-        loss_spin
-        ])
-    
-
-    rew_info = {
-    'rew_pos': -loss_pos, 
-    'rew_action': -loss_effort, 
-    'rew_crash': -loss_crash, 
-    #'rew_altitude': -loss_alt, 
-    'rew_vel_proj': -loss_vel_proj,
-    "rew_orient": -loss_orient,
-    "rew_spin": -loss_spin
-    }
-
-
-
-    # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
-    # print('pos', dynamics.pos)
-    if np.isnan(reward) or not np.isfinite(reward):
-        for key, value in locals().items():
-            print('%s: %s \n' % (key, str(value)))
-        raise ValueError('QuadEnv: reward is Nan')
-
-    return reward, rew_info
-
 # reasonable reward function for hovering at a goal and not flying too high
 def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, rew_coeff):
     ##################################################
@@ -672,8 +571,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.obs_repr = obs_repr
         self.state_vector = getattr(self, obs_repr)
 
-        # self.dynamics = default_dynamics(sim_steps, room_box=self.room_box, dim_mode=dim_mode, noise_scale=thrust_noise_ratio)
-        self.dynamics = crazyflie_dynamics(sim_steps, room_box=self.room_box, dim_mode=dim_mode, noise_scale=thrust_noise_ratio)
+        self.dynamics = default_dynamics(sim_steps, room_box=self.room_box, dim_mode=dim_mode, noise_scale=thrust_noise_ratio)
         # self.controller = ShiftedMotorControl(self.dynamics)
         # self.controller = OmegaThrustControl(self.dynamics) ## The last one used
         # self.controller = VelocityYawControl(self.dynamics)
