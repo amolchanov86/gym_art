@@ -1353,7 +1353,23 @@ class QuadrotorEnv(gym.Env, Serializable):
                     normal(loc=0., scale=abs((self.t2w_std/2)*self.dynamics.thrust_to_weight), size=1)
         e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
         vel_rel = self.dynamics.rot.T @ vel
-        return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega, noisy_t2w])
+        return np.concatenate([e_xyz_rel,vel_rel, rot.flatten(), omega, noisy_t2w])
+    @staticmethod
+    ##@profile
+    def state_xyz_vxyz_rot_omega_t2w(self):
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        ## Adding noise to t2w 
+        noisy_t2w = self.dynamics.thrust_to_weight + \
+                    normal(loc=0., scale=abs((self.t2w_std/2)*self.dynamics.thrust_to_weight), size=1)
+       
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w])
 
     @staticmethod
     ##@profile
@@ -1423,6 +1439,32 @@ class QuadrotorEnv(gym.Env, Serializable):
 
 
         elif self.obs_repr == "xyzr_vxyzr_rot_omega_t2w":
+            self.obs_comp_sizes = [3, 3, 9, 3,1]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18]
+
+            #T2W
+            obs_high[18:19] = self.t2w_max* obs_high[18:19]
+            obs_low[18:19]  = self.t2w_max* obs_low[18:19]
+
+        elif self.obs_repr == "xyz_vxyz_rot_omega_t2w":
             self.obs_comp_sizes = [3, 3, 9, 3,1]
             self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w"]
             obs_dim = np.sum(self.obs_comp_sizes)
@@ -1968,10 +2010,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
             # h - distance to ground
             obs_high[-1] = self.room_box[1][2] 
-            obs_low[-1] = self.room_box[0][2]  
-
-
-
+            obs_low[-1] = self.room_box[0][2]
         self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
         return self.observation_space
     ##@profile
