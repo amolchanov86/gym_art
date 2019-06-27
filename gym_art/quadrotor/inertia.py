@@ -12,7 +12,7 @@ WARNIGN: The h,w,l of the BoxLink are defined DIFFERENTLY compare to Wiki
 
 import numpy as np
 import copy
-import ujson
+
 def rotate_I(I, R):
     """
     Rotating inertia tensor I
@@ -279,7 +279,8 @@ class QuadLink(object):
         self.com = sum([ masses[i] * pose.xyz for i, pose in enumerate(self.poses)]) / self.m
 
         # Recomputing corrections on posess with the respect to the new system
-        self.poses_init = ujson.loads(ujson.dumps(self.poses))#copy.deepcopy(self.poses)
+        # self.poses_init = ujson.loads(ujson.dumps(self.poses))
+        self.poses_init = copy.deepcopy(self.poses)
         for pose in self.poses:
             pose.xyz -= self.com
         

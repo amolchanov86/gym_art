@@ -1348,8 +1348,14 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_high[-1] = self.room_box[1][2] 
             obs_low[-1] = self.room_box[0][2]  
 
-
-
+        self.obs_comp_sizes_dict, self.obs_comp_indx, self.obs_comp_end = {}, {}, []
+        end_indx = 0
+        for obs_i, obs_name in enumerate(self.obs_comp_names):
+            end_indx += self.obs_comp_sizes[obs_i]
+            self.obs_comp_sizes_dict[obs_name] = self.obs_comp_sizes[obs_i]
+            self.obs_comp_indx[obs_name] = obs_i
+            self.obs_comp_end.append(end_indx)
+            
         self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
         return self.observation_space
 
@@ -1397,13 +1403,26 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.tick += 1
         done = self.tick > self.ep_len #or self.crashed
         sv = self.state_vector(self)
-
+        
         self.traj_count += int(done)
-        # print('state', sv, 'goal', self.goal)
+        
         # print('state', sv)
         # print('vel', sv[3], sv[4], sv[5])
         # print(sv, reward, done, rew_info)
-        return sv, reward, done, {'rewards': rew_info}
+        ## TODO: OPTIMIZATION: sv_comp should be a dictionary formed when state() function is called
+        sv_comp = np.split(sv, self.obs_comp_end[:-1], axis=0)
+        obs_comp = {
+            "Vxyz": sv_comp[self.obs_comp_indx["Vxyz"]],
+            "Omega": sv_comp[self.obs_comp_indx["Omega"]],
+            "R22": self.dynamics.rot[2,2]
+        }
+
+        dyn_params = {
+            "t2w": self.dynamics.thrust_to_weight, 
+            "t2t": self.dynamics.torque_to_thrust
+        } 
+        # print(sv, obs_comp, dyn_params, self.obs_comp_sizes)      
+        return sv, reward, done, {'rewards': rew_info, "obs_comp": obs_comp, "dyn_params": dyn_params}
 
     def resample_dynamics(self):
         """

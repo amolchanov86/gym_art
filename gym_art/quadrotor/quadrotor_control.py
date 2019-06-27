@@ -5,7 +5,7 @@ from gym import spaces
 from gym_art.quadrotor.quad_utils import *
 
 GRAV = 9.81
-import line_profiler
+#import line_profiler
 # like raw motor control, but shifted such that a zero action
 # corresponds to the amount of thrust needed to hover.
 class ShiftedMotorControl(object):
