@@ -1412,13 +1412,14 @@ class QuadrotorEnv(gym.Env, Serializable):
         ## TODO: OPTIMIZATION: sv_comp should be a dictionary formed when state() function is called
         sv_comp = np.split(sv, self.obs_comp_end[:-1], axis=0)
         obs_comp = {
-            "Vxyz": sv_comp[self.obs_comp_indx["Vxyz"]],
-            "Omega": sv_comp[self.obs_comp_indx["Omega"]],
-            "R22": self.dynamics.rot[2,2]
+            "Vxyz": [sv_comp[self.obs_comp_indx["Vxyz"]]],
+            "Omega": [sv_comp[self.obs_comp_indx["Omega"]]],
+            "R22": [self.dynamics.rot[2,2]],
+            "act": [action]
         }
 
         dyn_params = {
-            "t2w": self.dynamics.thrust_to_weight, 
+            "t2w": self.dynamics.thrust_to_weight,
             "t2t": self.dynamics.torque_to_thrust
         } 
         # print(sv, obs_comp, dyn_params, self.obs_comp_sizes)      
