@@ -273,6 +273,10 @@ def sample_crazyflie_thrust2weight_20_50():
     params["motor"]["thrust_to_weight"] = np.random.uniform(low=2.0, high=5.0)
     return params
 
+def sample_medium_thrust2weight_15_35():
+    params = mediumquad_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
+    return params
 
 def sample_random_dyn_lowinertia():
     """

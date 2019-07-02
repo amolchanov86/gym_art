@@ -60,15 +60,7 @@ logger = logging.getLogger(__name__)
 
 GRAV = 9.81 #default gravitational constant
 EPS = 1e-6 #small constant to avoid divisions by 0 and log(0)
-vel_3 = [[0,0,0],[0,0,0],[0,0,0]]
-pos_3 = [[0,0,0],[0,0,0],[0,0,0]]
-actions_2 = [[0.,0.,0.,0.],[0.,0.,0.,0.]]
-pos_2 = [[0.,0.,0.],[0.,0.,0.]]
-vel_2 = [[0.,0.,0.],[0.,0.,0.]]
-rot_2 = np.array((np.zeros((3,3)),np.zeros((3,3))))
-omega_2 = [[0.,0.,0.],[0.,0.,0.]]
-obs = ""
-std_t2w = 0.05
+
 ## WARN:
 # - linearity is set to 1 always, by means of check_quad_param_limits(). 
 # The def. value of linarity for CF is set to 1 as well (due to firmware nonlinearity compensation)
@@ -180,11 +172,6 @@ class QuadrotorDynamics(object):
         self.thrust_noise_ratio = self.model_params["noise"]["thrust_noise_ratio"]
         self.vel_damp = self.model_params["damp"]["vel"]
         self.damp_omega_quadratic = self.model_params["damp"]["omega_quadratic"]
-        global obs, std_t2w
-        if obs == 'xyzr_vxyzr_rot_omega_t2w_traj':
-            self.thrust_to_weight = self.thrust_to_weight + \
-                    normal(loc=0., scale=abs((std_t2w/2)*self.thrust_to_weight), size=1)
-            print("t2w",self.thrust_to_weight)
 
 
         ###############################################################
@@ -810,9 +797,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         self.room_box = np.array([[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
         self.state_vector = getattr(self, "state_" + self.obs_repr)
-        global obs, std_t2w
-        obs = self.obs_repr
-        std_t2w = t2w_std
+
         ## WARN: If you
         # size of the box from which initial position will be randomly sampled
         # if box_scale > 1.0 then it will also growevery episode
@@ -875,6 +860,10 @@ class QuadrotorEnv(gym.Env, Serializable):
         elif dynamics_params == "crazyflie_t2w_20_50":
             self.dynamics_params_def = None
             self.dyn_sampler = sample_crazyflie_thrust2weight_20_50
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "mediumquad_t2w_15_35":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_medium_thrust2weight_15_35
             self.dynamics_params = self.dyn_sampler()
         else:
             ## Setting the quad dynamics params
@@ -1059,11 +1048,23 @@ class QuadrotorEnv(gym.Env, Serializable):
             dt=self.dt
         )
         
-        global vel_3,pos_3
-        vel_3 = vel_3[0:2]
-        vel_3 = (vel,vel_3[0],vel_3[1])
-        pos_3 = pos_3[0:2]
-        pos_3 = (pos,pos_3[0],pos_3[1])        
+        ## incoporating previous 3 states
+        if self.tick == 0:
+            self.vel_3 = np.array(vel, np.zeros(3), np.zeros(3))
+            self.pos_3 = np.array(pos, np.zeros(3), np.zeros(3))
+        elif self.tick == 1:
+            self.vel_3[1] = self.vel_3[0]
+            self.vel_3[0] = vel 
+
+            self.pos_3[1] = self.pos_3[0]
+            self.pos_3[0] = pos
+        else:
+            self.vel_3[1:3] = self.vel_3[0:2]
+            self.vel_3[0] = vel
+
+            self.pos_3[1:3] = self.pos_3[0:2]
+            self.pos_3[0] = pos 
+       
         #return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos_3[0] - self.goal[:3],pos_3[1] - self.goal[:3],pos_3[2] - self.goal[:3],vel_3[0],vel_3[1],vel_3[2], rot.flatten(), omega])
     @staticmethod
@@ -1077,9 +1078,16 @@ class QuadrotorEnv(gym.Env, Serializable):
             dt=self.dt
         )
         
-        global vel_3
-        vel_3 = vel_3[0:2]
-        vel_3 = (vel,vel_3[0],vel_3[1])
+        ## incoporating previous 3 states
+        if self.tick == 0:
+            self.vel_3 = np.array(vel, np.zeros(3), np.zeros(3))
+        elif self.tick == 1:
+            self.vel_3[1] = self.vel_3[0]
+            self.vel_3[0] = vel 
+        else:
+            self.vel_3[1:3] = self.vel_3[0:2]
+            self.vel_3[0] = vel
+
         #return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3],vel_3[0],vel_3[1],vel_3[2], rot.flatten(), omega])
     @staticmethod
@@ -1093,9 +1101,15 @@ class QuadrotorEnv(gym.Env, Serializable):
             dt=self.dt
         )
         
-        global pos_3
-        pos_3 = pos_3[0:2]
-        pos_3 = (pos,pos_3[0],pos_3[1])        
+        ## incoporating previous 3 states
+        if self.tick == 0:
+            self.pos_3 = np.array(pos, np.zeros(3), np.zeros(3))
+        elif self.tick == 1:
+            self.pos_3[1] = self.pos_3[0]
+            self.pos_3[0] = pos
+        else:
+            self.pos_3[1:3] = self.pos_3[0:2]
+            self.pos_3[0] = pos        
         #return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos_3[0] - self.goal[:3],pos_3[1] - self.goal[:3],pos_3[2] - self.goal[:3],vel, rot.flatten(), omega])
 
@@ -1110,9 +1124,13 @@ class QuadrotorEnv(gym.Env, Serializable):
             dt=self.dt
         )
         
-        global pos_2
-        pos_2 = pos_2[0:1]
-        pos_2 = (pos,pos_2[0])        
+        ## incoporating previous 2 states
+        if self.tick == 0:
+            self.pos_2 = np.array(pos, np.zeros(3))
+        else:
+            self.pos_2[1] = self.pos_2[0]
+            self.pos_2[0] = pos
+
         #return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos_2[0] - self.goal[:3],pos_2[1] - self.goal[:3],vel, rot.flatten(), omega])
     @staticmethod
@@ -1126,9 +1144,12 @@ class QuadrotorEnv(gym.Env, Serializable):
             dt=self.dt
         )
         
-        global vel_2
-        vel_2 = vel_2[0:1]
-        vel_2 = (vel,vel_2[0])        
+        ## incoporating previous 2 states
+        if self.tick == 0:
+            self.vel_2 = np.array(vel, np.zeros(3))
+        else:
+            self.vel_2[1] = self.vel_2[0]
+            self.vel_2[0] = vel        
         #return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3],vel_2[0],vel_2[1],rot.flatten(), omega])    
     
@@ -1173,16 +1194,17 @@ class QuadrotorEnv(gym.Env, Serializable):
         )
         e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
         vel_rel = self.dynamics.rot.T @ vel
-        global vel_2, pos_2, rot_2, omega_2
-        vel_2 = vel_2[0:1]
-        vel_2 = (vel_rel,vel_2[0])
-        pos_2 = pos_2[0:1]
-        pos_2 = (e_xyz_rel,pos_2[0])
-        rot_2 = rot_2[1:]
-        rot_2 = np.array((rot_2[0],rot))
-        omega_2 = omega_2[0:1]
-        omega_2 = (omega,omega_2[0])
-        
+
+        if self.tick == 0:
+            vel_2 = np.array(vel, np.zeros(3))
+            pos_2 = np.array(pos, np.zeros(3))
+            rot_2 = np.array(rot, np.eye(3))
+            omega_2 = np.array(omega, np.zeros(3))
+        else:
+            vel_2 = np.array(vel, vel_2[0])
+            pos_2 = np.array(pos, pos_2[0])
+            rot_2 = np.array(rot, rot_2[0])
+            omega_2 = np.array(omega, omega_2[0])        
         
         #return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega])
         return np.concatenate([pos_2[0], pos_2[1], vel_2[0],vel_2[1], rot_2[0].flatten(), rot_2[1].flatten(), omega_2[0],omega_2[0]])
@@ -1199,18 +1221,18 @@ class QuadrotorEnv(gym.Env, Serializable):
         )
         e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
         vel_rel = self.dynamics.rot.T @ vel
-        global vel_2, pos_2, rot_2, omega_2, actions_2
-        actions_2 = actions_2[0:1]
-        actions_2 = (self.actions[1],actions_2[0])   
-        vel_2 = vel_2[0:1]
-        vel_2 = (vel_rel,vel_2[0])
-        pos_2 = pos_2[0:1]
-        pos_2 = (e_xyz_rel,pos_2[0])
-        rot_2 = rot_2[1:]
-        rot_2 = np.array((rot_2[0],rot))
-        omega_2 = omega_2[0:1]
-        omega_2 = (omega,omega_2[0])
-        
+
+        if self.tick == 0:
+            vel_2 = np.array(vel, np.zeros(3))
+            pos_2 = np.array(pos, np.zeros(3))
+            rot_2 = np.array(rot, np.eye(3))
+            omega_2 = np.array(omega, np.zeros(3))
+        else:
+            vel_2 = np.array(vel, vel_2[0])
+            pos_2 = np.array(pos, pos_2[0])
+            rot_2 = np.array(rot, rot_2[0])
+            omega_2 = np.array(omega, omega_2[0])      
+        actions_2 = copy.deepcopy(self.actions)        
         
         #return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega])
         return np.concatenate([pos_2[0], pos_2[1], vel_2[0],vel_2[1], rot_2[0].flatten(), rot_2[1].flatten(), omega_2[0],omega_2[0],actions_2[0],actions_2[1]])
@@ -1270,9 +1292,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             acc=self.dynamics.accelerometer,
             dt=self.dt
         )
-        global actions_2
-        actions_2 = actions_2[0:1]
-        actions_2 = (self.actions[1],actions_2[0])        
+        actions_2 = copy.deepcopy(self.actions)
         # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, actions_2[0],actions_2[1]])    
 
@@ -1373,24 +1393,6 @@ class QuadrotorEnv(gym.Env, Serializable):
 
     @staticmethod
     ##@profile
-    def state_xyzr_vxyzr_rot_omega_t2w_traj(self):
-        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
-            pos=self.dynamics.pos,
-            vel=self.dynamics.vel,
-            rot=self.dynamics.rot,
-            omega=self.dynamics.omega,
-            acc=self.dynamics.accelerometer,
-            dt=self.dt
-        )
-        ## Adding noise to t2w 
-        e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
-        vel_rel = self.dynamics.rot.T @ vel
-        return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega, self.dynamics.thrust_to_weight])
-
-
-
-    @staticmethod
-    ##@profile
     def state_xyz_vxyz_euler_omega(self):
         self.euler = t3d.euler.mat2euler(self.dynamics.rot)
         pos, vel, quat, omega, acc = self.sense_noise.add_noise(
@@ -1438,32 +1440,6 @@ class QuadrotorEnv(gym.Env, Serializable):
             # obs_low[18:21]  = self.room_box[0] + self.wall_offset
 
 
-        elif self.obs_repr == "xyzr_vxyzr_rot_omega_t2w":
-            self.obs_comp_sizes = [3, 3, 9, 3,1]
-            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w"]
-            obs_dim = np.sum(self.obs_comp_sizes)
-            obs_high =  np.ones(obs_dim)
-            obs_low  = -np.ones(obs_dim)
-            
-            # xyz room constraints
-            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
-            obs_low[0:3]  = -obs_high[0:3]
-
-            # Vxyz
-            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
-            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
-
-            # R
-            # indx range: 6:15
-
-            # Omega
-            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
-            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18]
-
-            #T2W
-            obs_high[18:19] = self.t2w_max* obs_high[18:19]
-            obs_low[18:19]  = self.t2w_max* obs_low[18:19]
-
         elif self.obs_repr == "xyz_vxyz_rot_omega_t2w":
             self.obs_comp_sizes = [3, 3, 9, 3,1]
             self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w"]
@@ -1490,7 +1466,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_high[18:19] = self.t2w_max* obs_high[18:19]
             obs_low[18:19]  = self.t2w_max* obs_low[18:19]
 
-        elif self.obs_repr == "xyzr_vxyzr_rot_omega_t2w_traj":
+        elif self.obs_repr == "xyzr_vxyzr_rot_omega_t2w":
             self.obs_comp_sizes = [3, 3, 9, 3,1]
             self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w"]
             obs_dim = np.sum(self.obs_comp_sizes)
@@ -2010,7 +1986,16 @@ class QuadrotorEnv(gym.Env, Serializable):
 
             # h - distance to ground
             obs_high[-1] = self.room_box[1][2] 
-            obs_low[-1] = self.room_box[0][2]
+            obs_low[-1] = self.room_box[0][2]  
+
+        self.obs_comp_sizes_dict, self.obs_comp_indx, self.obs_comp_end = {}, {}, []
+        end_indx = 0
+        for obs_i, obs_name in enumerate(self.obs_comp_names):
+            end_indx += self.obs_comp_sizes[obs_i]
+            self.obs_comp_sizes_dict[obs_name] = self.obs_comp_sizes[obs_i]
+            self.obs_comp_indx[obs_name] = obs_i
+            self.obs_comp_end.append(end_indx)
+            
         self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
         return self.observation_space
     ##@profile
@@ -2064,8 +2049,22 @@ class QuadrotorEnv(gym.Env, Serializable):
         # print('state', sv)
         # print('vel', sv[3], sv[4], sv[5])
         # print(sv, reward, done, rew_info)
-        return sv, reward, done, {'rewards': rew_info}
-    ##@profile
+        ## TODO: OPTIMIZATION: sv_comp should be a dictionary formed when state() function is called
+        sv_comp = np.split(sv, self.obs_comp_end[:-1], axis=0)
+        obs_comp = {
+            "Vxyz": [sv_comp[self.obs_comp_indx["Vxyz"]]],
+            "Omega": [sv_comp[self.obs_comp_indx["Omega"]]],
+            "R22": [self.dynamics.rot[2,2]],
+            "Act": [action]
+        }
+
+        dyn_params = {
+            "t2w": self.dynamics.thrust_to_weight,
+            "t2t": self.dynamics.torque_to_thrust
+        } 
+        # print(sv, obs_comp, dyn_params, self.obs_comp_sizes)      
+        return sv, reward, done, {'rewards': rew_info, "obs_comp": obs_comp, "dyn_params": dyn_params}
+
     def resample_dynamics(self):
         """
         Allows manual dynamics resampling when needed.

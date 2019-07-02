@@ -57,7 +57,7 @@ def rot2quat(rot):
 class SensorNoise:
     def __init__(self, pos_norm_std=0.005, pos_unif_range=0., 
                         vel_norm_std=0.01, vel_unif_range=0., 
-                        quat_norm_std=0., quat_unif_range=0., 
+                        quat_norm_std=0., quat_unif_range=0., gyro_norm_std=0.,
                         gyro_noise_density=0.000175, gyro_random_walk=0.0105, 
                         gyro_bias_correlation_time=1000., bypass=False,
                         acc_static_noise_std=0.002, acc_dynamic_noise_ratio=0.005): 
@@ -88,6 +88,7 @@ class SensorNoise:
         self.gyro_noise_density = gyro_noise_density
         self.gyro_random_walk = gyro_random_walk
         self.gyro_bias_correlation_time = gyro_bias_correlation_time
+        self.gyro_norm_std = gyro_norm_std
         # self.gyro_turn_on_bias_sigma = gyro_turn_on_bias_sigma
         self.gyro_bias = np.zeros(3)
 
@@ -123,7 +124,11 @@ class SensorNoise:
                     uniform(low=-self.vel_unif_range, high=self.vel_unif_range, size=3)
 
         ## Noise in omega
-        noisy_omega = self.add_noise_to_omega(omega, dt)
+        if self.gyro_norm_std != 0.:
+            noisy_omega = self.add_noise_to_omega(omega, dt)
+        else:
+            noisy_omega = omega + \
+                    normal(loc=0., scale=self.gyro_noise_density, size=3)
 
         ## Noise in rotation
         theta = normal(0, self.quat_norm_std, size=3) + \

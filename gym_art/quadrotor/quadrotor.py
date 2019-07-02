@@ -1415,7 +1415,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             "Vxyz": [sv_comp[self.obs_comp_indx["Vxyz"]]],
             "Omega": [sv_comp[self.obs_comp_indx["Omega"]]],
             "R22": [self.dynamics.rot[2,2]],
-            "act": [action]
+            "Act": [action]
         }
 
         dyn_params = {
