@@ -17,7 +17,6 @@ References:
 [6] Rotation b/w matrices: http://www.boris-belousov.net/2016/12/01/quat-dist/#using-rotation-matrices
 [7] Rodrigues' rotation formula: https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
 """
-
 import argparse
 import logging
 import numpy as np
@@ -64,8 +63,7 @@ EPS = 1e-6 #small constant to avoid divisions by 0 and log(0)
 ## WARN:
 # - linearity is set to 1 always, by means of check_quad_param_limits(). 
 # The def. value of linarity for CF is set to 1 as well (due to firmware nonlinearity compensation)
-# vel_3 = np.array([[0,0,0],[0,0,0],[0,0,0]])
-# j=0
+
 class QuadrotorDynamics(object):
     """
     Simple simulation of quadrotor dynamics.
@@ -83,7 +81,6 @@ class QuadrotorDynamics(object):
     TODO:
     - only diagonal inertia is used at the moment
     """
-    ##@profile
     def __init__(self, model_params,
         room_box=None,
         dynamics_steps_num=1, 
@@ -142,8 +139,9 @@ class QuadrotorDynamics(object):
         # i.e. controller frequency
         self._step = getattr(self, 'step%d' % dynamics_steps_num)
         # self.step = getattr(QuadrotorDynamics, 'step%d' % dynamics_steps_num)
+
+
     @staticmethod
-    #@profile
     def angvel2thrust(w, linearity=0.424):
         """
         Args:
@@ -151,7 +149,7 @@ class QuadrotorDynamics(object):
             CrazyFlie: linearity=0.424
         """
         return  (1 - linearity) * w**2 + linearity * w
-    #@profile
+
     def update_model(self, model_params):
         self.model = QuadLink(params=model_params["geom"])
         self.model_params = model_params
@@ -207,7 +205,7 @@ class QuadrotorDynamics(object):
         # sigma = 0.2 gives roughly max noise of -1 .. 1
         self.thrust_noise = OUNoise(4, sigma=0.2*self.thrust_noise_ratio)
 
-        self.arm = (self.model.motor_xyz[:2][0]**2 + self.model.motor_xyz[:2][1]**2)**0.5#np.linalg.norm(self.model.motor_xyz[:2])
+        self.arm = np.linalg.norm(self.model.motor_xyz[:2])
 
         self._step = getattr(self, 'step%d' % self.dynamics_steps_num)
 
@@ -216,7 +214,6 @@ class QuadrotorDynamics(object):
     # pos, vel, in world coords (meters)
     # rotation is 3x3 matrix (body coords) -> (world coords)dt
     # omega is angular velocity (radians/sec) in body coords, i.e. the gyroscope
-    ##@profile
     def set_state(self, position, velocity, rotation, omega, thrusts=np.zeros((4,))):
         for v in (position, velocity, omega):
             assert v.shape == (3,)
@@ -231,7 +228,6 @@ class QuadrotorDynamics(object):
         self.thrusts = deepcopy(thrusts)
 
     # generate a random state (meters, meters/sec, radians/sec)
-    ##@profile
     def random_state(self, box, vel_max=15.0, omega_max=2*np.pi):
         pos = np.random.uniform(low=-box, high=box, size=(3,))
         
@@ -248,7 +244,6 @@ class QuadrotorDynamics(object):
         # self.set_state(pos, vel, rot, omega)
 
     # generate a random state (meters, meters/sec, radians/sec)
-    ##@profile
     def pitch_roll_restricted_random_state(self, box, vel_max=15.0, omega_max=2*np.pi, pitch_max=0.5, roll_max=0.5, yaw_max=3.14):
         pos = np.random.uniform(low=-box, high=box, size=(3,))
         
@@ -265,22 +260,19 @@ class QuadrotorDynamics(object):
         yaw = np.random.uniform(low=-yaw_max, high=yaw_max) 
         rot = t3d.euler.euler2mat(roll, pitch, yaw)
         return pos, vel, rot, omega
-    #@profile
+
     def step(self, thrust_cmds, dt):
         self._step(self, thrust_cmds, dt)
 
     # multiple dynamics steps
     @staticmethod
-    #@profile
     def step2(self, thrust_cmds, dt):
         self.step1(self, thrust_cmds, dt)
         self.step1(self, thrust_cmds, dt)
 
 
     # multiple dynamics steps
-    
     @staticmethod
-    ##@profile
     def step4(self, thrust_cmds, dt):
         self.step1(self, thrust_cmds, dt)
         self.step1(self, thrust_cmds, dt)
@@ -289,9 +281,7 @@ class QuadrotorDynamics(object):
         # print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
 
     # multiple dynamics steps
-    
     @staticmethod
-    ##@profile
     def step6(self, thrust_cmds, dt):
         self.step1(self, thrust_cmds, dt)
         self.step1(self, thrust_cmds, dt)
@@ -302,9 +292,7 @@ class QuadrotorDynamics(object):
         # print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
 
     # multiple dynamics steps
-
     @staticmethod
-    ##@profile
     def step8(self, thrust_cmds, dt):
         self.step1(self, thrust_cmds, dt)
         self.step1(self, thrust_cmds, dt)
@@ -316,9 +304,7 @@ class QuadrotorDynamics(object):
         self.step1(self, thrust_cmds, dt)
 
     # multiple dynamics steps
-    
     @staticmethod
-    ##@profile
     def step10(self, thrust_cmds, dt):
         self.step1(self, thrust_cmds, dt)
         self.step1(self, thrust_cmds, dt)
@@ -342,9 +328,7 @@ class QuadrotorDynamics(object):
     # goal_pos - global
     # from numba import jit, autojit
     # @autojit
-    
     @staticmethod
-    #@profile
     def step1(self, thrust_cmds, dt):
         # print("thrust_cmds:", thrust_cmds)
         # uncomment for debugging. they are slow
@@ -382,7 +366,7 @@ class QuadrotorDynamics(object):
         torques[:, 2] += self.torque_max * self.prop_ccw * self.thrust_cmds_damp 
 
         # net torque: sum over propellers
-        thrust_torque = sum(torques)#np.sum(torques, axis=0) 
+        thrust_torque = np.sum(torques, axis=0) 
 
         ###################################
         ## Rotor drag and Rolling forces and moments
@@ -401,25 +385,24 @@ class QuadrotorDynamics(object):
 
             # Drag/Roll of rotors (both in body frame)
             rotor_drag_fi = - self.C_rot_drag * np.sqrt(self.thrust_cmds_damp)[:,None] * v_rotors #[4,3]
-            rotor_drag_force = sum(rotor_drag_fi)#np.sum(rotor_drag_fi, axis=0)
+            rotor_drag_force = np.sum(rotor_drag_fi, axis=0)
             # rotor_drag_ti = np.cross(rotor_drag_fi, self.model.prop_pos)#[4,3] x [4,3]
             rotor_drag_ti = cross_mx4(rotor_drag_fi, self.model.prop_pos)#[4,3] x [4,3]
-            rotor_drag_torque = sum(rotor_drag_ti)#np.sum(rotor_drag_ti, axis=0)
+            rotor_drag_torque = np.sum(rotor_drag_ti, axis=0)
             
             rotor_roll_torque = - self.C_rot_roll * self.prop_ccw[:,None] * np.sqrt(self.thrust_cmds_damp)[:,None] * v_rotors #[4,3]
-            rotor_roll_torque = sum(rotor_roll_torque)#np.sum(rotor_roll_torque, axis=0)
+            rotor_roll_torque = np.sum(rotor_roll_torque, axis=0)
             rotor_visc_torque = rotor_drag_torque + rotor_roll_torque
 
             ## Constraints (prevent numerical instabilities)
-            vel_norm = (vel_body[0]**2 + vel_body[1]**2 + vel_body[2]**2)**0.5#np.sqrt(np.cumsum(np.square(vel_body)))[2]#np.linalg.norm(vel_body)
-            rdf_norm = (rdf_norm[0]**2 + rdf_norm[1]**2 + rdf_norm[2]**2)**0.5#np.sqrt(np.cumsum(np.square(rotor_drag_force)))[2]#np.linalg.norm(rotor_drag_force)
+            vel_norm = np.linalg.norm(vel_body)
+            rdf_norm = np.linalg.norm(rotor_drag_force)
             rdf_norm_clip = np.clip(rdf_norm, a_min=0., a_max=vel_norm*self.mass/(2*dt))
             if rdf_norm > EPS:
                 rotor_drag_force = (rotor_drag_force / rdf_norm) * rdf_norm_clip
 
             # omega_norm = np.linalg.norm(self.omega)
-            rvt_norm = (rotor_visc_torque[0]**2 + rotor_visc_torque[1]**2 + rotor_visc_torque[2]**2)**0.5#np.sqrt(np.cumsum(np.square(rotor_visc_torque)))[2]#np.linalg.norm(rotor_visc_torque)
-
+            rvt_norm = np.linalg.norm(rotor_visc_torque)
             rvt_norm_clipped = np.clip(rvt_norm, a_min=0., a_max=np.linalg.norm(self.omega*self.inertia)/(2*dt))
             if rvt_norm > EPS:
                 rotor_visc_torque = (rotor_visc_torque / rvt_norm) * rvt_norm_clipped
@@ -435,7 +418,7 @@ class QuadrotorDynamics(object):
         ## (Square) Damping using torques (in case we would like to add damping using torques)
         # damping_torque = - 0.3 * self.omega * np.fabs(self.omega)
         torque =  thrust_torque + rotor_visc_torque
-        thrust = npa(0,0,sum(thrusts))#np.sum(thrusts))
+        thrust = npa(0,0,np.sum(thrusts))
 
         #########################################################
         ## ROTATIONAL DYNAMICS
@@ -445,8 +428,7 @@ class QuadrotorDynamics(object):
         ## Integrating rotations (based on current values)
         omega_vec = np.matmul(self.rot, self.omega) # Change from body2world frame
         wx, wy, wz = omega_vec
-        omega_norm = (omega_vec[0]**2 + omega_vec[1]**2 + omega_vec[2]**2)**0.5#np.sqrt(np.cumsum(np.square(omega_vec)))[2]#np.linalg.norm(omega_vec)
-
+        omega_norm = np.linalg.norm(omega_vec)
         if omega_norm != 0:
             # See [7]
             K = np.array([[0, -wz, wy], [wz, 0, -wx], [-wy, wx, 0]]) / omega_norm
@@ -511,11 +493,11 @@ class QuadrotorDynamics(object):
         ## Accelerometer measures so called "proper acceleration" 
         # that includes gravity with the opposite sign
         self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, self.gravity])
-    #@profile
+
     def reset(self):
         self.thrust_cmds_damp = np.zeros([4])
         self.thrust_rot_damp = np.zeros([4])
-    ##@profile
+
     def rotors_drag_roll_glob_frame(self):
         # omega [3,] x prop_pos [4,3] = v_rot_body [4, 3]
         # R[3,3] @ prop_pos.T[3,4] = v_rotors[3,4]  
@@ -535,7 +517,6 @@ class QuadrotorDynamics(object):
     # s = dt*(F(s) + G(s)*u)
     
     ## Unforced dynamics (integrator, damping_deceleration)
-    ##@profile
     def F(self, s, dt):
         xyz  = s[0:3]
         Vxyz = s[3:6]
@@ -545,7 +526,7 @@ class QuadrotorDynamics(object):
 
         ###############################
         ## Linear position change
-        dx = ujson.loads(ujson.dumps(Vxyz))#deepcopy(Vxyz)
+        dx = deepcopy(Vxyz)
 
         ###############################
         ## Linear velocity change
@@ -574,7 +555,6 @@ class QuadrotorDynamics(object):
 
 
     ## Forced affine dynamics (controlling acceleration only)
-    ##@profile
     def G(self, s):
         xyz  = s[0:3]
         Vxyz = s[3:6]
@@ -598,22 +578,21 @@ class QuadrotorDynamics(object):
 
 
     # return eye, center, up suitable for gluLookAt representing onboard camera
-    #@profile
     def look_at(self):
         degrees_down = 45.0
         R = self.rot
         # camera slightly below COM
         eye = self.pos + np.matmul(R, [0, 0, -0.02])
         theta = np.radians(degrees_down)
-        to = np.cos(theta) * R[:,0] - np.sin(theta) * R[:,2]##to,_ = normalize(np.cos(theta) * R[:,0] - np.sin(theta) * R[:,2])#
+        to, _ = normalize(np.cos(theta) * R[:,0] - np.sin(theta) * R[:,2])
         center = eye + to
         up = cross(to, R[:,1])
         return eye, center, up
-    ##@profile
+
     def state_vector(self):
         return np.concatenate([
             self.pos, self.vel, self.rot.flatten(), self.omega])
-    ##@profile
+
     def action_space(self):
         low = np.zeros(4)
         high = np.ones(4)
@@ -621,13 +600,10 @@ class QuadrotorDynamics(object):
 
 
 # reasonable reward function for hovering at a goal and not flying too high
-#@profile
 def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, rew_coeff, action_prev):
     ##################################################
     ## log to create a sharp peak at the goal
-    goal_diff = goal-dynamics.pos
-
-    dist = (goal_diff[0]**2 + goal_diff[1]**2 + goal_diff[2]**2)**0.5
+    dist = np.linalg.norm(goal - dynamics.pos)
     loss_pos = rew_coeff["pos"] * (rew_coeff["pos_log_weight"] * np.log(dist + rew_coeff["pos_offset"]) + rew_coeff["pos_linear_weight"] * dist)
     # loss_pos = dist
 
@@ -641,7 +617,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
 
     ##################################################
     # penalize amount of control effort
-    loss_effort = rew_coeff["effort"] *(action[0]**2 + action[1]**2 + action[2]**2 + action[3]**2)**0.5 #np.linalg.norm(action)
+    loss_effort = rew_coeff["effort"] * np.linalg.norm(action)
     dact = action - action_prev
     loss_act_change = rew_coeff["action_change"] * (dact[0]**2 + dact[1]**2 + dact[2]**2 + dact[3]**2)**0.5
 
@@ -658,7 +634,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     # loss_vel_proj = - rew_coeff["vel_proj"] * dist * vel_proj
 
     # loss_vel_proj = 0. 
-    loss_vel = rew_coeff["vel"] * (dynamics.vel[0]**2 + dynamics.vel[1]**2 + dynamics.vel[2]**2)**0.5#np.linalg.norm(dynamics.vel)
+    loss_vel = rew_coeff["vel"] * np.linalg.norm(dynamics.vel)
 
     ##################################################
     ## Loss orientation
@@ -685,7 +661,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     # reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
     # rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
 
-    reward = -dt * sum([
+    reward = -dt * np.sum([
         loss_pos, 
         loss_effort, 
         loss_crash, 
@@ -797,7 +773,6 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         self.room_box = np.array([[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
         self.state_vector = getattr(self, "state_" + self.obs_repr)
-
         ## WARN: If you
         # size of the box from which initial position will be randomly sampled
         # if box_scale > 1.0 then it will also growevery episode
@@ -872,7 +847,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             elif isinstance(dynamics_params, dict):
                 # This option is good when you only partially provide parameters of the model
                 # For example if you are making some sort of a search, from the initial model
-                self.dynamics_params_def = ujson.loads(ujson.dumps(dynamics_params))#copy.deepcopy(dynamics_params)
+                self.dynamics_params_def = copy.deepcopy(dynamics_params)
             
             ## Now, updating if we are providing modifications
             if dynamics_change is not None:
@@ -930,7 +905,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             # "spin_z": 0.5, "spin_xy": 0.5,
             "spin": 0.,
             "vel": 0.}
-        rew_coeff_orig = ujson.loads(ujson.dumps(self.rew_coeff))#copy.deepcopy(self.rew_coeff)
+        rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
         if rew_coeff is not None: 
             assert isinstance(rew_coeff, dict)
@@ -954,16 +929,16 @@ class QuadrotorEnv(gym.Env, Serializable):
         
         # Always call Serializable constructor last
         Serializable.quick_init(self, locals())
-    ##@profile
+
     def save_dyn_params(self, filename):
         import yaml
         with open(filename, 'w') as yaml_file:
             def numpy_convert(key, item):
                 return str(item)
-            self.dynamics_params_converted = ujson.loads(ujson.dumps(self.dynamics_params))#copy.deepcopy(self.dynamics_params)
+            self.dynamics_params_converted = copy.deepcopy(self.dynamics_params)
             walk_dict(self.dynamics_params_converted, numpy_convert)
             yaml_file.write(yaml.dump(self.dynamics_params_converted, default_flow_style=False))
-    ##@profile
+
     def update_sense_noise(self, sense_noise):
         if isinstance(sense_noise, dict):
             self.sense_noise = SensorNoise(**sense_noise)
@@ -977,7 +952,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         else:
             raise ValueError("ERROR: QuadEnv: sense_noise parameter is of unknown type: " + str(sense_noise))
 
-    ##@profile
+
     def update_dynamics(self, dynamics_params):
         ################################################################################
         ## DYNAMICS
@@ -1024,7 +999,6 @@ class QuadrotorEnv(gym.Env, Serializable):
 
     ## NOTE: the state_* methods are static because otherwise getattr memorizes self
     @staticmethod
-    ##@profile
     def state_xyz_vxyz_rot_omega(self):        
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
@@ -1036,7 +1010,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         )
         # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega])
-    ##@profile
+    
     @staticmethod
     def state_xyz_vxyz_tx3_rot_omega(self):        
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
@@ -1166,10 +1140,12 @@ class QuadrotorEnv(gym.Env, Serializable):
         )
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega])
-    
+
     @staticmethod
-    ##@profile
     def state_xyzr_vxyzr_rot_omega(self):
+        """
+        xyz and Vxyz are given in a body frame
+        """        
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
             vel=self.dynamics.vel,
@@ -1238,7 +1214,6 @@ class QuadrotorEnv(gym.Env, Serializable):
         return np.concatenate([pos_2[0], pos_2[1], vel_2[0],vel_2[1], rot_2[0].flatten(), rot_2[1].flatten(), omega_2[0],omega_2[0],actions_2[0],actions_2[1]])
     
     @staticmethod
-    ##@profile    
     def state_xyzr_vxyzr_rot_omega_h(self):
         """
         xyz and Vxyz are given in a body frame
@@ -1254,9 +1229,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
         vel_rel = self.dynamics.rot.T @ vel
         return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega, (pos[2],)])
-    
+
     @staticmethod
-    #@profile
     def state_xyz_vxyz_rot_omega_acc_act(self):        
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
@@ -1268,8 +1242,8 @@ class QuadrotorEnv(gym.Env, Serializable):
         )
         # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, acc, self.actions[1]])
+
     @staticmethod
-    ##@profile
     def state_xyz_vxyz_rot_omega_act(self):        
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
@@ -1297,7 +1271,6 @@ class QuadrotorEnv(gym.Env, Serializable):
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, actions_2[0],actions_2[1]])    
 
     @staticmethod
-    ##@profile    
     def state_xyz_vxyz_quat_omega(self):
         self.quat = R2quat(self.dynamics.rot)
         pos, vel, quat, omega, acc = self.sense_noise.add_noise(
@@ -1308,12 +1281,9 @@ class QuadrotorEnv(gym.Env, Serializable):
             acc=self.dynamics.accelerometer,
             dt=self.dt
         )
-      
-
         return np.concatenate([pos - self.goal[:3], vel, quat, omega])
 
     @staticmethod
-    ##@profile    
     def state_xyzr_vxyzr_quat_omega(self):
         """
         xyz and Vxyz are given in a body frame
@@ -1329,36 +1299,27 @@ class QuadrotorEnv(gym.Env, Serializable):
         )
         e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
         vel_rel = self.dynamics.rot.T @ vel
-        # #np.savetxt("text.txt",vel_3)
-        # f = open("text.txt", "a+")
-        # f.write(np.array_str(vel_rel))
-        # f.close()
-        
         return np.concatenate([e_xyz_rel, vel_rel, quat, omega])
-    
+
     @staticmethod
-    ##@profile    
     def state_xyzr_vxyzr_quat_omega_h(self):
         """
         xyz and Vxyz are given in a body frame
         """   
         self.quat = R2quat(self.dynamics.rot)
-        pos, vel, quat, omega, acc, thrust_to_weight = self.sense_noise.add_noise(
+        pos, vel, quat, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
             vel=self.dynamics.vel,
             rot=self.quat,
             omega=self.dynamics.omega,
             acc=self.dynamics.accelerometer,
             dt=self.dt
-            
         )
-        
         e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
         vel_rel = self.dynamics.rot.T @ vel
         return np.concatenate([e_xyz_rel, vel_rel, quat, omega, (pos[2],)])
 
     @staticmethod
-    ##@profile
     def state_xyzr_vxyzr_rot_omega_t2w(self):
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
@@ -1375,7 +1336,6 @@ class QuadrotorEnv(gym.Env, Serializable):
         vel_rel = self.dynamics.rot.T @ vel
         return np.concatenate([e_xyz_rel,vel_rel, rot.flatten(), omega, noisy_t2w])
     @staticmethod
-    ##@profile
     def state_xyz_vxyz_rot_omega_t2w(self):
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
             pos=self.dynamics.pos,
@@ -1392,7 +1352,6 @@ class QuadrotorEnv(gym.Env, Serializable):
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w])
 
     @staticmethod
-    ##@profile
     def state_xyz_vxyz_euler_omega(self):
         self.euler = t3d.euler.mat2euler(self.dynamics.rot)
         pos, vel, quat, omega, acc = self.sense_noise.add_noise(
@@ -1404,7 +1363,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             dt=self.dt
         )       
         return np.concatenate([pos - self.goal[:3], vel, euler, omega])
-    #@profile
+
     def get_observation_space(self):
         self.wall_offset = 0.3
         if self.obs_repr == "xyz_vxyz_rot_omega" or self.obs_repr == "xyzr_vxyzr_rot_omega":
@@ -1441,7 +1400,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
 
         elif self.obs_repr == "xyz_vxyz_rot_omega_t2w":
-            self.obs_comp_sizes = [3, 3, 9, 3,1]
+            self.obs_comp_sizes = [3, 3, 9, 3, 1]
             self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w"]
             obs_dim = np.sum(self.obs_comp_sizes)
             obs_high =  np.ones(obs_dim)
@@ -1998,14 +1957,14 @@ class QuadrotorEnv(gym.Env, Serializable):
             
         self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
         return self.observation_space
-    ##@profile
+
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
-    #@profile
+
     def _step(self, action):
-        self.actions[1] = copy.deepcopy(self.actions[0])#ujson.loads(ujson.dumps(self.actions[0]))#copy.deepcopy(self.actions[0]) #cPickle.loads(cPickle.dumps(self.actions[0], -1)) 
-        self.actions[0] = copy.deepcopy(action)#ujson.loads(ujson.dumps(action))#copy.deepcopy(action) #cPickle.loads(cPickle.dumps(action, -1))
+        self.actions[1] = copy.deepcopy(self.actions[0])
+        self.actions[0] = copy.deepcopy(action)
         # print('actions_norm: ', np.linalg.norm(self.actions[0]-self.actions[1]))
 
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
@@ -2043,9 +2002,9 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.tick += 1
         done = self.tick > self.ep_len #or self.crashed
         sv = self.state_vector(self)
-
+        
         self.traj_count += int(done)
-        # print('state', sv, 'goal', self.goal)
+        
         # print('state', sv)
         # print('vel', sv[3], sv[4], sv[5])
         # print(sv, reward, done, rew_info)
@@ -2055,7 +2014,9 @@ class QuadrotorEnv(gym.Env, Serializable):
             "Vxyz": [sv_comp[self.obs_comp_indx["Vxyz"]]],
             "Omega": [sv_comp[self.obs_comp_indx["Omega"]]],
             "R22": [self.dynamics.rot[2,2]],
-            "Act": [action]
+            "Act": [action],
+            "ClippedAct": [self.controller.action],
+            "dt": [self.dt * self.sim_steps]
         }
 
         dyn_params = {
@@ -2077,13 +2038,13 @@ class QuadrotorEnv(gym.Env, Serializable):
         else:
             ## Generating new params
             self.dynamics_params = perturb_dyn_parameters(
-                params = ujson.loads(ujson.dumps(self.dynamics_params_def)),#copy.deepcopy(self.dynamics_params_def), 
+                params=copy.deepcopy(self.dynamics_params_def), 
                 noise_params=self.dyn_randomization_params
                 )
         ## Updating params
         self.update_dynamics(dynamics_params=self.dynamics_params)
 
-    #@profile
+
     def _reset(self):
         ## I have to update state vector 
         ##############################################################
@@ -2174,14 +2135,19 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         state = self.state_vector(self)
         return state
+
     def _render(self, mode='human', close=False):
         return self.scene.render_chase(dynamics=self.dynamics, goal=self.goal, mode=mode)
+    
     def reset(self):
         return self._reset()
+
     def render(self, mode='human', **kwargs):
         return self._render(mode, **kwargs)
+    
     def step(self, action):
         return self._step(action)
+
 class DummyPolicy(object):
     def __init__(self, dt=0.01, switch_time=2.5):
         self.action = np.zeros([4,])
@@ -2191,6 +2157,7 @@ class DummyPolicy(object):
         return self.action
     def reset(self):
         pass
+
 class UpDownPolicy(object):
     def __init__(self, dt=0.01, switch_time=2.5):
         self.t = 0
@@ -2200,17 +2167,16 @@ class UpDownPolicy(object):
         self.action_up[:2] = 0.
         self.action_down =  np.zeros([4,])
         self.action_down[:2] = 1.
-    ##@profile
+    
     def step(self, x):
         self.t += self.dt
         if self.t < self.switch_time:
             return self.action_up
         else:
             return self.action_down
-    ##@profile        
     def reset(self):
         self.t = 0.
-##@profile
+
 def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, 
     render=True, traj_num=10, plot_step=None, plot_dyn_change=True, plot_thrusts=False,
     sense_noise=None, policy_type="mellinger", init_random_state=False, obs_repr="xyz_vxyz_rot_omega",csv_filename=None):
@@ -2241,8 +2207,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
 
     env = QuadrotorEnv(dynamics_params=quad, raw_control=raw_control, raw_control_zero_middle=raw_control_zero_middle, 
         dynamics_randomize_every=dyn_randomize_every, dynamics_randomization_ratio=dyn_randomization_ratio,
-        sense_noise=sense_noise, init_random_state=init_random_state, obs_repr=obs_repr
-        )
+        sense_noise=sense_noise, init_random_state=init_random_state, obs_repr=obs_repr)
 
 
     policy.dt = 1./ env.control_freq
@@ -2376,7 +2341,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     if plot_step is not None or plot_dyn_change:
         plt.show(block=False)
         input("Press Enter to continue...")
-##@profile
+
 def main(argv):
     # parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -2477,7 +2442,7 @@ def main(argv):
         obs_repr=args.obs_repr,
         csv_filename=args.csv_filename,
     )
-st = time.time()
+
 if __name__ == '__main__':
     main(sys.argv)
-print(time.time()-st)
+
