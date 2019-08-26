@@ -836,9 +836,13 @@ class QuadrotorEnv(gym.Env, Serializable):
             self.dynamics_params_def = None
             self.dyn_sampler = sample_crazyflie_thrust2weight_20_50
             self.dynamics_params = self.dyn_sampler()
-        elif dynamics_params == "mediumquad_t2w_15_35":
+        elif dynamics_params == "mediumquad_t2w_20_30":
             self.dynamics_params_def = None
-            self.dyn_sampler = sample_medium_thrust2weight_15_35
+            self.dyn_sampler = sample_medium_thrust2weight_20_30
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "crazyflie_t2w_15_25_t2t_3_9":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_crazyflie_t2w_15_25_t2t_3_9
             self.dynamics_params = self.dyn_sampler()
         else:
             ## Setting the quad dynamics params
@@ -2014,8 +2018,13 @@ class QuadrotorEnv(gym.Env, Serializable):
             "Vxyz": [sv_comp[self.obs_comp_indx["Vxyz"]]],
             "Omega": [sv_comp[self.obs_comp_indx["Omega"]]],
             "R22": [self.dynamics.rot[2,2]],
+            "R": [sv_comp[self.obs_comp_indx["R"]]],
+            "Inertia": [self.dynamics.inertia],
             "Act": [action],
-            "ClippedAct": [self.controller.action],
+            "ClippedAct": [np.clip(self.controller.action, a_min=0., a_max=1.)],
+            "FilteredAct": [self.dynamics.thrust_cmds_damp],
+            "ActSum": [4],
+            "Grav": [GRAV],
             "dt": [self.dt * self.sim_steps]
         }
 
@@ -2074,7 +2083,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         if self.box < 10:
             self.box = self.box * self.box_scale
         x, y, z = self.np_random.uniform(-self.box, self.box, size=(3,)) + self.goal
-        
+
         if self.dim_mode == '1D':
             x, y = self.goal[0], self.goal[1]
         elif self.dim_mode == '2D':
@@ -2117,7 +2126,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                 rotation = randyaw()
                 while np.dot(rotation[:,0], to_xyhat(-pos)) < 0.5:
                     rotation = randyaw()
-        
+
         # Setting the generated state
         # print("QuadEnv: init: pos/vel/rot/omega:", pos, vel, rotation, omega)
         self.init_state = [pos, vel, rotation, omega]
