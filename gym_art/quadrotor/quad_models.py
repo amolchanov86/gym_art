@@ -90,12 +90,12 @@ def mediumquad_params():
     ## Geometric parameters for Inertia and the model
     geom_params = {}
     geom_params["body"] = {"l": 0.04, "w": 0.04, "h": 0.04, "m": 0.04}
-    geom_params["payload"] = {"l": 0.055, "w": 0.015, "h": 0.015, "m": 0.029}
-    geom_params["arms"] = {"l": 0.0626, "w":0.009, "h":0.003, "m":0.006} #0.17 total arm
-    geom_params["motors"] = {"h":0.012, "r":0.007, "m":0.006}
-    geom_params["propellers"] = {"h":0.007, "r":0.044, "m":0.0012}
+    geom_params["payload"] = {"l": 0.06, "w": 0.015, "h": 0.015, "m": 0.029}
+    geom_params["arms"] = {"l": 0.04, "w":0.01, "h":0.003, "m":0.006} #0.17 total arm
+    geom_params["motors"] = {"h":0.013, "r":0.007, "m":0.006}
+    geom_params["propellers"] = {"h":0.007, "r":0.035, "m":0.0012}
     
-    geom_params["motor_pos"] = {"xyz": [0.064, 0.064, 0.]}##############
+    geom_params["motor_pos"] = {"xyz": [0.046, 0.046, 0.]}##############
     geom_params["arms_pos"] = {"angle": 45., "z": 0.}
     geom_params["payload_pos"] = {"xy": [0., 0.], "z_sign": -1}
     # z_sing corresponds to location (+1 - on top of the body, -1 - on the bottom of the body)
