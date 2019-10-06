@@ -255,6 +255,15 @@ class Quadrotor3DScene(object):
                 # print("Type: Cylinder")
                 link_transf = r3d.transform_and_color(r3d.translate(xyz), color,
                     r3d.cylinder(link.r, link.h, 32))
+            elif link.type == "rod":
+                # print("Type: Rod")
+                R_y = np.eye(4)
+                R_y[:3,:3] = rpy2R(0, np.pi/2, 0)
+                xyz[0] = -link.l / 2
+                link_transf = r3d.transform_and_color(
+                    np.matmul(rot, np.matmul(r3d.translate(xyz), R_y)), color,
+                    r3d.rod(link.r, link.l, 32))
+
             links.append(link_transf)
 
 

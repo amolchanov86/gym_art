@@ -602,6 +602,12 @@ def cylinder(radius, height, sections):
     collider = CapsuleCollision(radius, height)
     return TriStrip(v, n, collider=collider)
 
+# cylinder sitting on xy plane pointing +x
+def rod(radius, length, sections):
+    v, n = cylinder_strip(radius, length, sections)
+    collider = CapsuleCollision(radius, length)
+    return TriStrip(v, n, collider=collider)
+
 # cone sitting on xy plane pointing +z
 def cone(radius, height, sections):
     # TODO collision detectoin

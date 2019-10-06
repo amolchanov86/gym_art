@@ -309,6 +309,137 @@ class QuadLink(object):
     def m(self):
         return np.sum([link.m for link in self.links]) 
 
+class QuadLinkSimplified(object):
+    """
+    Simplified version of a quad rotor model.
+    Consists of only two rods and 4 propellers, which do not contribute to any mass
+    Quadrotor link set to compute inertia.
+    Initial coordinate system assumes being in the middle of the central body.
+    Orientation of axes: x - forward; y - left; z - up
+    arm_angle == |/ , i.e. between the x axis and the axis of the arm
+    Quadrotor assumes X configuration.
+    """
+    def __init__(self, params=None, verbose=False):
+        # PARAMETERS (CrazyFlie by default)
+        self.motors_num = 4
+        self.rods_num = 2
+        self.params = {}
+
+        self.params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
+        self.params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
+        self.params["arms"] = {"w":0.005, "h":0.005, "m":0.001}
+        self.params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
+        self.params["propellers"] = {"h":0.002, "r":0.022, "m":0.00075}
+
+        self.params["arms_pos"] = {"angle": 45., "z": 0.}
+
+        self.params["payload_pos"] = {"xy": [0., 0.], "z_sign": 1.}
+        self.params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
+        if params is not None:
+            self.params.update(params)
+        else:
+            print("WARN: since params is None the CrazyFlie params will be used")
+
+        ## Simplify the model
+        ## arm length here represents the diagonal motor to motor distance
+        if not "arm_length" in self.params:
+            self.arm_length = np.sqrt(self.params["motor_pos"]["xyz"][0]**2 * 2) * 2  # 0.092 [m]
+            self.params["arm_length"] = self.arm_length
+            self.params["arms"]["l"] = self.arm_length
+        self.params["propellers"] = {"h": 0.002, "r": self.params["arm_length"]/4, "m": 0.0}
+        ## calculate the total mass
+        if not "mass" in self.params:
+            mass_body =  BoxLink(**self.params["body"]).m
+            mass_payload = BoxLink(**self.params["payload"]).m
+            mass_arms = np.sum([BoxLink(**self.params["arms"]).m for _ in range(self.motors_num)])
+            mass_motors = np.sum([CylinderLink(**self.params["motors"]).m for _ in range(self.motors_num)])
+            mass_props = np.sum([CylinderLink(**self.params["propellers"]).m for _ in range(self.motors_num)])
+    
+            self.params["mass"] = mass_body + mass_payload + mass_arms + mass_motors + mass_props # 0.027 [kg]
+
+        self.params["arms"] = {"l": self.params["arm_length"], "r": self.params["arm_length"]/20, "m": self.params["mass"] / 2}
+
+        # Printing all params
+        if verbose:
+            print("######################################################")
+            print("QUAD PARAMETERS:")
+            [print(key,":", val) for key,val in self.params.items()]
+            print("######################################################")
+
+        # Dependent parameters
+        self.arm_angle = deg2rad(self.params["arms_pos"]["angle"])
+        if self.arm_angle == 0.:
+            self.arm_angle = 0.01
+        self.motor_xyz = np.array(self.params["motor_pos"]["xyz"])
+        # Vectors of coordinates of the COMs of arms, s.t. their ends will be exactly at motors locations
+        self.arm_xyz = np.array([0, 0, self.params["arms_pos"]["z"] ])
+
+        # X signs according to clockwise starting front-left
+        # i.e. the list bodies are counting clockwise: front_right, back_right, back_left, front_left
+        # See CrazyFlie doc for more details: https://wiki.bitcraze.io/projects:crazyflie2:userguide:assembly
+        self.x_sign = np.array([1, -1, -1, 1])
+        self.y_sign = np.array([-1, -1, 1, 1])
+        self.sign_mx = np.array([self.x_sign, self.y_sign, np.array([1., 1., 1., 1.])])
+
+        self.motors_coord = self.sign_mx * self.motor_xyz[:, None]
+        self.props_coord = copy.deepcopy(self.motors_coord)
+        self.props_coord[2,:] = (self.props_coord[2,:] + self.params["arms"]["r"] / 2. + self.params["propellers"]["h"])
+        self.arm_angles = [
+            -self.arm_angle, 
+             self.arm_angle
+        ]
+
+        ## define the body, the body only consists of two perpendicular rods
+        # self.arms  = [RodLink(**self.params["arms"], name="arm_%d" % i) for i in range(self.rods_num)]
+        self.arms  = [RodLink(**self.params["arms"], name="arm_%d" % i) for i in range(self.rods_num)]
+        self.props =  [CylinderLink(**self.params["propellers"], name="prop_%d" % i) for i in range(self.motors_num)] # Propellers
+        self.links = self.arms + self.props
+
+        # Defining locations of all bodies
+        self.arms_pose = [LinkPose(alpha=self.arm_angles[i], xyz=self.arm_xyz) 
+                            for i in range(self.rods_num)]
+        self.motors_pos = [LinkPose(xyz=self.motors_coord[:, i]) 
+                            for i in range(self.motors_num)]
+        self.props_pos = [LinkPose(xyz=self.props_coord[:, i]) 
+                    for i in range(self.motors_num)]
+        
+        self.poses = self.arms_pose + self.props_pos
+
+        # Recomputing the center of mass of the new system of bodies
+        masses = [link.m for link in self.links]
+        self.com = sum([ masses[i] * pose.xyz for i, pose in enumerate(self.poses)]) / self.m
+
+        # Recomputing corrections on posess with the respect to the new system
+        # self.poses_init = ujson.loads(ujson.dumps(self.poses))
+        self.poses_init = copy.deepcopy(self.poses)
+        for pose in self.poses:
+            pose.xyz -= self.com
+        
+        if verbose:
+            print("Initial poses: ")
+            [print(pose.xyz) for pose in self.poses_init]
+            print("###################################")
+            print("Final poses: ")
+            [print(pose.xyz) for pose in self.poses]
+            print("###################################")
+
+        # Computing inertias
+        self.links_I = []
+        for link_i, link in enumerate(self.links):
+            I_rot = rotate_I(I=link.I_com, R=self.poses[link_i].R)
+            I_trans = translate_I(I=I_rot, m=link.m, xyz=self.poses[link_i].xyz)
+            self.links_I.append(I_trans)
+        
+        # Total inertia
+        self.I_com = sum(self.links_I)
+
+        # Propeller poses
+        self.prop_pos = np.array([pose.xyz for pose in self.motors_pos])
+    
+    @property
+    def m(self):
+        return self.params["mass"] 
+
 
 if __name__ == "__main__":
     import time
@@ -382,7 +513,9 @@ if __name__ == "__main__":
         print("Loaded quad: %s" % args.config)
         report(quad_load)
 
-
+    ## Simplified quad link model
+    simplified_quad = QuadLinkSimplified(verbose=True)
+    report(simplified_quad)
 
 ################################################
 ## BUGS

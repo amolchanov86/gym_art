@@ -284,6 +284,18 @@ def sample_crazyflie_t2w_15_25_t2t_3_9():
     params["motor"]["torque_to_thrust"] = np.random.uniform(low=0.003, high=0.009)
     return params
 
+def sample_crazyflie_t2w_15_35_t2t_3_9():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
+    params["motor"]["torque_to_thrust"] = np.random.uniform(low=0.003, high=0.009)
+    return params
+
+def sample_crazyflie_t2w_15_35_t2t_5_50():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
+    params["motor"]["torque_to_thrust"] = np.random.uniform(low=0.005, high=0.05)
+    return params
+
 def sample_random_dyn_lowinertia():
     """
     The function samples parameters for all possible quadrotors
@@ -387,6 +399,70 @@ def sample_random_dyn_lowinertia():
     params = check_quad_param_limits(params=params)
     return params
 
+def sample_random_dyn_simplified():
+    """
+    The function samples parameters for all possible quadrotors
+    Args:
+        scale (float): scale of sampling
+    Returns:
+        dict: sampled quadrotor parameters
+    """
+    ###################################################################
+    ## Masses and dimensions
+    # Estimated Crazyflie mass / dimension / arm length : ~0.027 [kg] / 0.065 x 0.065 [m] / 0.092 [m]
+    # Estimated Hummingbird mass / dimension /arm length : ~0.547 [kg] / 0.764 x 0.764 [m] / 0.540 [m]
+    geom_params = {}
+
+    geom_params["mass"] = np.random.uniform(low=0.020, high=0.6)
+    ###################################################################
+    ## GEOMETRIES
+    ## arm length here represents the diagonal motor to motor distance
+    arm_length = np.random.uniform(low=0.08, high=0.6)
+    geom_params["arm_length"] = arm_length
+    motor_pos_x = motor_pos_y = arm_length * np.sqrt(2) / 4
+    geom_params["motor_pos"] = {"xyz": [motor_pos_x, motor_pos_y, 0.0]}
+
+    thrust_to_weight = np.random.uniform(low=1.8, high=2.5)
+
+    ## Damping parameters
+    # damp_vel_scale = np.random.uniform(low=0.01, high=2.)
+    # damp_omega_scale = damp_vel_scale * np.random.uniform(low=0.75, high=1.25)
+    # damp_params = {
+    #     "vel": 0.001 * damp_vel_scale, 
+    #     "omega_quadratic": 0.015 * damp_omega_scale}
+    damp_params = {
+        "vel": 0.0, 
+        "omega_quadratic": 0.0}
+
+    ## Noise parameters
+    noise_params = {}
+    noise_params["thrust_noise_ratio"] = np.random.uniform(low=0.05, high=0.1) #0.01
+    
+    ## Motor parameters
+    damp_time_up = np.random.uniform(low=0.1, high=0.2)
+    damp_time_down_scale = np.random.uniform(low=1.0, high=2.0)
+    motor_params = {"thrust_to_weight" : thrust_to_weight,
+                    "torque_to_thrust": np.random.uniform(low=0.005, high=0.02), #0.05 originally
+                    "assymetry": np.random.uniform(low=0.9, high=1.1, size=4),
+                    "linearity": 1.0,
+                    "C_drag": 0.,
+                    "C_roll": 0.,
+                    "damp_time_up": damp_time_up,
+                    "damp_time_down": damp_time_down_scale * damp_time_up
+                    # "linearity": np.random.normal(loc=0.5, scale=0.1)
+                    }
+
+    ## Summarizing
+    params = {
+        "geom": geom_params, 
+        "damp": damp_params, 
+        "noise": noise_params,
+        "motor": motor_params
+    }
+
+    ## Checking everything
+    # params = check_quad_param_limits(params=params)
+    return params
 
 
     # def sample_random_nondim_dyn():

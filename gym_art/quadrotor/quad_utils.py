@@ -118,6 +118,24 @@ def rotZ(theta):
     r[:2,:2] = rot2D(theta)
     return r
 
+def rpy2R(r, p, y):
+    R_x = np.array([[1, 0, 0],
+                    [0, np.cos(r), -np.sin(r)],
+                    [0, np.sin(r), np.cos(r)]
+                    ])
+    R_y = np.array([[np.cos(p), 0, np.sin(p)],
+                    [0, 1, 0],
+                    [-np.sin(p), 0, np.cos(p)]
+                    ])
+    R_z = np.array([[np.cos(y), -np.sin(y), 0],
+                    [np.sin(y), np.cos(y), 0],
+                    [0, 0, 1]
+                    ])
+
+    R = np.dot(R_z, np.dot( R_y, R_x ))
+
+    return R
+
 def randyaw():
     rotz = np.random.uniform(-np.pi, np.pi)
     return rotZ(rotz)[:3,:3]
