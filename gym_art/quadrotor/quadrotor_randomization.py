@@ -399,7 +399,7 @@ def sample_random_dyn_lowinertia():
     params = check_quad_param_limits(params=params)
     return params
 
-def sample_random_dyn_simplified():
+def sample_simplified_random_dyn():
     """
     The function samples parameters for all possible quadrotors
     Args:
@@ -422,7 +422,7 @@ def sample_random_dyn_simplified():
     motor_pos_x = motor_pos_y = arm_length * np.sqrt(2) / 4
     geom_params["motor_pos"] = {"xyz": [motor_pos_x, motor_pos_y, 0.0]}
 
-    thrust_to_weight = np.random.uniform(low=1.8, high=2.5)
+    thrust_to_weight = np.random.uniform(low=1.5, high=3.5)
 
     ## Damping parameters
     # damp_vel_scale = np.random.uniform(low=0.01, high=2.)

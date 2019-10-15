@@ -38,7 +38,7 @@ from gym_art.quadrotor.quadrotor_control import *
 from gym_art.quadrotor.quadrotor_obstacles import *
 from gym_art.quadrotor.quadrotor_visualization import *
 from gym_art.quadrotor.quad_utils import *
-from gym_art.quadrotor.inertia import QuadLink
+from gym_art.quadrotor.inertia import QuadLink, QuadLinkSimplified
 from gym_art.quadrotor.sensor_noise import SensorNoise
 
 from gym_art.quadrotor.quad_models import *
@@ -85,9 +85,11 @@ class QuadrotorDynamics(object):
         room_box=None,
         dynamics_steps_num=1, 
         dim_mode="3D",
-        gravity=GRAV):
+        gravity=GRAV,
+        dynamics_simplification=False):
 
         self.dynamics_steps_num = dynamics_steps_num
+        self.dynamics_simplification = dynamics_simplification
         ###############################################################
         ## PARAMETERS 
         self.prop_ccw = np.array([-1., 1., -1., 1.])
@@ -151,7 +153,10 @@ class QuadrotorDynamics(object):
         return  (1 - linearity) * w**2 + linearity * w
 
     def update_model(self, model_params):
-        self.model = QuadLink(params=model_params["geom"])
+        if self.dynamics_simplification:
+            self.model = QuadLinkSimplified(params=model_params["geom"])
+        else:
+            self.model = QuadLink(params=model_params["geom"])
         self.model_params = model_params
 
         ###############################################################
@@ -208,6 +213,11 @@ class QuadrotorDynamics(object):
         self.arm = np.linalg.norm(self.model.motor_xyz[:2])
 
         self._step = getattr(self, 'step%d' % self.dynamics_steps_num)
+
+        ## the ratio between max torque and inertia around each axis
+        self.torque_to_inertia = self.G_omega @ np.array([[0, 0, 0], [0, 1, 1], [1, 1, 0], [1, 0, 1]])
+        self.torque_to_inertia = np.sum(self.torque_to_inertia, axis=1)
+        # self.torque_to_inertia = self.torque_to_inertia / np.linalg.norm(self.torque_to_inertia)
 
         self.reset()
 
@@ -363,7 +373,7 @@ class QuadrotorDynamics(object):
         torques = self.prop_crossproducts * thrusts[:,None] # (4,3)=(props, xyz)
 
         # additional torques along z-axis caused by propeller rotations
-        torques[:, 2] += self.torque_max * self.prop_ccw * self.thrust_cmds_damp 
+        torques[:, 2] += self.torque_max * self.prop_ccw * self.thrust_cmds_damp
 
         # net torque: sum over propellers
         thrust_torque = np.sum(torques, axis=0) 
@@ -719,7 +729,8 @@ class QuadrotorEnv(gym.Env, Serializable):
                 dynamics_randomize_every=None, dynamics_randomization_ratio=0., dynamics_randomization_ratio_params=None,
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
                 obs_repr="xyz_vxyz_rot_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
-                rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV, resample_goal=False, t2w_std = 0.005, t2w_max = 3.5):
+                rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV, resample_goal=False, 
+                t2w_std=0.005, t2w_max=3.5, t2t_std=0.0005, t2t_max=0.05, excite=False):
         np.seterr(under='ignore')
         """
         Args:
@@ -745,6 +756,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             init_random_state: [bool] use random state initialization or horizontal initialization with 0 velocities
             rew_coeff: [dict] weights for different reward components (see compute_weighted_reward() function)
             sens_noise (dict or str): sensor noise parameters. If None - no noise. If "default" then the default params are loaded. Otherwise one can provide specific params.
+            excite: [bool] change the setpoint at the fixed frequency to perturb the quad
         """
         ## ARGS
         self.init_random_state = init_random_state
@@ -762,8 +774,17 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.update_sense_noise(sense_noise=sense_noise)
         self.gravity = gravity
         self.resample_goal = resample_goal
+        ## t2w and t2t ranges
         self.t2w_std = t2w_std
+        self.t2w_min = 1.5
         self.t2w_max = t2w_max
+
+        self.t2t_std = t2t_std
+        self.t2t_min = 0.005
+        self.t2t_max = t2t_max
+        self.excite = excite
+        ## dynmaics simplification
+        self.dynamics_simplification = False
         ## PARAMS
         self.max_init_vel = 1. # m/s
         self.max_init_omega = 2 * np.pi #rad/s
@@ -787,6 +808,11 @@ class QuadrotorEnv(gym.Env, Serializable):
         if dynamics_params == "random":
             self.dynamics_params_def = None
             self.dyn_sampler = sample_random_dyn
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "simplified_random":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_simplified_random_dyn
+            self.dynamics_simplification = True
             self.dynamics_params = self.dyn_sampler()
         elif dynamics_params == "random_with_linearity":
             self.dynamics_params_def = None
@@ -843,6 +869,25 @@ class QuadrotorEnv(gym.Env, Serializable):
         elif dynamics_params == "crazyflie_t2w_15_25_t2t_3_9":
             self.dynamics_params_def = None
             self.dyn_sampler = sample_crazyflie_t2w_15_25_t2t_3_9
+            self.dynamics_params = self.dyn_sampler()
+            self.t2w_min, self.t2w_max = 1.5, 2.5
+            self.t2t_min, self.t2t_max = 0.003, 0.009
+        elif dynamics_params == "crazyflie_t2w_15_35_t2t_3_9":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_crazyflie_t2w_15_35_t2t_3_9
+            self.dynamics_params = self.dyn_sampler()
+            self.t2w_min, self.t2w_max = 1.5, 3.5
+            self.t2t_min, self.t2t_max = 0.003, 0.009
+        elif dynamics_params == "crazyflie_t2w_15_35_t2t_5_50":
+            self.dynamics_params_def = None 
+            self.dyn_sampler = sample_crazyflie_t2w_15_35_t2t_5_50
+            self.dynamics_params = self.dyn_sampler()
+            self.t2w_min, self.t2w_max = 1.5, 3.5
+            self.t2t_min, self.t2t_max = 0.005, 0.05
+        elif dynamics_params == "simplified_crazyflie_t2w_15_35":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_crazyflie_thrust2weight_15_35
+            self.dynamics_simplification = True
             self.dynamics_params = self.dyn_sampler()
         else:
             ## Setting the quad dynamics params
@@ -964,7 +1009,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.dynamics_params = dynamics_params
         self.dynamics = QuadrotorDynamics(model_params=dynamics_params, 
                         dynamics_steps_num=self.sim_steps, room_box=self.room_box, dim_mode=self.dim_mode,
-                        gravity=self.gravity)
+                        gravity=self.gravity, dynamics_simplification=self.dynamics_simplification)
         
         if self.verbose:
             print("#################################################")
@@ -1333,12 +1378,16 @@ class QuadrotorEnv(gym.Env, Serializable):
             acc=self.dynamics.accelerometer,
             dt=self.dt
         )
-        ## Adding noise to t2w 
+        ## Adding noise to t2w and scale it to [0, 1]
         noisy_t2w = self.dynamics.thrust_to_weight + \
                     normal(loc=0., scale=abs((self.t2w_std/2)*self.dynamics.thrust_to_weight), size=1)
+        noisy_t2w = np.clip(noisy_t2w, a_min=self.t2w_min, a_max=self.t2w_max)
+        noisy_t2w = (noisy_t2w-self.t2w_min) / (self.t2w_max-self.t2w_min)
+
         e_xyz_rel = self.dynamics.rot.T @ (pos - self.goal[:3])
         vel_rel = self.dynamics.rot.T @ vel
         return np.concatenate([e_xyz_rel,vel_rel, rot.flatten(), omega, noisy_t2w])
+
     @staticmethod
     def state_xyz_vxyz_rot_omega_t2w(self):
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(
@@ -1349,11 +1398,37 @@ class QuadrotorEnv(gym.Env, Serializable):
             acc=self.dynamics.accelerometer,
             dt=self.dt
         )
-        ## Adding noise to t2w 
+        ## Adding noise to t2w and scale it to [0, 1]
         noisy_t2w = self.dynamics.thrust_to_weight + \
                     normal(loc=0., scale=abs((self.t2w_std/2)*self.dynamics.thrust_to_weight), size=1)
+        noisy_t2w = np.clip(noisy_t2w, a_min=self.t2w_min, a_max=self.t2w_max)
+        noisy_t2w = (noisy_t2w-self.t2w_min) / (self.t2w_max-self.t2w_min)
        
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w])
+
+    @staticmethod
+    def state_xyz_vxyz_rot_omega_t2w_t2t(self):
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        ## Adding noise to t2w and scale it to [0, 1]
+        noisy_t2w = self.dynamics.thrust_to_weight + \
+                    normal(loc=0., scale=abs((self.t2w_std/2)*self.dynamics.thrust_to_weight), size=1)
+        noisy_t2w = np.clip(noisy_t2w, a_min=self.t2w_min, a_max=self.t2w_max)
+        noisy_t2w = (noisy_t2w-self.t2w_min) / (self.t2w_max-self.t2w_min)
+
+        ## Adding noise to t2t and scaling it to [0, 1]
+        noisy_t2t = self.dynamics.torque_to_thrust + \
+                    normal(loc=0., scale=abs((self.t2t_std/2)*self.dynamics.torque_to_thrust), size=1)
+        noisy_t2t = np.clip(noisy_t2t, a_min=self.t2t_min, a_max=self.t2t_max)
+        noisy_t2t = (noisy_t2t-self.t2t_min) / (self.t2t_max-self.t2t_min)
+       
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w, noisy_t2t])
 
     @staticmethod
     def state_xyz_vxyz_euler_omega(self):
@@ -1430,7 +1505,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_low[18:19]  = self.t2w_max* obs_low[18:19]
 
         elif self.obs_repr == "xyzr_vxyzr_rot_omega_t2w":
-            self.obs_comp_sizes = [3, 3, 9, 3,1]
+            self.obs_comp_sizes = [3, 3, 9, 3, 1]
             self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w"]
             obs_dim = np.sum(self.obs_comp_sizes)
             obs_high =  np.ones(obs_dim)
@@ -1454,6 +1529,36 @@ class QuadrotorEnv(gym.Env, Serializable):
             #T2W
             obs_high[18:19] = self.t2w_max* obs_high[18:19]
             obs_low[18:19]  = self.t2w_max* obs_low[18:19]
+
+        elif self.obs_repr == "xyz_vxyz_rot_omega_t2w_t2t":
+            self.obs_comp_sizes = [3, 3, 9, 3, 1, 1]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w", "t2t"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18]
+
+            #T2W
+            obs_high[18:19] = self.t2w_max* obs_high[18:19]
+            obs_low[18:19]  = self.t2w_max* obs_low[18:19]
+
+            #T2T
+            obs_high[19:20] = self.t2t_max* obs_high[19:20]
+            obs_low[19:20]  = self.t2t_max* obs_low[19:20]
 
         elif self.obs_repr == "xyzr_vxyzr_rot_omega_tx1":
             
@@ -1981,6 +2086,13 @@ class QuadrotorEnv(gym.Env, Serializable):
                 )
         # print("accelerations:", self.dynamics.accelerometer, "noise_raio:", np.abs(self.dynamics.accelerometer-acc)/np.abs(self.dynamics.accelerometer))
 
+        if self.excite and self.tick % 5 == 0:
+            ## change the goal every 5 time step
+            self.goal = np.concatenate([
+                np.random.uniform(low=-0.5, high=0.5, size=(2,)),
+                np.random.uniform(low=1.5, high=2.5, size=(1,))
+            ])
+
         # if not self.crashed:
         # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
         self.controller.step_func(dynamics=self.dynamics,
@@ -2023,14 +2135,19 @@ class QuadrotorEnv(gym.Env, Serializable):
             "Act": [action],
             "ClippedAct": [np.clip(self.controller.action, a_min=0., a_max=1.)],
             "FilteredAct": [self.dynamics.thrust_cmds_damp],
+            "TorqueAct": [self.dynamics.prop_ccw * self.dynamics.thrust_cmds_damp],
+            "MaxThrust": [np.mean(self.dynamics.thrust_max)],
             "ActSum": [4],
             "Grav": [GRAV],
             "dt": [self.dt * self.sim_steps]
         }
 
         dyn_params = {
-            "t2w": self.dynamics.thrust_to_weight,
-            "t2t": self.dynamics.torque_to_thrust
+            "t2w": (self.dynamics.thrust_to_weight - self.t2w_min) / (self.t2w_max-self.t2w_min),
+            "t2t": (self.dynamics.torque_to_thrust - self.t2t_min) / (self.t2t_max-self.t2t_min),
+            "t2Ixx" : self.dynamics.torque_to_inertia[0],
+            "t2Iyy" : self.dynamics.torque_to_inertia[1],
+            "t2Izz" : self.dynamics.torque_to_inertia[2]
         } 
         # print(sv, obs_comp, dyn_params, self.obs_comp_sizes)      
         return sv, reward, done, {'rewards': rew_info, "obs_comp": obs_comp, "dyn_params": dyn_params}
