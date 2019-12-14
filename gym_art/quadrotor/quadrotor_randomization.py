@@ -296,6 +296,13 @@ def sample_crazyflie_t2w_15_35_t2t_5_50():
     params["motor"]["torque_to_thrust"] = np.random.uniform(low=0.005, high=0.05)
     return params
 
+def sample_crazyflie_t2w_15_35_t2t_3_9_l_5_15():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=2.5)
+    params["motor"]["torque_to_thrust"] = np.random.uniform(low=0.003, high=0.009)
+    params["geom"]["arms"]["l"] = np.random.uniform(low=0.05, high=0.15)
+    return params
+
 def sample_random_dyn_lowinertia():
     """
     The function samples parameters for all possible quadrotors
@@ -417,8 +424,8 @@ def sample_simplified_random_dyn():
     ###################################################################
     ## GEOMETRIES
     ## arm length here represents the diagonal motor to motor distance
-    arm_length = np.random.uniform(low=0.08, high=0.6)
-    geom_params["arm_length"] = arm_length
+    arm_length = np.random.uniform(low=0.05, high=0.5)
+    geom_params["arms"] = {"l": arm_length}
     motor_pos_x = motor_pos_y = arm_length * np.sqrt(2) / 4
     geom_params["motor_pos"] = {"xyz": [motor_pos_x, motor_pos_y, 0.0]}
 

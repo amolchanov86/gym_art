@@ -730,7 +730,7 @@ class QuadrotorEnv(gym.Env, Serializable):
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
                 obs_repr="xyz_vxyz_rot_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
                 rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV, resample_goal=False, 
-                t2w_std=0.005, t2w_max=3.5, t2t_std=0.0005, t2t_max=0.05, excite=False):
+                t2w_std=0.005, t2w_max=3.5, t2t_std=0.0005, t2t_max=0.05, excite=False, dynamics_simplification=False):
         np.seterr(under='ignore')
         """
         Args:
@@ -784,7 +784,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.t2t_max = t2t_max
         self.excite = excite
         ## dynmaics simplification
-        self.dynamics_simplification = False
+        self.dynamics_simplification = dynamics_simplification
         ## PARAMS
         self.max_init_vel = 1. # m/s
         self.max_init_omega = 2 * np.pi #rad/s
@@ -887,6 +887,11 @@ class QuadrotorEnv(gym.Env, Serializable):
         elif dynamics_params == "simplified_crazyflie_t2w_15_35":
             self.dynamics_params_def = None
             self.dyn_sampler = sample_crazyflie_thrust2weight_15_35
+            self.dynamics_simplification = True
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "simplified_crazyflie_t2w_15_35_t2t_3_9_l_5_15":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_crazyflie_t2w_15_35_t2t_3_9_l_5_15
             self.dynamics_simplification = True
             self.dynamics_params = self.dyn_sampler()
         else:
@@ -1431,6 +1436,34 @@ class QuadrotorEnv(gym.Env, Serializable):
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w, noisy_t2t])
 
     @staticmethod
+    def state_xyz_vxyz_rot_omega_t2w_t2t_l(self):
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        ## Adding noise to t2w and scale it to [0, 1]
+        noisy_t2w = self.dynamics.thrust_to_weight + \
+                    normal(loc=0., scale=abs((self.t2w_std/2)*self.dynamics.thrust_to_weight), size=1)
+        noisy_t2w = np.clip(noisy_t2w, a_min=self.t2w_min, a_max=self.t2w_max)
+        noisy_t2w = (noisy_t2w-self.t2w_min) / (self.t2w_max-self.t2w_min)
+
+        ## Adding noise to t2t and scaling it to [0, 1]
+        noisy_t2t = self.dynamics.torque_to_thrust + \
+                    normal(loc=0., scale=abs((self.t2t_std/2)*self.dynamics.torque_to_thrust), size=1)
+        noisy_t2t = np.clip(noisy_t2t, a_min=self.t2t_min, a_max=self.t2t_max)
+        noisy_t2t = (noisy_t2t-self.t2t_min) / (self.t2t_max-self.t2t_min)
+
+        ## Adding noise to l (the distance from center to a motor)
+        noise_l = self.dynamics.model.params["arms"]["l"] / 2 + \
+                    normal(loc=0., scale=0.005, size=1)
+       
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w, noisy_t2t, noise_l])
+
+    @staticmethod
     def state_xyz_vxyz_euler_omega(self):
         self.euler = t3d.euler.mat2euler(self.dynamics.rot)
         pos, vel, quat, omega, acc = self.sense_noise.add_noise(
@@ -1442,6 +1475,33 @@ class QuadrotorEnv(gym.Env, Serializable):
             dt=self.dt
         )       
         return np.concatenate([pos - self.goal[:3], vel, euler, omega])
+
+    @staticmethod
+    def state_xyz_xyzi_vxyz_rot_omega_t2w(self):
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        ## Adding noise to t2w and scale it to [0, 1]
+        noisy_t2w = self.dynamics.thrust_to_weight + \
+                    normal(loc=0., scale=abs((self.t2w_std/2)*self.dynamics.thrust_to_weight), size=1)
+        noisy_t2w = np.clip(noisy_t2w, a_min=self.t2w_min, a_max=self.t2w_max)
+        noisy_t2w = (noisy_t2w-self.t2w_min) / (self.t2w_max-self.t2w_min)
+
+        ## Integrating the position error
+        pos_err = pos - self.goal[:3]
+        if self.tick == 0:
+            self.accumulative_pos_err = pos_err
+        else:
+            self.accumulative_pos_err = self.accumulative_pos_err * 0.9 + pos_err
+        ## prevent the accumulative error from exploding at the beginning of the training
+        self.accumulative_pos_err = np.clip(self.accumulative_pos_err, a_min=-self.room_size, a_max=self.room_size)
+
+        return np.concatenate([pos_err, self.accumulative_pos_err, vel, rot.flatten(), omega, noisy_t2w])
 
     def get_observation_space(self):
         self.wall_offset = 0.3
@@ -1530,6 +1590,36 @@ class QuadrotorEnv(gym.Env, Serializable):
             obs_high[18:19] = self.t2w_max* obs_high[18:19]
             obs_low[18:19]  = self.t2w_max* obs_low[18:19]
 
+        elif self.obs_repr == "xyz_xyzi_vxyz_rot_omega_t2w":
+            self.obs_comp_sizes = [3, 3, 3, 9, 3, 1]
+            self.obs_comp_names = ["xyz", "xyzi", "Vxyz", "R", "Omega", "t2w"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            ## xyz error intergral constraints
+            obs_high[3:6] = obs_high[0:3]
+            obs_low[3:6]  = obs_low[0:3]
+
+            # Vxyz
+            obs_high[6:9] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[6:9]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[18:21] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[18:21]  = self.dynamics.omega_max * obs_low[15:18]
+
+            #T2W
+            obs_high[21:22] = self.t2w_max* obs_high[18:19]
+            obs_low[21:22]  = self.t2w_max* obs_low[18:19]
+
         elif self.obs_repr == "xyz_vxyz_rot_omega_t2w_t2t":
             self.obs_comp_sizes = [3, 3, 9, 3, 1, 1]
             self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w", "t2t"]
@@ -1559,6 +1649,40 @@ class QuadrotorEnv(gym.Env, Serializable):
             #T2T
             obs_high[19:20] = self.t2t_max* obs_high[19:20]
             obs_low[19:20]  = self.t2t_max* obs_low[19:20]
+
+        elif self.obs_repr == "xyz_vxyz_rot_omega_t2w_t2t_l":
+            self.obs_comp_sizes = [3, 3, 9, 3, 1, 1, 1]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w", "t2t", "l"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18]
+
+            #T2W
+            obs_high[18:19] = self.t2w_max* obs_high[18:19]
+            obs_low[18:19]  = self.t2w_max* obs_low[18:19]
+
+            #T2T
+            obs_high[19:20] = self.t2t_max* obs_high[19:20]
+            obs_low[19:20]  = self.t2t_max* obs_low[19:20]
+
+            #L
+            obs_low[20:21]  = obs_high[19:20]
+            obs_low[20:21]  = obs_low[19:20]
 
         elif self.obs_repr == "xyzr_vxyzr_rot_omega_tx1":
             

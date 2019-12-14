@@ -342,11 +342,11 @@ class QuadLinkSimplified(object):
 
         ## Simplify the model
         ## arm length here represents the diagonal motor to motor distance
-        if not "arm_length" in self.params:
-            self.arm_length = np.sqrt(self.params["motor_pos"]["xyz"][0]**2 * 2) * 2  # 0.092 [m]
-            self.params["arm_length"] = self.arm_length
-            self.params["arms"]["l"] = self.arm_length
-        self.params["propellers"] = {"h": 0.002, "r": self.params["arm_length"]/4, "m": 0.0}
+        self.arm_length = np.sqrt(self.params["motor_pos"]["xyz"][0]**2 * 2) * 2  # 0.092 [m]
+        self.params["propellers"] = {"h": 0.002, "r": self.arm_length/4, "m": 0.0}
+        motor_pos_x = motor_pos_y = self.arm_length * np.sqrt(2) / 4
+        self.params["motor_pos"]["xyz"] = [motor_pos_x, motor_pos_y, 0.0]
+        self.motor_xyz = np.array(self.params["motor_pos"]["xyz"])
         ## calculate the total mass
         if not "mass" in self.params:
             mass_body =  BoxLink(**self.params["body"]).m
@@ -357,7 +357,7 @@ class QuadLinkSimplified(object):
     
             self.params["mass"] = mass_body + mass_payload + mass_arms + mass_motors + mass_props # 0.027 [kg]
 
-        self.params["arms"] = {"l": self.params["arm_length"], "r": self.params["arm_length"]/20, "m": self.params["mass"] / 2}
+        self.params["arms"] = {"l": self.arm_length, "r": self.arm_length / 20, "m": self.params["mass"] / 2}
 
         # Printing all params
         if verbose:
@@ -370,7 +370,6 @@ class QuadLinkSimplified(object):
         self.arm_angle = deg2rad(self.params["arms_pos"]["angle"])
         if self.arm_angle == 0.:
             self.arm_angle = 0.01
-        self.motor_xyz = np.array(self.params["motor_pos"]["xyz"])
         # Vectors of coordinates of the COMs of arms, s.t. their ends will be exactly at motors locations
         self.arm_xyz = np.array([0, 0, self.params["arms_pos"]["z"] ])
 
