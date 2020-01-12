@@ -370,13 +370,13 @@ class QuadrotorDynamics(object):
 
         thrusts = self.thrust_max * self.angvel2thrust(self.thrust_cmds_damp, linearity=self.motor_linearity)
         #Prop crossproduct give torque directions
-        torques = self.prop_crossproducts * thrusts[:,None] # (4,3)=(props, xyz)
+        self.torques = self.prop_crossproducts * thrusts[:,None] # (4,3)=(props, xyz)
 
         # additional torques along z-axis caused by propeller rotations
-        torques[:, 2] += self.torque_max * self.prop_ccw * self.thrust_cmds_damp
+        self.torques[:, 2] += self.torque_max * self.prop_ccw * self.thrust_cmds_damp
 
         # net torque: sum over propellers
-        thrust_torque = np.sum(torques, axis=0) 
+        thrust_torque = np.sum(self.torques, axis=0) 
 
         ###################################
         ## Rotor drag and Rolling forces and moments
@@ -427,7 +427,7 @@ class QuadrotorDynamics(object):
         ###################################
         ## (Square) Damping using torques (in case we would like to add damping using torques)
         # damping_torque = - 0.3 * self.omega * np.fabs(self.omega)
-        torque =  thrust_torque + rotor_visc_torque
+        self.torque =  thrust_torque + rotor_visc_torque
         thrust = npa(0,0,np.sum(thrusts))
 
         #########################################################
@@ -464,13 +464,13 @@ class QuadrotorDynamics(object):
         # omega_damp = 0.999   
         # self.omega = omega_damp * self.omega + dt * omega_dot
 
-        omega_dot = ((1.0 / self.inertia) *
-            (cross(-self.omega, self.inertia * self.omega) + torque))
+        self.omega_dot = ((1.0 / self.inertia) *
+            (cross(-self.omega, self.inertia * self.omega) + self.torque))
 
         ## Quadratic damping
         # 0.03 corresponds to roughly 1 revolution per sec
         omega_damp_quadratic = np.clip(self.damp_omega_quadratic * self.omega ** 2, a_min=0.0, a_max=1.0)
-        self.omega = self.omega + (1.0 - omega_damp_quadratic) * dt * omega_dot
+        self.omega = self.omega + (1.0 - omega_damp_quadratic) * dt * self.omega_dot
         self.omega = np.clip(self.omega, a_min=-self.omega_max, a_max=self.omega_max)
 
         ## When use square damping on torques - use simple integration
@@ -932,7 +932,7 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         ################################################################################
         ## DIMENSIONALITY
-        if self.dim_mode =='1D':
+        if self.dim_mode =='1D' or self.dim_mode == '2D':
             self.viewpoint = 'side'
         else:
             self.viewpoint = 'chase'
@@ -2260,18 +2260,21 @@ class QuadrotorEnv(gym.Env, Serializable):
             "ClippedAct": [np.clip(self.controller.action, a_min=0., a_max=1.)],
             "FilteredAct": [self.dynamics.thrust_cmds_damp],
             "TorqueAct": [self.dynamics.prop_ccw * self.dynamics.thrust_cmds_damp],
+            "Torque": [self.dynamics.torque],
             "MaxThrust": [np.mean(self.dynamics.thrust_max)],
-            "ActSum": [4],
             "Grav": [GRAV],
-            "dt": [self.dt * self.sim_steps]
+            "Dt": [self.dt * self.sim_steps]
         }
 
         dyn_params = {
-            "t2w": (self.dynamics.thrust_to_weight - self.t2w_min) / (self.t2w_max-self.t2w_min),
-            "t2t": (self.dynamics.torque_to_thrust - self.t2t_min) / (self.t2t_max-self.t2t_min),
-            "t2Ixx" : self.dynamics.torque_to_inertia[0],
-            "t2Iyy" : self.dynamics.torque_to_inertia[1],
-            "t2Izz" : self.dynamics.torque_to_inertia[2]
+            "T2w": (self.dynamics.thrust_to_weight - self.t2w_min) / (self.t2w_max-self.t2w_min),
+            "T2t": (self.dynamics.torque_to_thrust - self.t2t_min) / (self.t2t_max-self.t2t_min),
+            "T2Ixx" : self.dynamics.torque_to_inertia[0],
+            "T2Iyy" : self.dynamics.torque_to_inertia[1],
+            "T2Izz" : self.dynamics.torque_to_inertia[2],
+            "OmegaDotX": self.dynamics.omega_dot[0],    # roll angular acceleration
+            "OmegaDotY": self.dynamics.omega_dot[1],    # pitch angular aceleration
+            "OmegaDotZ": self.dynamics.omega_dot[2],    # yaw angular acceleration
         } 
         # print(sv, obs_comp, dyn_params, self.obs_comp_sizes)      
         return sv, reward, done, {'rewards': rew_info, "obs_comp": obs_comp, "dyn_params": dyn_params}
@@ -2344,7 +2347,8 @@ class QuadrotorEnv(gym.Env, Serializable):
                 omega = npa(0, self.max_init_omega * np.random.rand(), 0)
                 vel = self.max_init_vel * np.random.rand(3)
                 vel[1] = 0.
-                c, s, theta = np.cos(theta), np.sin(theta), np.pi * np.random.rand()
+                theta = np.pi * np.random.rand()
+                c, s = np.cos(theta), np.sin(theta)
                 rotation = np.array(((c, 0., -s), (0., 1., 0.), (s, 0., c)))
             else:
                 # It already sets the state internally
