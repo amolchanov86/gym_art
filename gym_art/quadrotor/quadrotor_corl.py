@@ -25,7 +25,6 @@ import sys
 from copy import deepcopy
 import matplotlib.pyplot as plt
 import time
-import ujson
 import gym
 from gym import spaces
 from gym.utils import seeding
@@ -43,7 +42,6 @@ from gym_art.quadrotor.sensor_noise import SensorNoise
 
 from gym_art.quadrotor.quad_models import *
 
-import line_profiler
 try:
     from garage.core import Serializable
 except:
@@ -215,6 +213,7 @@ class QuadrotorDynamics(object):
         self._step = getattr(self, 'step%d' % self.dynamics_steps_num)
 
         ## the ratio between max torque and inertia around each axis
+        ## the 0-1 matrix on the right is the way to sum-up
         self.torque_to_inertia = self.G_omega @ np.array([[0, 0, 0], [0, 1, 1], [1, 1, 0], [1, 0, 1]])
         self.torque_to_inertia = np.sum(self.torque_to_inertia, axis=1)
         # self.torque_to_inertia = self.torque_to_inertia / np.linalg.norm(self.torque_to_inertia)
@@ -2485,7 +2484,8 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
         "torque_to_thrust",
         "thrust_noise_ratio",
         "vel_damp",
-        "damp_omega_quadratic"
+        "damp_omega_quadratic",
+        "torque_to_inertia"
     ]
 
     dyn_param_stats = [[] for i in dyn_param_names]
