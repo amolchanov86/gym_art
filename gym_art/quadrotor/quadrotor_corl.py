@@ -2262,18 +2262,18 @@ class QuadrotorEnv(gym.Env, Serializable):
             "Torque": [self.dynamics.torque],
             "MaxThrust": [np.mean(self.dynamics.thrust_max)],
             "Grav": [GRAV],
-            "Dt": [self.dt * self.sim_steps]
+            "dt": [self.dt * self.sim_steps]
         }
 
         dyn_params = {
-            "T2w": (self.dynamics.thrust_to_weight - self.t2w_min) / (self.t2w_max-self.t2w_min),
-            "T2t": (self.dynamics.torque_to_thrust - self.t2t_min) / (self.t2t_max-self.t2t_min),
-            "T2Ixx" : self.dynamics.torque_to_inertia[0],
-            "T2Iyy" : self.dynamics.torque_to_inertia[1],
-            "T2Izz" : self.dynamics.torque_to_inertia[2],
-            "OmegaDotX": self.dynamics.omega_dot[0],    # roll angular acceleration
-            "OmegaDotY": self.dynamics.omega_dot[1],    # pitch angular aceleration
-            "OmegaDotZ": self.dynamics.omega_dot[2],    # yaw angular acceleration
+            "t2w": (self.dynamics.thrust_to_weight - self.t2w_min) / (self.t2w_max-self.t2w_min),
+            "t2t": (self.dynamics.torque_to_thrust - self.t2t_min) / (self.t2t_max-self.t2t_min),
+            "t2Ixx" : self.dynamics.torque_to_inertia[0],
+            "t2Iyy" : self.dynamics.torque_to_inertia[1],
+            "t2Izz" : self.dynamics.torque_to_inertia[2],
+            "omegaDotX": self.dynamics.omega_dot[0],    # roll angular acceleration
+            "omegaDotY": self.dynamics.omega_dot[1],    # pitch angular aceleration
+            "omegaDotZ": self.dynamics.omega_dot[2],    # yaw angular acceleration
         } 
         # print(sv, obs_comp, dyn_params, self.obs_comp_sizes)      
         return sv, reward, done, {'rewards': rew_info, "obs_comp": obs_comp, "dyn_params": dyn_params}
