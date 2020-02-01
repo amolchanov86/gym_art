@@ -728,7 +728,7 @@ class QuadrotorEnv(gym.Env, Serializable):
     def __init__(self, dynamics_params="defaultquad", dynamics_change=None, 
                 dynamics_randomize_every=None, dyn_sampler_1=None, dyn_sampler_2=None,
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
-                obs_repr="xyz_vxyz_rot_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
+                obs_repr="xyz_vxyz_R_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
                 rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV, resample_goal=False, 
                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False):
         np.seterr(under='ignore')
@@ -981,7 +981,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             "vxyz": [-self.dynamics.vxyz_max * np.ones(3), self.dynamics.vxyz_max * np.ones(3)],
             "vxyzr": [-self.dynamics.vxyz_max * np.ones(3), self.dynamics.vxyz_max * np.ones(3)],
             "acc": [-self.dynamics.acc_max * np.ones(3), self.dynamics.acc_max * np.ones(3)],
-            "rot": [-np.ones(9), np.ones(9)], 
+            "R": [-np.ones(9), np.ones(9)], 
             "omega": [-self.dynamics.omega_max * np.ones(3), self.dynamics.omega_max * np.ones(3)], 
             "t2w": [0. * np.ones(1), 5.* np.ones(1)], 
             "t2t": [0. * np.ones(1), 1.* np.ones(1)], 
@@ -1075,24 +1075,24 @@ class QuadrotorEnv(gym.Env, Serializable):
         obs_comp = {
             "vxyz": [sv_comp[self.obs_comp_indx["vxyz"]]],
             "omega": [sv_comp[self.obs_comp_indx["omega"]]],
+            "omegaDot": self.dynamics.omega_dot,    # roll angular acceleration
+            "R": [sv_comp[self.obs_comp_indx["R"]]],
             "R22": [self.dynamics.rot[2,2]],
-            "rot": [sv_comp[self.obs_comp_indx["rot"]]],
-            "Inertia": [self.dynamics.inertia],
-            "Act": [action],
-            "ClippedAct": [np.clip(self.controller.action, a_min=0., a_max=1.)],
-            "FilteredAct": [self.dynamics.thrust_cmds_damp],
-            "TorqueAct": [self.dynamics.prop_ccw * self.dynamics.thrust_cmds_damp],
-            "Torque": [self.dynamics.torque],
-            "MaxThrust": [np.mean(self.dynamics.thrust_max)],
-            "Grav": [GRAV],
-            "Dt": [self.dt * self.sim_steps],
-            "OmegaDot": self.dynamics.omega_dot,    # roll angular acceleration
+            "act": [action],
+            "clippedAct": [np.clip(self.controller.action, a_min=0., a_max=1.)],
+            "filteredAct": [self.dynamics.thrust_cmds_damp],
+            "torque": [self.dynamics.torque],
+            "torqueAct": [self.dynamics.prop_ccw * self.dynamics.thrust_cmds_damp],
         }
 
         dyn_params = {
-            "T2w": self.dynamics.thrust_to_weight,
-            "T2t": self.dynamics.torque_to_thrust,
-            "T2I" : self.dynamics.torque_to_inertia
+            "t2w": self.dynamics.thrust_to_weight,
+            "t2t": self.dynamics.torque_to_thrust,
+            "t2i" : self.dynamics.torque_to_inertia
+            "inertia": [self.dynamics.inertia],
+            "maxThrust": [np.mean(self.dynamics.thrust_max)],
+            "grav": [GRAV],
+            "dt": [self.dt * self.sim_steps],
         }
 
         # print(sv, obs_comp, dyn_params, self.obs_comp_sizes)      
@@ -1182,13 +1182,6 @@ class QuadrotorEnv(gym.Env, Serializable):
             else:
                 # It already sets the state internally
                 _, vel, rotation, omega = self.dynamics.random_state(box=self.room_size, vel_max=self.max_init_vel, omega_max=self.max_init_omega)
-                # _, vel, rotation, omega = self.dynamics.pitch_roll_restricted_random_state(
-                #         box=self.room_size, 
-                #         vel_max=self.max_init_vel, 
-                #         omega_max=self.max_init_omega,
-                #         pitch_max=self.pitch_max,
-                #         roll_max=self.roll_max,
-                #         yaw_max=self.yaw_max)
         else:
             ## INIT HORIZONTALLY WITH 0 VEL and OMEGA
             vel, omega = npa(0, 0, 0), npa(0, 0, 0)
