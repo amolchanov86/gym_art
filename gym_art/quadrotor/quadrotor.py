@@ -1088,7 +1088,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         dyn_params = {
             "t2w": self.dynamics.thrust_to_weight,
             "t2t": self.dynamics.torque_to_thrust,
-            "t2i" : self.dynamics.torque_to_inertia
+            "t2i" : self.dynamics.torque_to_inertia,
             "inertia": [self.dynamics.inertia],
             "maxThrust": [np.mean(self.dynamics.thrust_max)],
             "grav": [GRAV],
