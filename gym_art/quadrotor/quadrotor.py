@@ -1280,6 +1280,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
         raw_control_zero_middle=False
         policy = UpDownPolicy()
 
+    sampler_1 = None
     if dyn_randomization_ratio is not None:
         sampler_1 = {
             "type": "RelativeSampler",
@@ -1498,11 +1499,11 @@ def main(argv):
     )
     parser.add_argument(
         '-o',"--obs_repr",
-        default="xyz_vxyz_rot_omega_act",
+        default="xyz_vxyz_R_omega_act",
         help="State components. Options:\n" +
-             "xyz_vxyz_rot_omega" +
-             "xyz_vxyz_rot_omega_act" +
-             "xyz_vxyz_rot_omega_acc_act" 
+             "xyz_vxyz_R_omega" +
+             "xyz_vxyz_R_omega_act" +
+             "xyz_vxyz_R_omega_acc_act" 
     )
     args = parser.parse_args()
 

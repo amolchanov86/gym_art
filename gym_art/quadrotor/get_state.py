@@ -2,7 +2,7 @@ import numpy as np
 
 ## NOTE: the state_* methods are static because otherwise getattr memorizes self
 
-def state_xyz_vxyz_rot_omega(self):        
+def state_xyz_vxyz_R_omega(self):        
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -15,7 +15,7 @@ def state_xyz_vxyz_rot_omega(self):
     return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega])
 
 
-def state_xyz_vxyz_tx3_rot_omega(self):        
+def state_xyz_vxyz_tx3_R_omega(self):        
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -45,7 +45,7 @@ def state_xyz_vxyz_tx3_rot_omega(self):
     #return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
     return np.concatenate([pos_3[0] - self.goal[:3],pos_3[1] - self.goal[:3],pos_3[2] - self.goal[:3],vel_3[0],vel_3[1],vel_3[2], rot.flatten(), omega])
 
-def state_vxyz_tx3_xyz_rot_omega(self):        
+def state_vxyz_tx3_xyz_R_omega(self):        
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -68,7 +68,7 @@ def state_vxyz_tx3_xyz_rot_omega(self):
     #return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
     return np.concatenate([pos - self.goal[:3],vel_3[0],vel_3[1],vel_3[2], rot.flatten(), omega])
 
-def state_xyz_tx3_vxyz_rot_omega(self):        
+def state_xyz_tx3_vxyz_R_omega(self):        
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -91,7 +91,7 @@ def state_xyz_tx3_vxyz_rot_omega(self):
     return np.concatenate([pos_3[0] - self.goal[:3],pos_3[1] - self.goal[:3],pos_3[2] - self.goal[:3],vel, rot.flatten(), omega])
 
 
-def state_xyz_tx2_vxyz_rot_omega(self):        
+def state_xyz_tx2_vxyz_R_omega(self):        
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -111,7 +111,7 @@ def state_xyz_tx2_vxyz_rot_omega(self):
     #return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, (pos[2],)])
     return np.concatenate([pos_2[0] - self.goal[:3],pos_2[1] - self.goal[:3],vel, rot.flatten(), omega])
 
-def state_vxyz_tx2_xyz_rot_omega(self):        
+def state_vxyz_tx2_xyz_R_omega(self):        
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -131,8 +131,7 @@ def state_vxyz_tx2_xyz_rot_omega(self):
     return np.concatenate([pos - self.goal[:3],vel_2[0],vel_2[1],rot.flatten(), omega])    
 
 
-##@profile
-def state_xyz_vxyz_rot_omega_h(self):        
+def state_xyz_vxyz_R_omega_h(self):        
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -145,7 +144,7 @@ def state_xyz_vxyz_rot_omega_h(self):
     # return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega])
 
 
-def state_xyzr_vxyzr_rot_omega(self):
+def state_xyzr_vxyzr_R_omega(self):
     """
     xyz and Vxyz are given in a body frame
     """        
@@ -162,7 +161,7 @@ def state_xyzr_vxyzr_rot_omega(self):
     return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega])
 
 
-def state_xyzr_vxyzr_rot_omega_tx1(self):
+def state_xyzr_vxyzr_R_omega_tx1(self):
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -189,7 +188,7 @@ def state_xyzr_vxyzr_rot_omega_tx1(self):
     return np.concatenate([pos_2[0], pos_2[1], vel_2[0],vel_2[1], rot_2[0].flatten(), rot_2[1].flatten(), omega_2[0],omega_2[0]])
 
 
-def state_xyzr_vxyzr_rot_omega_action_tx1(self):
+def state_xyzr_vxyzr_R_omega_action_tx1(self):
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -217,7 +216,7 @@ def state_xyzr_vxyzr_rot_omega_action_tx1(self):
     return np.concatenate([pos_2[0], pos_2[1], vel_2[0],vel_2[1], rot_2[0].flatten(), rot_2[1].flatten(), omega_2[0],omega_2[0],actions_2[0],actions_2[1]])
 
 
-def state_xyzr_vxyzr_rot_omega_h(self):
+def state_xyzr_vxyzr_R_omega_h(self):
     """
     xyz and Vxyz are given in a body frame
     """        
@@ -234,7 +233,7 @@ def state_xyzr_vxyzr_rot_omega_h(self):
     return np.concatenate([e_xyz_rel, vel_rel, rot.flatten(), omega, (pos[2],)])
 
 
-def state_xyz_vxyz_rot_omega_acc_act(self):        
+def state_xyz_vxyz_R_omega_acc_act(self):        
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -247,7 +246,7 @@ def state_xyz_vxyz_rot_omega_acc_act(self):
     return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, acc, self.actions[1]])
 
 
-def state_xyz_vxyz_rot_omega_act(self):        
+def state_xyz_vxyz_R_omega_act(self):        
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -260,7 +259,7 @@ def state_xyz_vxyz_rot_omega_act(self):
     return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, self.actions[1]])
 
 
-def state_act_tx2_xyz_vxyz_rot_omega(self):
+def state_act_tx2_xyz_vxyz_R_omega(self):
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -323,7 +322,7 @@ def state_xyzr_vxyzr_quat_omega_h(self):
     return np.concatenate([e_xyz_rel, vel_rel, quat, omega, (pos[2],)])
 
 
-def state_xyzr_vxyzr_rot_omega_t2w(self):
+def state_xyzr_vxyzr_R_omega_t2w(self):
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -343,7 +342,7 @@ def state_xyzr_vxyzr_rot_omega_t2w(self):
     return np.concatenate([e_xyz_rel,vel_rel, rot.flatten(), omega, noisy_t2w])
 
 
-def state_xyz_vxyz_rot_omega_t2w(self):
+def state_xyz_vxyz_R_omega_t2w(self):
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -361,7 +360,7 @@ def state_xyz_vxyz_rot_omega_t2w(self):
     return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w])
 
 
-def state_xyz_vxyz_rot_omega_t2w_t2t(self):
+def state_xyz_vxyz_R_omega_t2w_t2t(self):
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -385,7 +384,7 @@ def state_xyz_vxyz_rot_omega_t2w_t2t(self):
     return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w, noisy_t2t])
 
 
-def state_xyz_vxyz_rot_omega_t2w_t2t_l(self):
+def state_xyz_vxyz_R_omega_t2w_t2t_l(self):
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
@@ -426,7 +425,7 @@ def state_xyz_vxyz_euler_omega(self):
     return np.concatenate([pos - self.goal[:3], vel, euler, omega])
 
 
-def state_xyz_xyzi_vxyz_rot_omega_t2w(self):
+def state_xyz_xyzi_vxyz_R_omega_t2w(self):
     pos, vel, rot, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
