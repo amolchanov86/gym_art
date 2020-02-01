@@ -819,15 +819,17 @@ class QuadrotorEnv(gym.Env, Serializable):
         
         self.dyn_sampler_1 = dyn_sampler_1
         if dyn_sampler_1 is not None:
-            self.dyn_sampler_1 = getattr(quad_rand, dyn_sampler_1["type"])(params=self.dynamics_params, **self.dyn_sampler_1_params)
+            sampler_type = dyn_sampler_1["type"]
             self.dyn_sampler_1_params = copy.deepcopy(dyn_sampler_1)
             del self.dyn_sampler_1_params["type"]
+            self.dyn_sampler_1 = getattr(quad_rand, sampler_type)(params=self.dynamics_params, **self.dyn_sampler_1_params)
         
         self.dyn_sampler_2 = dyn_sampler_2
         if dyn_sampler_2 is not None:
-            self.dyn_sampler_2 = getattr(quad_rand, dyn_sampler_2["type"])(params=self.dynamics_params, **self.dyn_sampler_2_params)
+            sampler_type = dyn_sampler_2["type"]
             self.dyn_sampler_2_params = copy.deepcopy(dyn_sampler_2)
             del self.dyn_sampler_2_params["type"]
+            self.dyn_sampler_2 = getattr(quad_rand, sampler_type)(params=self.dynamics_params, **self.dyn_sampler_2_params)
         
 
         ## Updating dynamics
@@ -1285,9 +1287,16 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
         raw_control_zero_middle=False
         policy = UpDownPolicy()
 
+    if dyn_randomization_ratio is not None:
+        sampler_1 = {
+            "type": "RelativeSampler",
+            "noise_ratio": dyn_randomization_ratio,
+            "sampler": "normal"
+        }
+
 
     env = QuadrotorEnv(dynamics_params=quad, raw_control=raw_control, raw_control_zero_middle=raw_control_zero_middle, 
-        dynamics_randomize_every=dyn_randomize_every,
+        dynamics_randomize_every=dyn_randomize_every, dyn_sampler_1=sampler_1,
         sense_noise=sense_noise, init_random_state=init_random_state, obs_repr=obs_repr)
 
 
@@ -1436,11 +1445,12 @@ def main(argv):
     )
     parser.add_argument(
         '-q',"--quad",
-        default="defaultquad",
+        default="DefaultQuad",
         help="Quadrotor model to use: \n" + 
-            "- defaultquad \n" + 
-            "- crazyflie \n" +
-            "- random"
+            "- DefaultQuad \n" + 
+            "- Crazyflie \n" +
+            "- MediumQuad \n" +
+            "- RandomQuad"
     )
     parser.add_argument(
         '-dre',"--dyn_randomize_every",
@@ -1450,7 +1460,7 @@ def main(argv):
     parser.add_argument(
         '-drr',"--dyn_randomization_ratio",
         type=float,
-        default=0.5,
+        default=None,
         help="Randomization ratio for random sampling of dynamics parameters"
     )
     parser.add_argument(
