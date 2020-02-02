@@ -283,10 +283,10 @@ class VelocityYawControl(object):
 
 # this is an "oracle" policy to drive the quadrotor towards a goal
 # using the controller from Mellinger et al. 2011
-import tensorflow as tf
 class NonlinearPositionController(object):
     #@profile
     def __init__(self, dynamics, tf_control=True):
+        import tensorflow as tf
         jacobian = quadrotor_jacobian(dynamics)
         self.Jinv = np.linalg.inv(jacobian)
         ## Jacobian inverse for our quadrotor
@@ -384,6 +384,7 @@ class NonlinearPositionController(object):
                                                                  self.goal_xyz_tf: goal_xyz})
         self.action = result[0].squeeze()
         dynamics.step(self.action, dt)
+
     def step_graph_construct(self, Jinv_=None, observation_provided=False):
         # import tensorflow as tf
         self.observation_provided = observation_provided
@@ -508,8 +509,6 @@ class NonlinearPositionController(object):
             thrusts = tf.matmul(des, tf.transpose(Jinv), name='thrust')
             thrusts = tf.clip_by_value(thrusts, clip_value_min=0.0, clip_value_max=1.0, name='thrust_clipped')
             return thrusts
-
-
 
 
     def action_space(self, dynamics):

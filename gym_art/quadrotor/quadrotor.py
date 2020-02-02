@@ -136,12 +136,6 @@ class QuadrotorDynamics(object):
         else:
             raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
 
-        ## Selecting how many sim steps should be done b/w controller calls
-        # i.e. controller frequency
-        self._step = getattr(self, 'step%d' % dynamics_steps_num)
-        # self.step = getattr(QuadrotorDynamics, 'step%d' % dynamics_steps_num)
-
-
     @staticmethod
     def angvel2thrust(w, linearity=0.424):
         """
@@ -211,8 +205,6 @@ class QuadrotorDynamics(object):
 
         self.arm = np.linalg.norm(self.model.motor_xyz[:2])
 
-        self._step = getattr(self, 'step%d' % self.dynamics_steps_num)
-
         ## the ratio between max torque and inertia around each axis
         ## the 0-1 matrix on the right is the way to sum-up
         self.torque_to_inertia = self.G_omega @ np.array([[0, 0, 0], [0, 1, 1], [1, 1, 0], [1, 0, 1]])
@@ -271,61 +263,9 @@ class QuadrotorDynamics(object):
         rot = t3d.euler.euler2mat(roll, pitch, yaw)
         return pos, vel, rot, omega
 
+
     def step(self, thrust_cmds, dt):
-        self._step(self, thrust_cmds, dt)
-
-    # multiple dynamics steps
-    @staticmethod
-    def step2(self, thrust_cmds, dt):
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-
-
-    # multiple dynamics steps
-    @staticmethod
-    def step4(self, thrust_cmds, dt):
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        # print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
-
-    # multiple dynamics steps
-    @staticmethod
-    def step6(self, thrust_cmds, dt):
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        # print('DYN: state:', self.state_vector(), 'thrust:', thrust_cmds, 'dt', dt)
-
-    # multiple dynamics steps
-    @staticmethod
-    def step8(self, thrust_cmds, dt):
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-
-    # multiple dynamics steps
-    @staticmethod
-    def step10(self, thrust_cmds, dt):
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
-        self.step1(self, thrust_cmds, dt)
+        [self.step1(thrust_cmds, dt) for t in range(self.dynamics_steps_num)]
 
     ## Step function integrates based on current derivative values (best fits affine dynamics model)
     # thrust_cmds is motor thrusts given in normalized range [0, 1].
@@ -336,9 +276,6 @@ class QuadrotorDynamics(object):
     # rot - global
     # omega - body frame
     # goal_pos - global
-    # from numba import jit, autojit
-    # @autojit
-    @staticmethod
     def step1(self, thrust_cmds, dt):
         # print("thrust_cmds:", thrust_cmds)
         # uncomment for debugging. they are slow
@@ -353,7 +290,7 @@ class QuadrotorDynamics(object):
         self.motor_tau_up = 4*dt/(self.motor_damp_time_up + EPS)
         self.motor_tau_down = 4*dt/(self.motor_damp_time_down + EPS)
         motor_tau = self.motor_tau_up * np.ones([4,])
-        motor_tau[thrust_cmds < self.thrust_cmds_damp] = self.motor_tau_down 
+        motor_tau[thrust_cmds < self.thrust_cmds_damp] = self.motor_tau_down
         motor_tau[motor_tau > 1.] = 1.
 
         ## Since NN commands thrusts we need to convert to rot vel and back
@@ -1427,6 +1364,79 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
         plt.show(block=False)
         input("Press Enter to continue...")
 
+
+def benchmark(quad, dyn_randomize_every=None, dyn_randomization_ratio=None, 
+    render=True, traj_num=10, plot_step=None, plot_dyn_change=True, plot_thrusts=False,
+    sense_noise=None, policy_type="mellinger", init_random_state=False, obs_repr="xyz_vxyz_rot_omega", csv_filename=None):
+    import tqdm
+    rollouts_num = traj_num
+
+    if policy_type == "mellinger":
+        raw_control=False
+        raw_control_zero_middle=True
+        policy = DummyPolicy() #since internal Mellinger takes care of the policy
+    elif policy_type == "updown":
+        raw_control=True
+        raw_control_zero_middle=False
+        policy = UpDownPolicy()
+
+    sampler_1 = None
+    if dyn_randomization_ratio is not None:
+        sampler_1 = {
+            "type": "RelativeSampler",
+            "noise_ratio": dyn_randomization_ratio,
+            "sampler": "normal"
+        }
+
+
+    env = QuadrotorEnv(dynamics_params=quad, raw_control=raw_control, raw_control_zero_middle=raw_control_zero_middle, 
+        dynamics_randomize_every=dyn_randomize_every, dyn_sampler_1=sampler_1,
+        sense_noise=sense_noise, init_random_state=init_random_state, obs_repr=obs_repr)
+
+
+    policy.dt = 1./ env.control_freq
+    render = False
+    render_each = 2
+
+    print('Reseting env ...')
+    print("Obs repr: ", env.obs_repr)
+    try:
+        print('Observation space:', env.observation_space.low, env.observation_space.high, "size:", env.observation_space.high.size)
+        print('Action space:', env.action_space.low, env.action_space.high, "size:", env.observation_space.high.size)
+    except:
+        print('Observation space:', env.observation_space.spaces[0].low, env.observation_space[0].spaces[0].high, "size:", env.observation_space[0].spaces[0].high.size)
+        print('Action space:', env.action_space[0].spaces[0].low, env.action_space[0].spaces[0].high, "size:", env.action_space[0].spaces[0].high.size)
+
+    ## Collected statistics for dynamics
+    dyn_param_names = [
+        "mass",
+        "inertia",
+        "thrust_to_weight",
+        "torque_to_thrust",
+        "thrust_noise_ratio",
+        "vel_damp",
+        "damp_omega_quadratic",
+        "torque_to_inertia"
+    ]
+
+    dyn_param_stats = [[] for i in dyn_param_names]
+
+    start_time = time.time()
+    for rollouts_id in tqdm.tqdm(range(rollouts_num)):
+        s = env.reset()
+        policy.reset()
+
+        t = 0
+        while True:
+            if render and (t % render_each == 0): env.render()
+            action = policy.step(s)
+            s, r, done, info = env.step(action)
+            if done: break
+    
+    print("##############################################################")
+    print("Total time: ", time.time() - start_time)
+    input("Press Enter to continue...")
+
 def main(argv):
     # parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -1505,29 +1515,52 @@ def main(argv):
              "xyz_vxyz_R_omega_act" +
              "xyz_vxyz_R_omega_acc_act" 
     )
+    parser.add_argument(
+        '-b',"--benchmark",
+        action="store_true",
+        help="Simple benchmark, i.e. running time" 
+    )
+
     args = parser.parse_args()
 
-    if args.sense_noise:
-        sense_noise="default"
-    else:
-        sense_noise=None
+    if args.sense_noise: sense_noise="default"
+    else: sense_noise=None
 
-    print('Running test rollout ...')
-    test_rollout(
-        quad=args.quad, 
-        dyn_randomize_every=args.dyn_randomize_every,
-        dyn_randomization_ratio=args.dyn_randomization_ratio,
-        render=args.render,
-        traj_num=args.traj_num,
-        plot_step=args.plot_step,
-        plot_dyn_change=args.plot_dyn_change,
-        plot_thrusts=args.plot_actions,
-        sense_noise=sense_noise,
-        policy_type=args.mode,
-        init_random_state=args.init_random_state,
-        obs_repr=args.obs_repr,
-        csv_filename=args.csv_filename,
-    )
+    if args.benchmark:
+        print('Running benchmark ...')
+        benchmark(
+            quad=args.quad, 
+            dyn_randomize_every=args.dyn_randomize_every,
+            dyn_randomization_ratio=args.dyn_randomization_ratio,
+            render=args.render,
+            traj_num=args.traj_num,
+            plot_step=args.plot_step,
+            plot_dyn_change=args.plot_dyn_change,
+            plot_thrusts=args.plot_actions,
+            sense_noise=sense_noise,
+            policy_type=args.mode,
+            init_random_state=args.init_random_state,
+            obs_repr=args.obs_repr,
+            csv_filename=args.csv_filename,
+        )
+    else:
+        print('Running test rollout ...')
+        test_rollout(
+            quad=args.quad, 
+            dyn_randomize_every=args.dyn_randomize_every,
+            dyn_randomization_ratio=args.dyn_randomization_ratio,
+            render=args.render,
+            traj_num=args.traj_num,
+            plot_step=args.plot_step,
+            plot_dyn_change=args.plot_dyn_change,
+            plot_thrusts=args.plot_actions,
+            sense_noise=sense_noise,
+            policy_type=args.mode,
+            init_random_state=args.init_random_state,
+            obs_repr=args.obs_repr,
+            csv_filename=args.csv_filename,
+        )
+
 
 if __name__ == '__main__':
     main(sys.argv)
