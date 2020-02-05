@@ -383,10 +383,10 @@ class QuadrotorDynamics(object):
             dRdt = self.eye + np.sin(rot_angle) * K + (1. - np.cos(rot_angle)) * (K @ K)
             self.rot = dRdt @ self.rot
 
+        ## SVD is not strictly required anymore. Performing it rarely, just in case
         self.since_last_svd += dt
         if self.since_last_svd > self.since_last_svd_limit:
             ## Perform SVD orthogonolization
-            # try:
             u, s, v = np.linalg.svd(self.rot)
             self.rot = np.matmul(u, v)
             self.since_last_svd = 0
@@ -1004,12 +1004,10 @@ class QuadrotorEnv(gym.Env, Serializable):
         
         self.traj_count += int(done)
         
-        # print('state', sv)
-        # print('vel', sv[3], sv[4], sv[5])
-        # print(sv, reward, done, rew_info)
         ## TODO: OPTIMIZATION: sv_comp should be a dictionary formed when state() function is called
         sv_comp = np.split(sv, self.obs_comp_end[:-1], axis=0)
         obs_comp = {
+            "xyz": [sv_comp[self.obs_comp_indx["xyz"]]],
             "vxyz": [sv_comp[self.obs_comp_indx["vxyz"]]],
             "omega": [sv_comp[self.obs_comp_indx["omega"]]],
             "omegaDot": self.dynamics.omega_dot,    # roll angular acceleration
@@ -1118,7 +1116,9 @@ class QuadrotorEnv(gym.Env, Serializable):
                 rotation = np.array(((c, 0., -s), (0., 1., 0.), (s, 0., c)))
             else:
                 # It already sets the state internally
-                _, vel, rotation, omega = self.dynamics.random_state(box=self.room_size, vel_max=self.max_init_vel, omega_max=self.max_init_omega)
+                _, vel, rotation, omega = self.dynamics.random_state(
+                        box=self.room_size, vel_max=self.max_init_vel, omega_max=self.max_init_omega
+                    )
         else:
             ## INIT HORIZONTALLY WITH 0 VEL and OMEGA
             vel, omega = npa(0, 0, 0), npa(0, 0, 0)
