@@ -1099,7 +1099,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         #Since being near the groud means crash we have to start above
         if z < 0.25 : z = 0.25 
         pos = npa(x, y, z)
-
+        
         ##############################################################
         ## INIT STATE
         ## Initializing rotation and velocities
@@ -1238,7 +1238,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     print("Obs repr: ", env.obs_repr)
     try:
         print('Observation space:', env.observation_space.low, env.observation_space.high, "size:", env.observation_space.high.size)
-        print('Action space:', env.action_space.low, env.action_space.high, "size:", env.observation_space.high.size)
+        print('Action space:', env.action_space.low, env.action_space.high, "size:", env.action_space.high.size)
     except:
         print('Observation space:', env.observation_space.spaces[0].low, env.observation_space[0].spaces[0].high, "size:", env.observation_space[0].spaces[0].high.size)
         print('Action space:', env.action_space[0].spaces[0].low, env.action_space[0].spaces[0].high, "size:", env.action_space[0].spaces[0].high.size)

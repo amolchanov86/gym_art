@@ -11,3 +11,4 @@ _results
 *.ipynb
 *.wpr
 *.cprof
+*.vscode

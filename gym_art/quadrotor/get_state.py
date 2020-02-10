@@ -1,4 +1,5 @@
 import numpy as np
+from gym_art.quadrotor.quad_utils import *
 
 ## NOTE: the state_* methods are static because otherwise getattr memorizes self
 
@@ -274,7 +275,7 @@ def state_act_tx2_xyz_vxyz_R_omega(self):
 
 
 def state_xyz_vxyz_quat_omega(self):
-    self.quat = R2quat(self.dynamics.rot)
+    # self.quat = R2quat(self.dynamics.rot)
     pos, vel, quat, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
