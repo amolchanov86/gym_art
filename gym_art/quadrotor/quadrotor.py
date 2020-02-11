@@ -732,7 +732,7 @@ class QuadrotorEnv(gym.Env, Serializable):
         # self.yaw_max = np.pi   #rad
 
         self.room_box = np.array([[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
-        self.state_vector = self.state_vector = getattr(get_state, "state_" + self.obs_repr)
+        self.state_vector = getattr(get_state, "state_" + self.obs_repr)
         ## WARN: If you
         # size of the box from which initial position will be randomly sampled
         # if box_scale > 1.0 then it will also growevery episode
@@ -1290,8 +1290,12 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
             thrusts.append(env.dynamics.thrust_cmds_damp)
             observations.append(s)
             # print('Step: ', t, ' Obs:', s)
-            quat = R2quat(rot=s[6:15])
-            csv_data.append(np.concatenate([np.array([1.0/env.control_freq * t]), s[0:3], quat]))
+            if csv_filename is not None:
+                if 'quat' in env.obs_repr:
+                    quat = s[6:10]
+                else:
+                    quat = R2quat(rot=s[6:15])
+                csv_data.append(np.concatenate([np.array([1.0/env.control_freq * t]), s[0:3], quat]))
 
             if plot_step is not None and t % plot_step == 0:
                 plt.clf()

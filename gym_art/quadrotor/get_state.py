@@ -275,11 +275,11 @@ def state_act_tx2_xyz_vxyz_R_omega(self):
 
 
 def state_xyz_vxyz_quat_omega(self):
-    # self.quat = R2quat(self.dynamics.rot)
+    self.dynamics.quat = R2quat(self.dynamics.rot)
     pos, vel, quat, omega, acc = self.sense_noise.add_noise(
         pos=self.dynamics.pos,
         vel=self.dynamics.vel,
-        rot=self.quat,
+        rot=self.dynamics.quat,
         omega=self.dynamics.omega,
         acc=self.dynamics.accelerometer,
         dt=self.dt

@@ -557,7 +557,7 @@ class QuadrotorEnv(gym.Env, Serializable):
     }
 
     def __init__(self, raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_steps=4,
-                obs_repr="state_xyz_vxyz_rot_omega", ep_time=3, thrust_noise_ratio=0., obstacles_num=0, room_size=10,
+                obs_repr="state_xyz_vxyz_quat_omega", ep_time=3, thrust_noise_ratio=0., obstacles_num=0, room_size=10,
                 init_random_state=False, rew_coeff=None):
         np.seterr(under='ignore')
         """
