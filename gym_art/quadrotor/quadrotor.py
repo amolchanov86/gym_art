@@ -939,12 +939,12 @@ class QuadrotorEnv(gym.Env, Serializable):
         obs_low = np.concatenate(obs_low)
         obs_high = np.concatenate(obs_high)
         
-        self.obs_comp_sizes_dict, self.obs_comp_indx, self.obs_comp_end = {}, {}, []
+        self.obs_comp_sizes_dict, self.obs_space_comp_indx, self.obs_comp_end = {}, {}, []
         end_indx = 0
         for obs_i, obs_name in enumerate(self.obs_comp_names):
             end_indx += self.obs_comp_sizes[obs_i]
             self.obs_comp_sizes_dict[obs_name] = self.obs_comp_sizes[obs_i]
-            self.obs_comp_indx[obs_name] = obs_i
+            self.obs_space_comp_indx[obs_name] = obs_i
             self.obs_comp_end.append(end_indx)
             
         self.observation_space = spaces.Box(obs_low, obs_high, dtype=np.float32)
@@ -1007,25 +1007,34 @@ class QuadrotorEnv(gym.Env, Serializable):
         ## TODO: OPTIMIZATION: sv_comp should be a dictionary formed when state() function is called
         sv_comp = np.split(sv, self.obs_comp_end[:-1], axis=0)
         obs_comp = {
-            "xyz": [sv_comp[self.obs_comp_indx["xyz"]]],
-            "vxyz": [sv_comp[self.obs_comp_indx["vxyz"]]],
-            "omega": [sv_comp[self.obs_comp_indx["omega"]]],
-            "omegaDot": self.dynamics.omega_dot,    # roll angular acceleration
-            "R": [sv_comp[self.obs_comp_indx["R"]]],
-            "R22": [self.dynamics.rot[2,2]],
+            "xyz": [self.dynamics.pos],
+            "vxyz": [self.dynamics.vel],
+            "acc": [self.dynamics.accelerometer],
+            "omega": [self.dynamics.omega],
+            "omega_dot": [self.dynamics.omega_dot],    # roll angular acceleration
+            "R": [self.dynamics.rot.flatten()],
             "act": [action],
-            "clippedAct": [np.clip(self.controller.action, a_min=0., a_max=1.)],
-            "filteredAct": [self.dynamics.thrust_cmds_damp],
+            "act_clipped": [np.clip(self.controller.action, a_min=0., a_max=1.)],
+            "act_filtered": [self.dynamics.thrust_cmds_damp],
+            "act_torque": [self.dynamics.prop_ccw * self.dynamics.thrust_cmds_damp],
             "torque": [self.dynamics.torque],
-            "torqueAct": [self.dynamics.prop_ccw * self.dynamics.thrust_cmds_damp],
         }
 
         dyn_params = {
-            "t2w": self.dynamics.thrust_to_weight,
-            "t2t": self.dynamics.torque_to_thrust,
-            "t2i" : self.dynamics.torque_to_inertia,
+            "mass": [self.dynamics.mass],
+            "motor_linearity": [self.dynamics.motor_linearity],
+            "motor_time_up": [self.dynamics.motor_damp_time_up],
+            "motor_time_down": [self.dynamics.motor_damp_time_down],
+            "motor_assymetry": [self.dynamics.motor_assymetry],
+            "motor_pos": [self.dynamics.prop_pos.flatten()],
+            "motor_ccw": [self.dynamics.prop_ccw],
+            "t2w": [self.dynamics.thrust_to_weight],
+            "t2t": [self.dynamics.torque_to_thrust],
+            "t2i" : [self.dynamics.torque_to_inertia],
             "inertia": [self.dynamics.inertia],
-            "maxThrust": [np.mean(self.dynamics.thrust_max)],
+            "thrust_max": [np.mean(self.dynamics.thrust_max)],
+            "torque_max": [np.mean(self.dynamics.torque_max)],
+            "arm": [self.dynamics.arm],
             "grav": [GRAV],
             "dt": [self.dt * self.sim_steps],
         }
