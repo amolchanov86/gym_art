@@ -196,8 +196,8 @@ def randomquad_parameters():
     geom_params["arms_pos"] = {"angle": np.random.normal(loc=45., scale=10.), "z": motor_z - geom_params["motors"]["h"]/2.}
     
     # PROPS
-    thrust_to_weight = np.random.uniform(low=1.8, high=2.5)
-    # thrust_to_weight = np.random.uniform(low=2.3, high=2.5)
+    thrust_to_weight = np.random.uniform(low=1.5, high=3.5)
+    # thrust_to_weight = np.random.uniform(low=1.8, high=2.5)
     geom_params["propellers"]["h"] = 0.01
     geom_params["propellers"]["r"] = (0.3) * total_w * (thrust_to_weight / 2.0)**0.5
     
