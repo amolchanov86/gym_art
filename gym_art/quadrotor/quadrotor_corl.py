@@ -893,6 +893,10 @@ class QuadrotorEnv(gym.Env, Serializable):
             self.dyn_sampler = sample_crazyflie_t2w_15_35_t2t_3_9_l_5_15
             self.dynamics_simplification = True
             self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "crazyflie_t2w_15_35_mlin":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_crazyflie_t2w_15_35_mlin
+            self.dynamics_params = self.dyn_sampler()
         else:
             ## Setting the quad dynamics params
             if isinstance(dynamics_params, str):
@@ -1501,6 +1505,27 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.accumulative_pos_err = np.clip(self.accumulative_pos_err, a_min=-self.room_size, a_max=self.room_size)
 
         return np.concatenate([pos_err, self.accumulative_pos_err, vel, rot.flatten(), omega, noisy_t2w])
+    
+    @staticmethod
+    def state_xyz_vxyz_rot_omega_t2w_mlin(self):
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        ## Adding noise to t2w and scale it to [0, 1]
+        noisy_t2w = self.dynamics.thrust_to_weight + \
+                    normal(loc=0., scale=abs((self.t2w_std/2)*self.dynamics.thrust_to_weight), size=1)
+        noisy_t2w = np.clip(noisy_t2w, a_min=self.t2w_min, a_max=self.t2w_max)
+        noisy_t2w = (noisy_t2w-self.t2w_min) / (self.t2w_max-self.t2w_min)
+
+        noisy_mlin = self.dynamics.motor_linearity + np.random.uniform(-1.0*0.1, 1.0*0.1)
+        noisy_mlin = np.clip(noisy_mlin, a_min=0.0, a_max=1.0)
+
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w, [noisy_mlin]])
 
     def get_observation_space(self):
         self.wall_offset = 0.3
@@ -2178,6 +2203,35 @@ class QuadrotorEnv(gym.Env, Serializable):
             # h - distance to ground
             obs_high[-1] = self.room_box[1][2] 
             obs_low[-1] = self.room_box[0][2]  
+        
+        elif self.obs_repr == "xyz_vxyz_rot_omega_t2w_mlin":
+            self.obs_comp_sizes = [3, 3, 9, 3, 1, 1]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w", "mlin"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18]
+
+            #T2W
+            obs_high[18:19] = self.t2w_max* obs_high[18:19]
+            obs_low[18:19]  = self.t2w_max* obs_low[18:19]
+
+            obs_high[19] = 1.0
+            obs_low[19] = 0.0
 
         self.obs_comp_sizes_dict, self.obs_comp_indx, self.obs_comp_end = {}, {}, []
         end_indx = 0
@@ -2457,7 +2511,6 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
         raw_control_zero_middle=False
         policy = UpDownPolicy()
 
-
     env = QuadrotorEnv(dynamics_params=quad, raw_control=raw_control, raw_control_zero_middle=raw_control_zero_middle, 
         dynamics_randomize_every=dyn_randomize_every, dynamics_randomization_ratio=dyn_randomization_ratio,
         sense_noise=sense_noise, init_random_state=init_random_state, obs_repr=obs_repr)
@@ -2485,7 +2538,8 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
         "thrust_noise_ratio",
         "vel_damp",
         "damp_omega_quadratic",
-        "torque_to_inertia"
+        "torque_to_inertia",
+        "motor_linearity"
     ]
 
     dyn_param_stats = [[] for i in dyn_param_names]

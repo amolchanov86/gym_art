@@ -303,6 +303,12 @@ def sample_crazyflie_t2w_15_35_t2t_3_9_l_5_15():
     params["geom"]["arms"]["l"] = np.random.uniform(low=0.05, high=0.15)
     return params
 
+def sample_crazyflie_t2w_15_35_mlin():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
+    params["motor"]["linearity"] = np.random.uniform(low=0.0, high=1.0)
+    return params
+
 def sample_random_dyn_lowinertia():
     """
     The function samples parameters for all possible quadrotors
