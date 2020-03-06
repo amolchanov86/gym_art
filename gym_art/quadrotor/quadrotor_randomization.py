@@ -309,6 +309,23 @@ def sample_crazyflie_t2w_15_35_mlin():
     params["motor"]["linearity"] = np.random.uniform(low=0.0, high=1.0)
     return params
 
+def sample_crazyflie_t2w_15_35_mdamp():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
+    params["motor"]["damp_time_up"] = np.random.uniform(low=0.1, high=0.25)
+    damp_time_down_scale = np.random.uniform(low=1.0, high=2.0)
+    params["motor"]["damp_time_down"] = params["motor"]["damp_time_up"] * damp_time_down_scale
+    return params
+
+def sample_crazyflie_t2w_15_35_mlin_mdamp():
+    params = crazyflie_params()
+    params["motor"]["thrust_to_weight"] = np.random.uniform(low=1.5, high=3.5)
+    params["motor"]["linearity"] = np.random.uniform(low=0.0, high=1.0)
+    params["motor"]["damp_time_up"] = np.random.uniform(low=0.1, high=0.25)
+    damp_time_down_scale = np.random.uniform(low=1.0, high=2.0)
+    params["motor"]["damp_time_down"] = params["motor"]["damp_time_up"] * damp_time_down_scale
+    return params
+
 def sample_random_dyn_lowinertia():
     """
     The function samples parameters for all possible quadrotors

@@ -781,6 +781,10 @@ class QuadrotorEnv(gym.Env, Serializable):
         self.t2t_std = t2t_std
         self.t2t_min = 0.005
         self.t2t_max = t2t_max
+
+        ## Motor delays
+        self.motor_damp_time_min = 0.1
+        self.motor_damp_time_max = 0.25
         self.excite = excite
         ## dynmaics simplification
         self.dynamics_simplification = dynamics_simplification
@@ -896,6 +900,14 @@ class QuadrotorEnv(gym.Env, Serializable):
         elif dynamics_params == "crazyflie_t2w_15_35_mlin":
             self.dynamics_params_def = None
             self.dyn_sampler = sample_crazyflie_t2w_15_35_mlin
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "crazyflie_t2w_15_35_mdamp":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_crazyflie_t2w_15_35_mdamp
+            self.dynamics_params = self.dyn_sampler()
+        elif dynamics_params == "crazyflie_t2w_15_35_mlin_mdamp":
+            self.dynamics_params_def = None
+            self.dyn_sampler = sample_crazyflie_t2w_15_35_mlin_mdamp
             self.dynamics_params = self.dyn_sampler()
         else:
             ## Setting the quad dynamics params
@@ -1522,10 +1534,34 @@ class QuadrotorEnv(gym.Env, Serializable):
         noisy_t2w = np.clip(noisy_t2w, a_min=self.t2w_min, a_max=self.t2w_max)
         noisy_t2w = (noisy_t2w-self.t2w_min) / (self.t2w_max-self.t2w_min)
 
-        noisy_mlin = self.dynamics.motor_linearity + np.random.uniform(-1.0*0.1, 1.0*0.1)
+        noisy_mlin = normal(self.dynamics.motor_linearity, self.dynamics.motor_linearity*0.1)
         noisy_mlin = np.clip(noisy_mlin, a_min=0.0, a_max=1.0)
 
         return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w, [noisy_mlin]])
+    
+    @staticmethod
+    def state_xyz_vxyz_rot_omega_t2w_mdamp(self):
+        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
+            pos=self.dynamics.pos,
+            vel=self.dynamics.vel,
+            rot=self.dynamics.rot,
+            omega=self.dynamics.omega,
+            acc=self.dynamics.accelerometer,
+            dt=self.dt
+        )
+        ## Adding noise to t2w and scale it to [0, 1]
+        noisy_t2w = self.dynamics.thrust_to_weight + \
+                    normal(loc=0., scale=abs((self.t2w_std/2)*self.dynamics.thrust_to_weight), size=1)
+        noisy_t2w = np.clip(noisy_t2w, a_min=self.t2w_min, a_max=self.t2w_max)
+        noisy_t2w = (noisy_t2w-self.t2w_min) / (self.t2w_max-self.t2w_min)
+
+        ## Adding noise to damp time and scaling it to [0,1]
+        noisy_mdamp = [normal(self.dynamics.motor_damp_time_up, self.dynamics.motor_damp_time_up*0.1),
+                        normal(self.dynamics.motor_damp_time_down, self.dynamics.motor_damp_time_down*0.1)]
+        noisy_mdamp[0] = np.clip(noisy_mdamp[0], a_min=self.motor_damp_time_min, a_max=self.motor_damp_time_max)
+        noisy_mdamp[1] = np.clip(noisy_mdamp[1], a_min=self.motor_damp_time_min, a_max=self.motor_damp_time_max*2.0)
+
+        return np.concatenate([pos - self.goal[:3], vel, rot.flatten(), omega, noisy_t2w, noisy_mdamp])
 
     def get_observation_space(self):
         self.wall_offset = 0.3
@@ -2232,7 +2268,74 @@ class QuadrotorEnv(gym.Env, Serializable):
 
             obs_high[19] = 1.0
             obs_low[19] = 0.0
+        
+        elif self.obs_repr == "xyz_vxyz_rot_omega_t2w_mdamp":
+            self.obs_comp_sizes = [3, 3, 9, 3, 1, 2]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w", "mdamp"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
 
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18]
+
+            #T2W
+            obs_high[18:19] = self.t2w_max* obs_high[18:19]
+            obs_low[18:19]  = self.t2w_max* obs_low[18:19]
+
+            # mdamp
+            obs_high[19] = self.motor_damp_time_max
+            obs_low[19] = self.motor_damp_time_min
+            obs_high[20] = self.motor_damp_time_max * 2.0
+            obs_low[20] = self.motor_damp_time_min
+
+        elif self.obs_repr == "xyz_vxyz_rot_omega_t2w_mlin_mdamp":
+            self.obs_comp_sizes = [3, 3, 9, 3, 1, 1, 2]
+            self.obs_comp_names = ["xyz", "Vxyz", "R", "Omega", "t2w", "mlin", "mdamp"]
+            obs_dim = np.sum(self.obs_comp_sizes)
+            obs_high =  np.ones(obs_dim)
+            obs_low  = -np.ones(obs_dim)
+            
+            # xyz room constraints
+            obs_high[0:3] = self.room_box[1] - self.room_box[0] #i.e. full room size
+            obs_low[0:3]  = -obs_high[0:3]
+
+            # Vxyz
+            obs_high[3:6] = self.dynamics.vxyz_max * obs_high[3:6]
+            obs_low[3:6]  = self.dynamics.vxyz_max * obs_low[3:6] 
+
+            # R
+            # indx range: 6:15
+
+            # Omega
+            obs_high[15:18] = self.dynamics.omega_max * obs_high[15:18]
+            obs_low[15:18]  = self.dynamics.omega_max * obs_low[15:18]
+
+            #T2W
+            obs_high[18:19] = self.t2w_max* obs_high[18:19]
+            obs_low[18:19]  = self.t2w_max* obs_low[18:19]
+
+            obs_high[19] = 1.0
+            obs_low[19] = 0.0
+
+            # mdamp
+            obs_high[20] = self.motor_damp_time_max
+            obs_low[20] = self.motor_damp_time_min
+            obs_high[21] = self.motor_damp_time_max * 2.0
+            obs_low[21] = self.motor_damp_time_min
+        
         self.obs_comp_sizes_dict, self.obs_comp_indx, self.obs_comp_end = {}, {}, []
         end_indx = 0
         for obs_i, obs_name in enumerate(self.obs_comp_names):
@@ -2539,7 +2642,9 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
         "vel_damp",
         "damp_omega_quadratic",
         "torque_to_inertia",
-        "motor_linearity"
+        "motor_linearity",
+        "motor_damp_time_up",
+        "motor_damp_time_down"
     ]
 
     dyn_param_stats = [[] for i in dyn_param_names]
@@ -2622,7 +2727,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
         dyn_par_var = []
         plt.figure(2, figsize=(10, 10))
         for par_i, par in enumerate(dyn_param_stats):
-            plt.subplot(3, 3, par_i+1)
+            plt.subplot(4, 3, par_i+1)
             par = np.array(par)
 
             ## Compute stats
