@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 from numpy.linalg import norm
 from copy import deepcopy

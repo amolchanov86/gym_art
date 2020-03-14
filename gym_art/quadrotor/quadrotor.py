@@ -20,18 +20,21 @@ References:
 import argparse
 import logging
 import numpy as np
-from numpy.linalg import norm
 import sys
-from copy import deepcopy
-import matplotlib.pyplot as plt
 import time
+
+## MATH
+import matplotlib.pyplot as plt
+import transforms3d as t3d
+
+## GYM
 import gym
+from gym import utils as gym_utils
 from gym import spaces
 from gym.utils import seeding
 import gym.envs.registration as gym_reg
-from numpy.random import normal
-import transforms3d as t3d
-from six.moves import cPickle as pickle
+
+## MY LIBS
 import gym_art.quadrotor.quadrotor_randomization as quad_rand
 from gym_art.quadrotor.quadrotor_control import *
 from gym_art.quadrotor.quadrotor_obstacles import *
@@ -41,18 +44,17 @@ import gym_art.quadrotor.get_state as get_state
 from gym_art.quadrotor.inertia import QuadLink, QuadLinkSimplified
 from gym_art.quadrotor.sensor_noise import SensorNoise
 
+## Need it for a lot of implicit calls through getattr()
 from gym_art.quadrotor.quad_models import *
 
 try:
+    ## Support for the older version of the garage
     from garage.core import Serializable
 except:
-    print("WARNING: garage.core.Serializable is not found. Substituting with a dummy class")
-    class Serializable:
-        def __init__(self):
-            pass
+    class Serializable(gym_utils.EzPickle):
+        @staticmethod
         def quick_init(self, locals_in):
-            pass
-
+            gym_utils.EzPickle.__init__(self)
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +137,9 @@ class QuadrotorDynamics(object):
             self.control_mx = np.eye(4)
         else:
             raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
+
+        # Always call Serializable constructor last
+        Serializable.quick_init(self, locals())
 
     @staticmethod
     def angvel2thrust(w, linearity=0.424):
@@ -662,10 +667,10 @@ class QuadrotorEnv(gym.Env, Serializable):
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, dynamics_params="defaultquad", dynamics_change=None, 
+    def __init__(self, dynamics_params="DefaultQuad", dynamics_change=None,
                 dynamics_randomize_every=None, dyn_sampler_1=None, dyn_sampler_2=None,
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
-                obs_repr="xyz_vxyz_R_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
+                obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
                 rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV, resample_goal=False, 
                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False):
         np.seterr(under='ignore')
@@ -756,16 +761,16 @@ class QuadrotorEnv(gym.Env, Serializable):
         
         self.dyn_sampler_1 = dyn_sampler_1
         if dyn_sampler_1 is not None:
-            sampler_type = dyn_sampler_1["type"]
+            sampler_type = dyn_sampler_1["class"]
             self.dyn_sampler_1_params = copy.deepcopy(dyn_sampler_1)
-            del self.dyn_sampler_1_params["type"]
+            del self.dyn_sampler_1_params["class"]
             self.dyn_sampler_1 = getattr(quad_rand, sampler_type)(params=self.dynamics_params, **self.dyn_sampler_1_params)
         
         self.dyn_sampler_2 = dyn_sampler_2
         if dyn_sampler_2 is not None:
-            sampler_type = dyn_sampler_2["type"]
+            sampler_type = dyn_sampler_2["class"]
             self.dyn_sampler_2_params = copy.deepcopy(dyn_sampler_2)
-            del self.dyn_sampler_2_params["type"]
+            del self.dyn_sampler_2_params["class"]
             self.dyn_sampler_2 = getattr(quad_rand, sampler_type)(params=self.dynamics_params, **self.dyn_sampler_2_params)
         
 
@@ -1229,7 +1234,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     sampler_1 = None
     if dyn_randomization_ratio is not None:
         sampler_1 = {
-            "type": "RelativeSampler",
+            "class": "RelativeSampler",
             "noise_ratio": dyn_randomization_ratio,
             "sampler": "normal"
         }
@@ -1392,7 +1397,7 @@ def benchmark(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     sampler_1 = None
     if dyn_randomization_ratio is not None:
         sampler_1 = {
-            "type": "RelativeSampler",
+            "class": "RelativeSampler",
             "noise_ratio": dyn_randomization_ratio,
             "sampler": "normal"
         }
