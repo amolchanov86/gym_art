@@ -1446,8 +1446,7 @@ def benchmark(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     print("Total time: ", time.time() - start_time)
     input("Press Enter to continue...")
 
-
-def parse_quad_args(argv):
+def main(argv):
     # parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
@@ -1460,8 +1459,8 @@ def parse_quad_args(argv):
     parser.add_argument(
         '-q',"--quad",
         default="DefaultQuad",
-        help="Quadrotor model to use: \n" +
-            "- DefaultQuad \n" +
+        help="Quadrotor model to use: \n" + 
+            "- DefaultQuad \n" + 
             "- Crazyflie \n" +
             "- MediumQuad \n" +
             "- RandomQuad"
@@ -1523,20 +1522,15 @@ def parse_quad_args(argv):
         help="State components. Options:\n" +
              "xyz_vxyz_R_omega" +
              "xyz_vxyz_R_omega_act" +
-             "xyz_vxyz_R_omega_acc_act"
+             "xyz_vxyz_R_omega_acc_act" 
     )
     parser.add_argument(
         '-b',"--benchmark",
         action="store_true",
-        help="Simple benchmark, i.e. running time"
+        help="Simple benchmark, i.e. running time" 
     )
 
-    args = parser.parse_args(args=argv)
-    return args
-
-
-def main(argv):
-    args = parse_quad_args(argv)
+    args = parser.parse_args()
 
     if args.sense_noise: sense_noise="default"
     else: sense_noise=None
