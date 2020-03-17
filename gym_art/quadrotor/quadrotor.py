@@ -47,14 +47,6 @@ from gym_art.quadrotor.sensor_noise import SensorNoise
 ## Need it for a lot of implicit calls through getattr()
 from gym_art.quadrotor.quad_models import *
 
-try:
-    ## Support for the older version of the garage
-    from garage.core import Serializable
-except:
-    class Serializable(gym_utils.EzPickle):
-        @staticmethod
-        def quick_init(self, locals_in):
-            gym_utils.EzPickle.__init__(self)
 
 logger = logging.getLogger(__name__)
 
@@ -137,9 +129,6 @@ class QuadrotorDynamics(object):
             self.control_mx = np.eye(4)
         else:
             raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
-
-        # Always call Serializable constructor last
-        Serializable.quick_init(self, locals())
 
     @staticmethod
     def angvel2thrust(w, linearity=0.424):
@@ -630,19 +619,19 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     
 
     rew_info = {
-    "rew_main": -loss_pos,
-    'rew_pos': -loss_pos, 
-    'rew_action': -loss_effort, 
-    'rew_crash': -loss_crash, 
-    "rew_orient": -loss_orient,
-    "rew_yaw": -loss_yaw,
-    "rew_rot": -loss_rotation,
-    "rew_attitude": -loss_attitude,
-    "rew_spin": -loss_spin,
-    # "rew_spin_z": -loss_spin_z,
-    # "rew_spin_xy": -loss_spin_xy,
-    # "rew_act_change": -loss_act_change,
-    "rew_vel": -loss_vel
+        "rew_main": -loss_pos,
+        'rew_pos': -loss_pos,
+        'rew_action': -loss_effort,
+        'rew_crash': -loss_crash,
+        "rew_orient": -loss_orient,
+        "rew_yaw": -loss_yaw,
+        "rew_rot": -loss_rotation,
+        "rew_attitude": -loss_attitude,
+        "rew_spin": -loss_spin,
+        # "rew_spin_z": -loss_spin_z,
+        # "rew_spin_xy": -loss_spin_xy,
+        # "rew_act_change": -loss_act_change,
+        "rew_vel": -loss_vel
     }
 
     # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
@@ -661,7 +650,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
 # NOTES:
 # - room size of the env and init state distribution are not the same !
 #   It is done for the reason of having static (and preferably short) episode length, since for some distance it would be impossible to reach the goal
-class QuadrotorEnv(gym.Env, Serializable):
+class QuadrotorEnv(gym.Env, gym_utils.EzPickle):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second' : 50
@@ -702,6 +691,7 @@ class QuadrotorEnv(gym.Env, Serializable):
             sens_noise (dict or str): sensor noise parameters. If None - no noise. If "default" then the default params are loaded. Otherwise one can provide specific params.
             excite: [bool] change the setpoint at the fixed frequency to perturb the quad
         """
+        gym_utils.EzPickle.__init__(**locals())
         ## ARGS
         self.init_random_state = init_random_state
         self.room_size = room_size
@@ -813,13 +803,13 @@ class QuadrotorEnv(gym.Env, Serializable):
         #########################################
         ## REWARDS PARAMS
         self.rew_coeff = {
-            "pos": 1., "pos_offset": 0.1, "pos_log_weight": 1., "pos_linear_weight": 0.1,
-            "effort": 0.01, 
+            "pos": 1., "pos_offset": 0.1, "pos_log_weight": 0., "pos_linear_weight": 1.0,
+            "effort": 0.05,
             "action_change": 0.,
             "crash": 1., 
             "orient": 1., "yaw": 0., "rot": 0., "attitude": 0.,
             # "spin_z": 0.5, "spin_xy": 0.5,
-            "spin": 0.,
+            "spin": 0.1,
             "vel": 0.}
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
@@ -842,9 +832,6 @@ class QuadrotorEnv(gym.Env, Serializable):
 
         if self.spec is None:
             self.spec = gym_reg.EnvSpec(id='Quadrotor-v0', max_episode_steps=self.ep_len)
-        
-        # Always call Serializable constructor last
-        Serializable.quick_init(self, locals())
 
     def save_dyn_params(self, filename):
         import yaml
