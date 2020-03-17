@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.linalg import norm
 from gym_art.quadrotor.quad_utils import *
+import gym_art.quadrotor.rendering3d as r3d
 
 # determine where to put the obstacles such that no two obstacles intersect
 # and compute the list of obstacles to collision check at each 2d tile.
@@ -46,8 +47,6 @@ def _place_obstacles(np_random, N, box, radius_range, our_radius, tries=5):
 # arena: boundaries of world in xy plane
 # our_radius: quadrotor's radius
 def _random_obstacles(np_random, N, arena, our_radius):
-    import gym_art.quadrotor.rendering3d as r3d
-
     arena = float(arena)
     # all primitives should be tightly bound by unit circle in xy plane
     boxside = np.sqrt(2)
