@@ -545,97 +545,91 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     ##################################################
     ## log to create a sharp peak at the goal
     dist = np.linalg.norm(goal - dynamics.pos)
-    loss_pos = rew_coeff["pos"] * (rew_coeff["pos_log_weight"] * np.log(dist + rew_coeff["pos_offset"]) + rew_coeff["pos_linear_weight"] * dist)
-    # loss_pos = dist
-
-    # dynamics_pos = dynamics.pos
-    # print('dynamics.pos', dynamics.pos)
-
-    ##################################################
-    ## penalize altitude above this threshold
-    # max_alt = 6.0
-    # loss_alt = np.exp(2*(dynamics.pos[2] - max_alt))
+    cost_pos_raw = dist
+    cost_pos = rew_coeff["pos"] * cost_pos_raw
 
     ##################################################
     # penalize amount of control effort
-    loss_effort = rew_coeff["effort"] * np.linalg.norm(action)
+    cost_effort_raw = np.linalg.norm(action)
+    cost_effort = rew_coeff["effort"] * cost_effort_raw
+    
     dact = action - action_prev
-    loss_act_change = rew_coeff["action_change"] * (dact[0]**2 + dact[1]**2 + dact[2]**2 + dact[3]**2)**0.5
+    cost_act_change_raw = (dact[0]**2 + dact[1]**2 + dact[2]**2 + dact[3]**2)**0.5
+    cost_act_change = rew_coeff["action_change"] * cost_act_change_raw
 
     ##################################################
     ## loss velocity
-    # dx = goal - dynamics.pos
-    # dx = dx / (np.linalg.norm(dx) + EPS)
-    
-    ## normalized    
-    # vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
-    # vel_magn = np.clip(np.linalg.norm(dynamics.vel),-1, 1)
-    # vel_clipped = vel_magn * vel_direct 
-    # vel_proj = np.dot(dx, vel_clipped)
-    # loss_vel_proj = - rew_coeff["vel_proj"] * dist * vel_proj
-
-    # loss_vel_proj = 0. 
-    loss_vel = rew_coeff["vel"] * np.linalg.norm(dynamics.vel)
+    cost_vel_raw = np.linalg.norm(dynamics.vel)
+    cost_vel = rew_coeff["vel"] * cost_vel_raw
 
     ##################################################
     ## Loss orientation
-    loss_orient = -rew_coeff["orient"] * dynamics.rot[2,2] 
-    loss_yaw = -rew_coeff["yaw"] * dynamics.rot[0,0]
+    cost_orient_raw = -dynamics.rot[2, 2]
+    cost_orient = rew_coeff["orient"] * cost_orient_raw
+    
+    cost_yaw_raw = -dynamics.rot[0, 0]
+    cost_yaw = rew_coeff["yaw"] * cost_yaw_raw
+    
     # Projection of the z-body axis to z-world axis
     # Negative, because the larger the projection the smaller the loss (i.e. the higher the reward)
-    rot_cos = ((dynamics.rot[0,0] +  dynamics.rot[1,1] +  dynamics.rot[2,2]) - 1.)/2.
+    rot_cos = ((dynamics.rot[0, 0] +  dynamics.rot[1, 1] + dynamics.rot[2, 2]) - 1.)/2.
     #We have to clip since rotation matrix falls out of orthogonalization from time to time
-    loss_rotation = rew_coeff["rot"] * np.arccos(np.clip(rot_cos, -1.,1.)) #angle = arccos((trR-1)/2) See: [6]
-    loss_attitude = rew_coeff["attitude"] * np.arccos(np.clip(dynamics.rot[2,2], -1.,1.))
+    cost_rotation_raw = np.arccos(np.clip(rot_cos, -1., 1.)) #angle = arccos((trR-1)/2) See: [6]
+    cost_rotation = rew_coeff["rot"] * cost_rotation_raw
+    
+    cost_attitude_raw = np.arccos(np.clip(dynamics.rot[2, 2], -1., 1.))
+    cost_attitude = rew_coeff["attitude"] * cost_attitude_raw
 
     ##################################################
     ## Loss for constant uncontrolled rotation around vertical axis
-    # loss_spin_z  = rew_coeff["spin_z"]  * abs(dynamics.omega[2])
-    # loss_spin_xy = rew_coeff["spin_xy"] * np.linalg.norm(dynamics.omega[:2])
-    # loss_spin = rew_coeff["spin"] * np.linalg.norm(dynamics.omega) 
-    loss_spin = rew_coeff["spin"] * (dynamics.omega[0]**2 + dynamics.omega[1]**2 + dynamics.omega[2]**2)**0.5 
+    cost_spin_raw = (dynamics.omega[0]**2 + dynamics.omega[1]**2 + dynamics.omega[2]**2)**0.5
+    cost_spin = rew_coeff["spin"] * cost_spin_raw
 
     ##################################################
     ## loss crash
-    loss_crash = rew_coeff["crash"] * float(crashed)
-
-    # reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
-    # rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
+    cost_crash_raw = float(crashed)
+    cost_crash = rew_coeff["crash"] * cost_crash_raw
 
     reward = -dt * np.sum([
-        loss_pos, 
-        loss_effort, 
-        loss_crash, 
-        loss_orient,
-        loss_yaw,
-        loss_rotation,
-        loss_attitude,
-        loss_spin,
-        # loss_spin_z,
-        # loss_spin_xy,
-        loss_act_change,
-        loss_vel
-        ])
+        cost_pos,
+        cost_effort,
+        cost_crash,
+        cost_orient,
+        cost_yaw,
+        cost_rotation,
+        cost_attitude,
+        cost_spin,
+        cost_act_change,
+        cost_vel
+    ])
     
 
     rew_info = {
-        "rew_main": -loss_pos,
-        'rew_pos': -loss_pos,
-        'rew_action': -loss_effort,
-        'rew_crash': -loss_crash,
-        "rew_orient": -loss_orient,
-        "rew_yaw": -loss_yaw,
-        "rew_rot": -loss_rotation,
-        "rew_attitude": -loss_attitude,
-        "rew_spin": -loss_spin,
-        # "rew_spin_z": -loss_spin_z,
-        # "rew_spin_xy": -loss_spin_xy,
-        # "rew_act_change": -loss_act_change,
-        "rew_vel": -loss_vel
+        "rew_main": -cost_pos,
+        'rew_pos': -cost_pos,
+        'rew_action': -cost_effort,
+        'rew_crash': -cost_crash,
+        "rew_orient": -cost_orient,
+        "rew_yaw": -cost_yaw,
+        "rew_rot": -cost_rotation,
+        "rew_attitude": -cost_attitude,
+        "rew_spin": -cost_spin,
+        "rew_act_change": -cost_act_change,
+        "rew_vel": -cost_vel,
+
+        "rewraw_main": -cost_pos_raw,
+        'rewraw_pos': -cost_pos_raw,
+        'rewraw_action': -cost_effort_raw,
+        'rewraw_crash': -cost_crash_raw,
+        "rewraw_orient": -cost_orient_raw,
+        "rewraw_yaw": -cost_yaw_raw,
+        "rewraw_rot": -cost_rotation_raw,
+        "rewraw_attitude": -cost_attitude_raw,
+        "rewraw_spin": -cost_spin_raw,
+        "rewraw_act_change": -cost_act_change_raw,
+        "rewraw_vel": -cost_vel_raw,
     }
 
-    # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
-    # print('pos', dynamics.pos)
     if np.isnan(reward) or not np.isfinite(reward):
         for key, value in locals().items():
             print('%s: %s \n' % (key, str(value)))
@@ -803,12 +797,11 @@ class QuadrotorEnv(gym.Env, gym_utils.EzPickle):
         #########################################
         ## REWARDS PARAMS
         self.rew_coeff = {
-            "pos": 1., "pos_offset": 0.1, "pos_log_weight": 0., "pos_linear_weight": 1.0,
+            "pos": 1.,
             "effort": 0.05,
             "action_change": 0.,
             "crash": 1., 
             "orient": 1., "yaw": 0., "rot": 0., "attitude": 0.,
-            # "spin_z": 0.5, "spin_xy": 0.5,
             "spin": 0.1,
             "vel": 0.}
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
