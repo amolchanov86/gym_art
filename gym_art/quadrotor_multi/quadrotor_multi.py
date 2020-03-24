@@ -20,21 +20,18 @@ References:
 import argparse
 import logging
 import numpy as np
+from numpy.linalg import norm
 import sys
-import time
-
-## MATH
+from copy import deepcopy
 import matplotlib.pyplot as plt
-import transforms3d as t3d
-
-## GYM
+import time
 import gym
-from gym import utils as gym_utils
 from gym import spaces
 from gym.utils import seeding
 import gym.envs.registration as gym_reg
-
-## MY LIBS
+from numpy.random import normal
+import transforms3d as t3d
+from six.moves import cPickle as pickle
 import gym_art.quadrotor.quadrotor_randomization as quad_rand
 from gym_art.quadrotor.quadrotor_control import *
 from gym_art.quadrotor.quadrotor_obstacles import *
@@ -44,8 +41,17 @@ import gym_art.quadrotor.get_state as get_state
 from gym_art.quadrotor.inertia import QuadLink, QuadLinkSimplified
 from gym_art.quadrotor.sensor_noise import SensorNoise
 
-## Need it for a lot of implicit calls through getattr()
 from gym_art.quadrotor.quad_models import *
+
+try:
+    from garage.core import Serializable
+except:
+    print("WARNING: garage.core.Serializable is not found. Substituting with a dummy class")
+    class Serializable:
+        def __init__(self):
+            pass
+        def quick_init(self, locals_in):
+            pass
 
 
 logger = logging.getLogger(__name__)
@@ -545,91 +551,97 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     ##################################################
     ## log to create a sharp peak at the goal
     dist = np.linalg.norm(goal - dynamics.pos)
-    cost_pos_raw = dist
-    cost_pos = rew_coeff["pos"] * cost_pos_raw
+    loss_pos = rew_coeff["pos"] * (rew_coeff["pos_log_weight"] * np.log(dist + rew_coeff["pos_offset"]) + rew_coeff["pos_linear_weight"] * dist)
+    # loss_pos = dist
+
+    # dynamics_pos = dynamics.pos
+    # print('dynamics.pos', dynamics.pos)
+
+    ##################################################
+    ## penalize altitude above this threshold
+    # max_alt = 6.0
+    # loss_alt = np.exp(2*(dynamics.pos[2] - max_alt))
 
     ##################################################
     # penalize amount of control effort
-    cost_effort_raw = np.linalg.norm(action)
-    cost_effort = rew_coeff["effort"] * cost_effort_raw
-    
+    loss_effort = rew_coeff["effort"] * np.linalg.norm(action)
     dact = action - action_prev
-    cost_act_change_raw = (dact[0]**2 + dact[1]**2 + dact[2]**2 + dact[3]**2)**0.5
-    cost_act_change = rew_coeff["action_change"] * cost_act_change_raw
+    loss_act_change = rew_coeff["action_change"] * (dact[0]**2 + dact[1]**2 + dact[2]**2 + dact[3]**2)**0.5
 
     ##################################################
     ## loss velocity
-    cost_vel_raw = np.linalg.norm(dynamics.vel)
-    cost_vel = rew_coeff["vel"] * cost_vel_raw
+    # dx = goal - dynamics.pos
+    # dx = dx / (np.linalg.norm(dx) + EPS)
+    
+    ## normalized    
+    # vel_direct = dynamics.vel / (np.linalg.norm(dynamics.vel) + EPS)
+    # vel_magn = np.clip(np.linalg.norm(dynamics.vel),-1, 1)
+    # vel_clipped = vel_magn * vel_direct 
+    # vel_proj = np.dot(dx, vel_clipped)
+    # loss_vel_proj = - rew_coeff["vel_proj"] * dist * vel_proj
+
+    # loss_vel_proj = 0. 
+    loss_vel = rew_coeff["vel"] * np.linalg.norm(dynamics.vel)
 
     ##################################################
     ## Loss orientation
-    cost_orient_raw = -dynamics.rot[2, 2]
-    cost_orient = rew_coeff["orient"] * cost_orient_raw
-    
-    cost_yaw_raw = -dynamics.rot[0, 0]
-    cost_yaw = rew_coeff["yaw"] * cost_yaw_raw
-    
+    loss_orient = -rew_coeff["orient"] * dynamics.rot[2,2] 
+    loss_yaw = -rew_coeff["yaw"] * dynamics.rot[0,0]
     # Projection of the z-body axis to z-world axis
     # Negative, because the larger the projection the smaller the loss (i.e. the higher the reward)
-    rot_cos = ((dynamics.rot[0, 0] +  dynamics.rot[1, 1] + dynamics.rot[2, 2]) - 1.)/2.
+    rot_cos = ((dynamics.rot[0,0] +  dynamics.rot[1,1] +  dynamics.rot[2,2]) - 1.)/2.
     #We have to clip since rotation matrix falls out of orthogonalization from time to time
-    cost_rotation_raw = np.arccos(np.clip(rot_cos, -1., 1.)) #angle = arccos((trR-1)/2) See: [6]
-    cost_rotation = rew_coeff["rot"] * cost_rotation_raw
-    
-    cost_attitude_raw = np.arccos(np.clip(dynamics.rot[2, 2], -1., 1.))
-    cost_attitude = rew_coeff["attitude"] * cost_attitude_raw
+    loss_rotation = rew_coeff["rot"] * np.arccos(np.clip(rot_cos, -1.,1.)) #angle = arccos((trR-1)/2) See: [6]
+    loss_attitude = rew_coeff["attitude"] * np.arccos(np.clip(dynamics.rot[2,2], -1.,1.))
 
     ##################################################
     ## Loss for constant uncontrolled rotation around vertical axis
-    cost_spin_raw = (dynamics.omega[0]**2 + dynamics.omega[1]**2 + dynamics.omega[2]**2)**0.5
-    cost_spin = rew_coeff["spin"] * cost_spin_raw
+    # loss_spin_z  = rew_coeff["spin_z"]  * abs(dynamics.omega[2])
+    # loss_spin_xy = rew_coeff["spin_xy"] * np.linalg.norm(dynamics.omega[:2])
+    # loss_spin = rew_coeff["spin"] * np.linalg.norm(dynamics.omega) 
+    loss_spin = rew_coeff["spin"] * (dynamics.omega[0]**2 + dynamics.omega[1]**2 + dynamics.omega[2]**2)**0.5 
 
     ##################################################
     ## loss crash
-    cost_crash_raw = float(crashed)
-    cost_crash = rew_coeff["crash"] * cost_crash_raw
+    loss_crash = rew_coeff["crash"] * float(crashed)
+
+    # reward = -dt * np.sum([loss_pos, loss_effort, loss_alt, loss_vel_proj, loss_crash])
+    # rew_info = {'rew_crash': -loss_crash, 'rew_altitude': -loss_alt, 'rew_action': -loss_effort, 'rew_pos': -loss_pos, 'rew_vel_proj': -loss_vel_proj}
 
     reward = -dt * np.sum([
-        cost_pos,
-        cost_effort,
-        cost_crash,
-        cost_orient,
-        cost_yaw,
-        cost_rotation,
-        cost_attitude,
-        cost_spin,
-        cost_act_change,
-        cost_vel
-    ])
+        loss_pos, 
+        loss_effort, 
+        loss_crash, 
+        loss_orient,
+        loss_yaw,
+        loss_rotation,
+        loss_attitude,
+        loss_spin,
+        # loss_spin_z,
+        # loss_spin_xy,
+        loss_act_change,
+        loss_vel
+        ])
     
 
     rew_info = {
-        "rew_main": -cost_pos,
-        'rew_pos': -cost_pos,
-        'rew_action': -cost_effort,
-        'rew_crash': -cost_crash,
-        "rew_orient": -cost_orient,
-        "rew_yaw": -cost_yaw,
-        "rew_rot": -cost_rotation,
-        "rew_attitude": -cost_attitude,
-        "rew_spin": -cost_spin,
-        "rew_act_change": -cost_act_change,
-        "rew_vel": -cost_vel,
-
-        "rewraw_main": -cost_pos_raw,
-        'rewraw_pos': -cost_pos_raw,
-        'rewraw_action': -cost_effort_raw,
-        'rewraw_crash': -cost_crash_raw,
-        "rewraw_orient": -cost_orient_raw,
-        "rewraw_yaw": -cost_yaw_raw,
-        "rewraw_rot": -cost_rotation_raw,
-        "rewraw_attitude": -cost_attitude_raw,
-        "rewraw_spin": -cost_spin_raw,
-        "rewraw_act_change": -cost_act_change_raw,
-        "rewraw_vel": -cost_vel_raw,
+    "rew_main": -loss_pos,
+    'rew_pos': -loss_pos, 
+    'rew_action': -loss_effort, 
+    'rew_crash': -loss_crash, 
+    "rew_orient": -loss_orient,
+    "rew_yaw": -loss_yaw,
+    "rew_rot": -loss_rotation,
+    "rew_attitude": -loss_attitude,
+    "rew_spin": -loss_spin,
+    # "rew_spin_z": -loss_spin_z,
+    # "rew_spin_xy": -loss_spin_xy,
+    # "rew_act_change": -loss_act_change,
+    "rew_vel": -loss_vel
     }
 
+    # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
+    # print('pos', dynamics.pos)
     if np.isnan(reward) or not np.isfinite(reward):
         for key, value in locals().items():
             print('%s: %s \n' % (key, str(value)))
@@ -644,16 +656,16 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
 # NOTES:
 # - room size of the env and init state distribution are not the same !
 #   It is done for the reason of having static (and preferably short) episode length, since for some distance it would be impossible to reach the goal
-class QuadrotorEnv(gym.Env, gym_utils.EzPickle):
+class QuadrotorEnv(gym.Env, Serializable):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second' : 50
     }
 
-    def __init__(self, dynamics_params="DefaultQuad", dynamics_change=None,
+    def __init__(self, dynamics_params="defaultquad", dynamics_change=None, 
                 dynamics_randomize_every=None, dyn_sampler_1=None, dyn_sampler_2=None,
                 raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200., sim_steps=2,
-                obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
+                obs_repr="xyz_vxyz_R_omega", ep_time=4, obstacles_num=0, room_size=10, init_random_state=False, 
                 rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV, resample_goal=False, 
                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False):
         np.seterr(under='ignore')
@@ -685,7 +697,6 @@ class QuadrotorEnv(gym.Env, gym_utils.EzPickle):
             sens_noise (dict or str): sensor noise parameters. If None - no noise. If "default" then the default params are loaded. Otherwise one can provide specific params.
             excite: [bool] change the setpoint at the fixed frequency to perturb the quad
         """
-        gym_utils.EzPickle.__init__(**locals())
         ## ARGS
         self.init_random_state = init_random_state
         self.room_size = room_size
@@ -745,16 +756,16 @@ class QuadrotorEnv(gym.Env, gym_utils.EzPickle):
         
         self.dyn_sampler_1 = dyn_sampler_1
         if dyn_sampler_1 is not None:
-            sampler_type = dyn_sampler_1["class"]
+            sampler_type = dyn_sampler_1["type"]
             self.dyn_sampler_1_params = copy.deepcopy(dyn_sampler_1)
-            del self.dyn_sampler_1_params["class"]
+            del self.dyn_sampler_1_params["type"]
             self.dyn_sampler_1 = getattr(quad_rand, sampler_type)(params=self.dynamics_params, **self.dyn_sampler_1_params)
         
         self.dyn_sampler_2 = dyn_sampler_2
         if dyn_sampler_2 is not None:
-            sampler_type = dyn_sampler_2["class"]
+            sampler_type = dyn_sampler_2["type"]
             self.dyn_sampler_2_params = copy.deepcopy(dyn_sampler_2)
-            del self.dyn_sampler_2_params["class"]
+            del self.dyn_sampler_2_params["type"]
             self.dyn_sampler_2 = getattr(quad_rand, sampler_type)(params=self.dynamics_params, **self.dyn_sampler_2_params)
         
 
@@ -797,12 +808,13 @@ class QuadrotorEnv(gym.Env, gym_utils.EzPickle):
         #########################################
         ## REWARDS PARAMS
         self.rew_coeff = {
-            "pos": 1.,
-            "effort": 0.05,
+            "pos": 1., "pos_offset": 0.1, "pos_log_weight": 1., "pos_linear_weight": 0.1,
+            "effort": 0.01, 
             "action_change": 0.,
             "crash": 1., 
             "orient": 1., "yaw": 0., "rot": 0., "attitude": 0.,
-            "spin": 0.1,
+            # "spin_z": 0.5, "spin_xy": 0.5,
+            "spin": 0.,
             "vel": 0.}
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
@@ -825,6 +837,9 @@ class QuadrotorEnv(gym.Env, gym_utils.EzPickle):
 
         if self.spec is None:
             self.spec = gym_reg.EnvSpec(id='Quadrotor-v0', max_episode_steps=self.ep_len)
+        
+        # Always call Serializable constructor last
+        Serializable.quick_init(self, locals())
 
     def save_dyn_params(self, filename):
         import yaml
@@ -1214,7 +1229,7 @@ def test_rollout(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     sampler_1 = None
     if dyn_randomization_ratio is not None:
         sampler_1 = {
-            "class": "RelativeSampler",
+            "type": "RelativeSampler",
             "noise_ratio": dyn_randomization_ratio,
             "sampler": "normal"
         }
@@ -1377,7 +1392,7 @@ def benchmark(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     sampler_1 = None
     if dyn_randomization_ratio is not None:
         sampler_1 = {
-            "class": "RelativeSampler",
+            "type": "RelativeSampler",
             "noise_ratio": dyn_randomization_ratio,
             "sampler": "normal"
         }
@@ -1431,8 +1446,7 @@ def benchmark(quad, dyn_randomize_every=None, dyn_randomization_ratio=None,
     print("Total time: ", time.time() - start_time)
     input("Press Enter to continue...")
 
-
-def parse_quad_args(argv):
+def main(argv):
     # parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
@@ -1445,8 +1459,8 @@ def parse_quad_args(argv):
     parser.add_argument(
         '-q',"--quad",
         default="DefaultQuad",
-        help="Quadrotor model to use: \n" +
-            "- DefaultQuad \n" +
+        help="Quadrotor model to use: \n" + 
+            "- DefaultQuad \n" + 
             "- Crazyflie \n" +
             "- MediumQuad \n" +
             "- RandomQuad"
@@ -1508,20 +1522,15 @@ def parse_quad_args(argv):
         help="State components. Options:\n" +
              "xyz_vxyz_R_omega" +
              "xyz_vxyz_R_omega_act" +
-             "xyz_vxyz_R_omega_acc_act"
+             "xyz_vxyz_R_omega_acc_act" 
     )
     parser.add_argument(
         '-b',"--benchmark",
         action="store_true",
-        help="Simple benchmark, i.e. running time"
+        help="Simple benchmark, i.e. running time" 
     )
 
-    args = parser.parse_args(args=argv)
-    return args
-
-
-def main(argv):
-    args = parse_quad_args(argv)
+    args = parser.parse_args()
 
     if args.sense_noise: sense_noise="default"
     else: sense_noise=None
