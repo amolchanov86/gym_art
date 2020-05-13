@@ -3,8 +3,8 @@ import numpy as np
 from numpy.linalg import norm
 from copy import deepcopy
 
-from gym_art.quadrotor.quad_utils import *
-from gym_art.quadrotor.quad_models import *
+from gym_art.quadrotor_single.quad_utils import *
+from gym_art.quadrotor_single.quad_models import *
 
 
 def clip_params_positive(params):

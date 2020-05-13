@@ -35,17 +35,17 @@ from gym.utils import seeding
 import gym.envs.registration as gym_reg
 
 ## MY LIBS
-import gym_art.quadrotor.quadrotor_randomization as quad_rand
-from gym_art.quadrotor.quadrotor_control import *
-from gym_art.quadrotor.quadrotor_obstacles import *
-from gym_art.quadrotor.quadrotor_visualization import *
-from gym_art.quadrotor.quad_utils import *
-import gym_art.quadrotor.get_state as get_state
-from gym_art.quadrotor.inertia import QuadLink, QuadLinkSimplified
-from gym_art.quadrotor.sensor_noise import SensorNoise
+import gym_art.quadrotor_single.quadrotor_randomization as quad_rand
+from gym_art.quadrotor_single.quadrotor_control import *
+from gym_art.quadrotor_single.quadrotor_obstacles import *
+from gym_art.quadrotor_single.quadrotor_visualization import *
+from gym_art.quadrotor_single.quad_utils import *
+import gym_art.quadrotor_single.get_state as get_state
+from gym_art.quadrotor_single.inertia import QuadLink, QuadLinkSimplified
+from gym_art.quadrotor_single.sensor_noise import SensorNoise
 
 ## Need it for a lot of implicit calls through getattr()
-from gym_art.quadrotor.quad_models import *
+from gym_art.quadrotor_single.quad_models import *
 
 
 logger = logging.getLogger(__name__)

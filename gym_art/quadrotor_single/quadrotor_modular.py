@@ -28,10 +28,10 @@ except:
         def quick_init(self, locals_in):
             pass
 
-from gym_art.quadrotor.quadrotor_control import *
-from gym_art.quadrotor.quadrotor_obstacles import *
-from gym_art.quadrotor.quadrotor_visualization import *
-from gym_art.quadrotor.quad_utils import *
+from gym_art.quadrotor_single.quadrotor_control import *
+from gym_art.quadrotor_single.quadrotor_obstacles import *
+from gym_art.quadrotor_single.quadrotor_visualization import *
+from gym_art.quadrotor_single.quad_utils import *
 import transforms3d as t3d
 
 

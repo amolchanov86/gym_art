@@ -1,4 +1,4 @@
-from gym_art.quadrotor.quadrotor_modular import *
+from gym_art.quadrotor_single.quadrotor_modular import *
 
 # Gym environment for quadrotor seeking a given goal
 # with obstacles and vision + IMU observations

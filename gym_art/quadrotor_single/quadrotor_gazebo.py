@@ -17,8 +17,21 @@ https://github.com/TaoChenOSU/rotors_simulator/blob/gazebo_step_control/rotors_c
 
 import numpy as np
 #from gym_art.quadrotor.quadrotor_modular import *
-from gym_art.quadrotor.quadrotor_modular import *
+from gym_art.quadrotor_single.quadrotor_modular import *
 import logging
+import time
+import sys, os
+import traceback
+
+import rospy
+import rospy.rostime
+from nav_msgs.msg import Odometry
+from mav_msgs.msg import Actuators
+from trajectory_msgs.msg import MultiDOFJointTrajectoryPoint
+from gazebo_msgs.srv import SetModelState
+from gazebo_msgs.msg import ModelState
+
+current_time_ms = lambda: int(round(time.time() * 1000))
 
 def Rdiff(P, Q):
     """
@@ -71,17 +84,7 @@ def default_hummingbird_dynamics(sim_steps=1, room_box=None):
     return QuadrotorGazeboDynamics(mass, arm_length, inertia,
         thrust_to_weight=thrust_to_weight, dynamics_steps_num=sim_steps, room_box=room_box)
 
-import time
-current_time_ms = lambda: int(round(time.time() * 1000))
 
-import rospy
-import rospy.rostime
-from nav_msgs.msg import Odometry
-from mav_msgs.msg import Actuators
-from trajectory_msgs.msg import MultiDOFJointTrajectoryPoint
-from gazebo_msgs.srv import SetModelState
-from gazebo_msgs.msg import ModelState
-import sys, traceback
 
 # simple simulation of quadrotor dynamics.
 class QuadrotorGazeboDynamics(object):
@@ -96,6 +99,9 @@ class QuadrotorGazeboDynamics(object):
             self.room_box = np.array([[-3., -3., 0.], [3., 3., 3.]])
         else:
             self.room_box = np.array(room_box).copy()
+
+        self.odo_start_time = current_time_ms() / 1000.
+        self.odo_freq = 0.
 
         self.mass = mass
         self.arm = arm_length
@@ -120,12 +126,11 @@ class QuadrotorGazeboDynamics(object):
         # 1 for props turning CCW, -1 for CW # the comment is probably
         self.prop_ccw = np.array([1., -1., 1., -1.])
         # self.prop_ccw = np.array([-1., 1., -1., 1.])
-        self.max_angular_val = 838. #rad/s
+        self.max_angular_val = 838. #rad/s``
 
 
         ##########################################
         ### ROS stuff
-        self.step_delay = 0.02
 
         self.quadrotor = "hummingbird"
         # That is for us to command a new trajectory
@@ -139,30 +144,23 @@ class QuadrotorGazeboDynamics(object):
         # Sync publisher (send syncing messages)
         # self.sync_topic = "/world_control"
 
-        #Initializing the node
-        self.init_ros()
 
+        self.init_ros()
+        self.time_last = current_time_ms()
+            
         # Reseting gazebo (defaults)
         self.set_state(pos=[0., 0., self.arm + 0.2], vel=[0.,0.,0.], rot=np.eye(3), omega=[0.,0.,0.])
 
-        # Waiting for the first message
-        # print("DYN: __init__: wait_for_message: odometry")
-        try:
-            odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry, timeout=1)
-            self.odometry_callback(msg=odom_msg)
-        except Exception as e:
-            print('ERROR: ', str(e))
-            raise e
         self.sudden_death = False        
 
-    
+        
     def init_ros(self):
         print("DYN: initilization of the ROS node ...") 
         rospy.init_node('quadrotor_env', anonymous=True)
 
         # Setting subscribers and publishers
         print("DYN: setting publishers and subscribers ...")    
-        # rospy.Subscriber(self.quadrotor + "/" + self.odometry_topic, Odometry, self.odometry_callback)
+        rospy.Subscriber(self.odometry_topic, Odometry, self.odometry_callback, queue_size=1)
         # rospy.Subscriber(self.quadrotor + "/" + self.trajectory_topic, MultiDOFJointTrajectoryPoint, self.traj_callback)
         self.action_publisher = rospy.Publisher(self.actuators_topic, Actuators, queue_size=1)
 
@@ -171,17 +169,14 @@ class QuadrotorGazeboDynamics(object):
         rospy.wait_for_service(self.reset_topic)
         self.reset_service = rospy.ServiceProxy(self.reset_topic, SetModelState)
 
+        rospy.sleep(0.2)
+
 
     def step1(self, thrust_cmds, dt):
         # thrust_cmds = np.array([0., 0., 0., 0.])
         # print("DYN: step1: wait_for_message: odometry")
         # print('DYN: thrust: ', thrust_cmds)
-        time_start = current_time_ms()
-
-        # odom_msg = rospy.wait_for_message(self.odometry_topic, Odometry)
-        # self.odometry_callback(msg=odom_msg)
-        # time_end = current_time_ms()
-        # print('DYN: wait odometry delay: ', (time_end - time_start))
+        # time_start = current_time_ms()
 
         # Publish the action
         actuator_msg = Actuators()
@@ -197,17 +192,26 @@ class QuadrotorGazeboDynamics(object):
         actuator_msg.angular_velocities = angular_velocities
         self.action_publisher.publish(actuator_msg)
 
-        time_end = current_time_ms()
-        self.step_delay = 2*(time_end - time_start) # *2 because afterwards we will wait for the state again
-
-        ## Sleep to match desired frequency if delay is not enough
-        # sleep_time =  np.clip(dt - self.step_delay, a_min=0, a_max=1.0)
-        # print("Sleep time ms: ", sleep_time)
-        # rospy.sleep(sleep_time)
-
+        ## Delay monitoring
+        self.step_delay = (current_time_ms() - self.time_last) / 1000.
+        self.time_last = current_time_ms()
 
 
     def update_state(self):
+        """
+        Hack to have consistent update of the state when we need it
+        """
+        self.pos = self.pos_cur.copy()
+        self.vel = self.vel_cur.copy()
+        self.rot = self.rot_cur.copy()
+        self.quat = self.quat_cur.copy()
+        self.vel_body = self.vel_body_cur.copy()
+        self.omega = self.omega_cur.copy()
+
+        return self.pos[2] <= (self.arm + 0.05) #offset to account for rotor itself
+
+
+    def update_state_msgwait(self):
         # print('Odometry requested ...')
         # Receive the fedback
         # print("DYN: update_state: wait_for_message: odometry")
@@ -232,11 +236,17 @@ class QuadrotorGazeboDynamics(object):
 
     def odometry_callback(self, msg):
         # print("Odometry received", msg)
-        self.pos, self.quat, self.vel_body, self.omega = self.repackOdometry(msg)
-        self.rot = quat2R(qw=self.quat[0], qx=self.quat[1], qy=self.quat[2], qz=self.quat[3])
+        self.pos_cur, self.quat_cur, self.vel_body_cur, self.omega_cur = self.repackOdometry(msg)
+        self.rot_cur = quat2R(qw=self.quat_cur[0], qx=self.quat_cur[1], qy=self.quat_cur[2], qz=self.quat_cur[3])
         # Gazebo publishes in the body frame (both vel and omega)
         # converting to the world frame for the controller (policy)
-        self.vel = np.matmul(self.rot, self.vel_body)
+        self.vel_cur = np.matmul(self.rot_cur, self.vel_body_cur)
+
+        time_cur = current_time_ms() / 1000.
+        odo_dt = time_cur - self.odo_start_time
+        self.odo_freq = 1./ (odo_dt + 1e-6)
+        # print('odo freq: ', self.odo_freq)
+        self.odo_start_time = time_cur
 
         ## The way to convert omega to the world frame:        
         # self.omega = np.matmul(self.rot.T, self.omega_glob)
@@ -254,7 +264,7 @@ class QuadrotorGazeboDynamics(object):
 
 
     def set_state(self, pos, vel, rot, omega):
-        print('DYN: set_state: pos, rot, vel, omega', pos, rot, vel, omega)
+        # print('DYN: set_state: pos, rot, vel, omega', pos, rot, vel, omega)
         self.sudden_death = False
         req = ModelState()
         req.model_name = "hummingbird"
@@ -308,14 +318,15 @@ class QuadrotorGazeboDynamics(object):
 
 # Gym environment for quadrotor seeking the origin
 # with no obstacles and full state observations
-try:
-    # For latest gym we could use GoalEnv 
-    gym_env_parent = gym.GoalEnv
-except:
-    # For older gym it is just Env
-    gym_env_parent = gym.Env
+# (this functionality does not fully work yet, step() and reset() functions should be fixed)
+# try:
+#     # For latest gym we could use GoalEnv 
+#     gym_env_parent = gym.GoalEnv
+# except:
+#     # For older gym it is just Env
+#     gym_env_parent = gym.Env
 
-class QuadrotorGazeboEnv(gym_env_parent):
+class QuadrotorGazeboEnv(gym.Env):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second': 50
@@ -391,14 +402,16 @@ class QuadrotorGazeboEnv(gym_env_parent):
         obs_high[6:-3] = 1
         obs_low[6:-3] = -1
 
-        try:
-            self.observation_space = spaces.Dict(dict(
-                desired_goal = spaces.Box(obs_low, obs_high, dtype='float32'),
-                achieved_goal= spaces.Box(obs_low, obs_high, dtype='float32'),
-                observation  = spaces.Box(obs_low, obs_high, dtype='float32'),
-            ))
-        except Exception as e:
-            self.observation_space = spaces.Box(-obs_high, obs_high)
+
+        self.observation_space = spaces.Box(-obs_high, obs_high)
+        # try:
+        #     self.observation_space = spaces.Dict(dict(
+        #         desired_goal = spaces.Box(obs_low, obs_high, dtype='float32'),
+        #         achieved_goal= spaces.Box(obs_low, obs_high, dtype='float32'),
+        #         observation  = spaces.Box(obs_low, obs_high, dtype='float32'),
+        #     ))
+        # except Exception as e:
+        #     self.observation_space = spaces.Box(-obs_high, obs_high)
 
 
         # TODO get this from a wrapper
@@ -406,7 +419,9 @@ class QuadrotorGazeboEnv(gym_env_parent):
         
         # At best it runs at 50Hz when real time factor in Gazebo is 1.0
         # Set 25Hz when factor is 2
-        self.dt = 1.0 / 50. 
+        self.control_freq = 50.
+        self.rosrate = rospy.Rate(self.control_freq)
+        self.dt = 1.0 / self.control_freq
         self.sim_steps = 1
         self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
         self.tick = 0
@@ -425,9 +440,20 @@ class QuadrotorGazeboEnv(gym_env_parent):
         self._elapsed_steps = 0
         # self._episode_started_at = None
 
+
+
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
         logging.basicConfig(filename='/tmp/quadrotor_gazebo.log', level=logging.DEBUG)
+
+    @staticmethod
+    def add_marker(pos, size):
+        os.system("gz marker -x") #removes all markers
+        add_marker_cmd =  \
+        "gz marker -m \'action: ADD_MODIFY, type: SPHERE, id: 0, pose: {position: {x:%.3f, y:%.3f, z:%.3f}}, scale: {x:%.2f, y:%.2f, z:%.2f}'" % \
+        (pos[0], pos[1], pos[2], size, size, size)
+        os.system(add_marker_cmd)
+
 
     def action_default(self):
         return np.zeros([self.rotors_num,])
@@ -443,14 +469,16 @@ class QuadrotorGazeboEnv(gym_env_parent):
 
     def step(self, action):
         # print('actions: ', action)
-        if not self.crashed:
-            self.controller.step(dynamics=self.dynamics, action=action, goal=self.goal[0:3], dt=self.dt)
-            # self.oracle.step(self.dynamics, self.goal, goal=self.goal[0:3], dt=self.dt)
-            self.crashed = self.dynamics.update_state()
-            self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
-                                                          np.clip(self.dynamics.pos,
-                                                                  a_min=self.room_box[0],
-                                                                  a_max=self.room_box[1]))
+        # if not self.crashed:
+        self.controller.step(dynamics=self.dynamics, action=action, goal=self.goal[0:3], dt=self.dt)
+        # self.oracle.step(self.dynamics, self.goal, goal=self.goal[0:3], dt=self.dt)
+        self.rosrate.sleep() #Allows maintain frequency relative to simulation
+
+        self.crashed = self.dynamics.update_state()
+        self.crashed = self.crashed or not np.array_equal(self.dynamics.pos,
+                                                      np.clip(self.dynamics.pos,
+                                                              a_min=self.room_box[0],
+                                                              a_max=self.room_box[1]))
         self.action_last = action.copy()
         self.time_remain = self.ep_len - self.tick
         # info MUST contain all current state variables
@@ -464,7 +492,7 @@ class QuadrotorGazeboEnv(gym_env_parent):
 
         self.tick += 1
         self._elapsed_steps = self.tick
-        done = self.tick > self.ep_len or self.crashed
+        done = self.tick > self.ep_len #or self.crashed
         sv = self.dynamics.state_vector()
 
         # obs = {
@@ -486,8 +514,10 @@ class QuadrotorGazeboEnv(gym_env_parent):
 
         # Goal and start point initilization
         self.goal = self._sample_goal()
+        self.add_marker(self.goal, self.goal_dist_eps[0])
+        # print('new goal: ', self.goal)
         xyz_init, vel_init, rot_init, rot_vel_init = self._sample_init_state()
-        # print('ENV: reset: pos, vel, rot, omega: ', xyz_init, vel_init, rot_init, rot_vel_init, rot_init.shape)
+        print('ENV: reset: pos, vel, rot, omega: ', xyz_init, vel_init, rot_init, rot_vel_init, rot_init.shape)
         self.dynamics.set_state(pos=xyz_init, vel=vel_init, rot=rot_init, omega=rot_vel_init)
 
         # Scene initilization
@@ -512,6 +542,9 @@ class QuadrotorGazeboEnv(gym_env_parent):
 
         return obs
 
+    def _render(self, mode='human', close=False):
+        # self.scene.render_chase()
+        pass
 
     def render(self, mode='human', close=False):
         # self.scene.render_chase()
@@ -526,7 +559,7 @@ class QuadrotorGazeboEnv(gym_env_parent):
     def goal_components(self, obs):
         return obs[..., 0:3], obs[..., 3:6]
 
-    def compute_reward(self, achieved_goal, desired_goal, info):
+    def compute_reward_vectorized(self, achieved_goal, desired_goal, info):
         """
         This function must be vectorizable, i.e. it must be capable of processing batches
         :param achieved_goal:
@@ -620,8 +653,61 @@ class QuadrotorGazeboEnv(gym_env_parent):
         # assert reward == env.compute_reward(ob['achieved_goal'], ob['goal'], info)
         return reward
 
+    def compute_reward(self, achieved_goal, desired_goal, info):
+        xyz, vel, rot_mx, rot_vel = self.obs_components(achieved_goal)
+        goal_xyz, goal_vel, goal_rot_mx, goal_rot_vel = self.obs_components(desired_goal)
+        
+        ###############################################
+        ## Distance based reward
+        dist = np.linalg.norm(goal_xyz - xyz, axis=-1)
+        # loss_pos = np.log(dist + 0.1) + 0.1 * dist
+        loss_pos = dist
 
-    def _compute_reward_nonvector(self, achieved_goal, desired_goal, info):
+        ###############################################
+        #Goal Proximity Coefficient (to have smooth influence of the axilliary distances)
+        gpc = np.clip(-(1.0 / self.hover_eps) * dist + 1.0, a_min=0, a_max=1.0)
+        
+        ###############################################
+        ## Loss velocity when within eps distance to the goal
+        vel_dist = np.linalg.norm(goal_vel - vel, axis=-1)
+        loss_vel_eps = gpc * 0.2 * vel_dist + (1.0 - gpc) * self.dt
+
+        ###############################################
+        ## Crashing
+        loss_crash = 10 * float(self.crashed)
+
+
+        #####################
+        ## loss velocity direction
+        dx = desired_goal[0:3] - achieved_goal[0:3]
+        dx = dx / (np.linalg.norm(dx) + EPS)
+        vel_direct = achieved_goal[3:6] / (np.linalg.norm(achieved_goal[3:6]) + EPS)
+        vel_proj = np.dot(dx, vel_direct)
+        loss_vel_proj = - 0.5 * (vel_proj - 1.0)
+
+        ###############################################
+        ## Total
+        reward = -self.dt * np.sum([loss_pos, loss_vel_eps, loss_crash, loss_vel_proj], axis=-1)
+        # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
+
+        ## Reporting
+        rew_info = {'rew_crash': -loss_crash,
+                    'rew_pos': -loss_pos,
+                    'rew_vel_eps': -loss_vel_eps,
+                    'rew_vel_proj': -loss_vel_proj}
+
+        info["rewards"] = rew_info
+        if np.any(np.isnan(reward)) or not np.all(np.isfinite(reward)):
+            for key, value in locals().items():
+                print('%s: %s \n' % (key, str(value)))
+            raise ValueError('QuadEnv: reward is Nan')
+
+        # assert reward == env.compute_reward(ob['achieved_goal'], ob['goal'], info)
+        return reward
+
+
+
+    def compute_reward_james(self, achieved_goal, desired_goal, info):
         """
         Non vectorized reward
         :param achieved_goal:
@@ -638,7 +724,7 @@ class QuadrotorGazeboEnv(gym_env_parent):
             ## Loss position
             # log to create a sharp peak at the goal
             dist = np.linalg.norm(goal_xyz - xyz, axis=-1)
-            loss_pos = np.log(dist + 0.1) + 0.1 * dist
+            loss_pos = np.log(dist + 0.1) + 0.1 * dist ## Reward from James
             # loss_pos = dist
 
             # dynamics_pos = dynamics.pos
@@ -690,13 +776,16 @@ class QuadrotorGazeboEnv(gym_env_parent):
             # loss_alt = 0
             # loss_effort = 0
             # loss_vel_proj = 0
-            loss_crash = self.dt * info['time_remain'] * 100
+            # loss_crash = self.dt * info['time_remain'] * 100
+            loss_crash = self.dt * 100
 
         reward = -self.dt * np.sum([loss_pos, loss_vel_eps, loss_crash], axis=-1)
 
         rew_info = {'rew_crash': -loss_crash,
                     'rew_pos': -loss_pos,
                     'rew_vel_eps': -loss_vel_eps}
+
+        info["rewards"] = rew_info
 
         # print('reward: ', reward, ' pos:', dynamics.pos, ' action', action)
         # print('pos', dynamics.pos)
@@ -990,11 +1079,22 @@ def test_gazeobo(thrust_val, freq=10.0):
         rospy.sleep(1.0/freq)
    
 
+def debug_env():
+    # env = QuadrotorGazeboEnv(raw_control=False, vertical_only=False, goal=[0.,0.,2.])
+    # inertia = mass * npa(0.01, 0.01, 0.02)
+    
+
+    mass = 0.68 # 0.009 * 4 #body + rotors
+    arm_length = 0.34 / 2.0
+    inertia = npa(0.007, 0.007, 0.012)
+    thrust_to_weight = 2.0
+    QuadrotorGazeboDynamics(mass, arm_length, inertia,
+        thrust_to_weight=thrust_to_weight, dynamics_steps_num=1, room_box=np.array([[-1,-1,0],[1,1,0]]))
 
 def test_rollout():
     import transforms3d as t3d
-    import seaborn as sns
-    sns.set_style('darkgrid')
+    # import seaborn as sns
+    # sns.set_style('darkgrid')
 
     #############################
     # Init plottting
@@ -1011,7 +1111,7 @@ def test_rollout():
     rollouts_num = 100
 
 
-    env = QuadrotorGazeboEnv(raw_control=False, vertical_only=False, goal=[0.,0.,2.])
+    env = QuadrotorGazeboEnv(raw_control=False, vertical_only=True, goal=[0.,0.,2.])
 
     time_limit = env.spec.max_episode_steps
     print('Reseting env ...')
@@ -1092,7 +1192,7 @@ def test_rollout():
     #     plt.plot(angles_arr[:, i])
     # plt.legend(angles_legend)
 
-    plt.pause(0.05)
+    # plt.pause(0.05)
     plt.show(block=False)
 
     input("Rollouts are done. Press Enter to continue...")
@@ -1115,6 +1215,10 @@ def main(argv):
         help="Thrust value. Max: 838. Hower: ~450"
         )
     args = parser.parse_args()
+
+    if args.mode == 2:
+        print('Running debug rollout ...')
+        debug_env()
 
     if args.mode == 1:
         print('Running test rollout ...')

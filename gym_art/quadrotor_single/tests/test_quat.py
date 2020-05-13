@@ -2,7 +2,7 @@
 
 import numpy as np
 import time
-import gym_art.quadrotor.quad_utils as qu
+import gym_art.quadrotor_single.quad_utils as qu
 import transforms3d as t3d
 
 iterations  = 1000

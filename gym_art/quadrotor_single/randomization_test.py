@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-from  gym_art.quadrotor import quadrotor as q
-from gym_art.quadrotor import quad_utils as qu
+from  gym_art.quadrotor_single import quadrotor as q
+from gym_art.quadrotor_single import quad_utils as qu
 
 noise_ratio = 0.01
 

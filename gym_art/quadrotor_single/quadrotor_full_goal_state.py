@@ -33,15 +33,15 @@ import gym.envs.registration as gym_reg
 
 import transforms3d as t3d
 
-from gym_art.quadrotor.quadrotor_randomization import *
-from gym_art.quadrotor.quadrotor_control import *
-from gym_art.quadrotor.quadrotor_obstacles import *
-from gym_art.quadrotor.quadrotor_visualization import *
-from gym_art.quadrotor.quad_utils import *
-from gym_art.quadrotor.inertia import QuadLink
-from gym_art.quadrotor.sensor_noise import SensorNoise
+from gym_art.quadrotor_single.quadrotor_randomization import *
+from gym_art.quadrotor_single.quadrotor_control import *
+from gym_art.quadrotor_single.quadrotor_obstacles import *
+from gym_art.quadrotor_single.quadrotor_visualization import *
+from gym_art.quadrotor_single.quad_utils import *
+from gym_art.quadrotor_single.inertia import QuadLink
+from gym_art.quadrotor_single.sensor_noise import SensorNoise
 
-from gym_art.quadrotor.quad_models import *
+from gym_art.quadrotor_single.quad_models import *
 
 
 try:

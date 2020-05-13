@@ -5,7 +5,7 @@ from argparse import RawTextHelpFormatter, ArgumentDefaultsHelpFormatter
 import sys, os
 import matplotlib.pyplot as plt
 
-from gym_art.quadrotor.quad_utils import OUNoise
+from gym_art.quadrotor_single.quad_utils import OUNoise
 
 parser = argparse.ArgumentParser(
     description="Argument description: \n",

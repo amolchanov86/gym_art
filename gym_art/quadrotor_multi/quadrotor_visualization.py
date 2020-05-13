@@ -2,8 +2,8 @@ import numpy as np
 from numpy.linalg import norm
 import copy
 
-import gym_art.quadrotor.rendering3d as r3d
-from gym_art.quadrotor.quad_utils import *
+import gym_art.quadrotor_multi.rendering3d as r3d
+from gym_art.quadrotor_multi.quad_utils import *
 
 # for visualization.
 # a rough attempt at a reasonable third-person camera
@@ -87,6 +87,94 @@ class SideCamera(object):
         return eye, center, up
 
 
+def quadrotor_3dmodel(model):
+    # params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
+    # params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
+    # params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
+    # params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
+    # params["propellers"] = {"h":0.002, "r":0.022, "m":0.00075}
+
+    # params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
+    # params["arms_pos"] = {"angle": 45., "z": 0.}
+    # params["payload_pos"] = {"xy": [0., 0.], "z_sign": 1}
+
+    ## PROPELLERS
+    # "X" propeller configuration, start fwd left, go clockwise
+    # IDs: https://wiki.bitcraze.io/projects:crazyflie2:userguide:assembly
+    link_colors = {
+        "body": (0.67843137, 1., 0.18431373),
+        "payload": (0., 0., 1.),
+        "prop_0": (1, 0, 0), "prop_1": (0, 1, 0), "prop_2": (0, 1, 0), "prop_3": (1, 0, 0),
+        "motor_0": (0, 0, 0), "motor_1": (0, 0, 0), "motor_2": (0, 0, 0), "motor_3": (0, 0, 0),
+        "arm_0": (0, 0, 1), "arm_1": (0, 0, 1), "arm_2": (0, 0, 1), "arm_3": (0, 0, 1),
+    }
+
+    links = []
+    for i, link in enumerate(model.links):
+        xyz, R, color = model.poses[i].xyz, model.poses[i].R, link_colors[link.name]
+        rot = np.eye(4)
+        rot[:3, :3] = R
+        # print("LINK: ", link.name, "R:", rot, end=" ")
+        if link.name[:4] == "prop":
+            prop_r = link.r
+            color = 0.5 * np.array(color) + 0.2
+        if link.type == "box":
+            # print("Type: Box")
+            link_transf = r3d.transform_and_color(
+                np.matmul(r3d.translate(xyz), rot), color,
+                r3d.box(link.l, link.w, link.h))
+        elif link.type == "cylinder":
+            # print("Type: Cylinder")
+            link_transf = r3d.transform_and_color(r3d.translate(xyz), color,
+                                                  r3d.cylinder(link.r, link.h, 32))
+        elif link.type == "rod":
+            # print("Type: Rod")
+            R_y = np.eye(4)
+            R_y[:3, :3] = rpy2R(0, np.pi / 2, 0)
+            xyz[0] = -link.l / 2
+            link_transf = r3d.transform_and_color(
+                np.matmul(rot, np.matmul(r3d.translate(xyz), R_y)), color,
+                r3d.rod(link.r, link.l, 32))
+
+        links.append(link_transf)
+
+    ## ARROWS
+    arrow = r3d.Color((0.2, 0.3, 0.9), r3d.arrow(0.12 * prop_r, 2.5 * prop_r, 16))
+    links.append(arrow)
+
+    return r3d.Transform(np.eye(4), links)
+
+
+def quadrotor_simple_3dmodel(diam):
+    r = diam / 2
+    prop_r = 0.3 * diam
+    prop_h = prop_r / 15.0
+
+    # "X" propeller configuration, start fwd left, go clockwise
+    rr = r * np.sqrt(2) / 2
+    deltas = ((rr, rr, 0), (rr, -rr, 0), (-rr, -rr, 0), (-rr, rr, 0))
+    colors = ((1, 0, 0), (1, 0, 0), (0, 1, 0), (0, 1, 0))
+
+    def disc(translation, color):
+        color = 0.5 * np.array(list(color)) + 0.2
+        disc = r3d.transform_and_color(r3d.translate(translation), color,
+                                       r3d.cylinder(prop_r, prop_h, 32))
+        return disc
+
+    props = [disc(d, c) for d, c in zip(deltas, colors)]
+
+    arm_thicc = diam / 20.0
+    arm_color = (0.6, 0.6, 0.6)
+    arms = r3d.transform_and_color(
+        np.matmul(r3d.translate((0, 0, -arm_thicc)), r3d.rotz(np.pi / 4)), arm_color,
+        [r3d.box(diam / 10, diam, arm_thicc), r3d.box(diam, diam / 10, arm_thicc)])
+
+    arrow = r3d.Color((0.2, 0.3, 0.9), r3d.arrow(0.12 * prop_r, 2.5 * prop_r, 16))
+
+    bodies = props + [arms, arrow]
+    return r3d.Transform(np.eye(4), bodies)
+
+
 # using our rendering3d.py to draw the scene in 3D.
 # this class deals both with map and mapless cases.
 class Quadrotor3DScene(object):
@@ -142,9 +230,10 @@ class Quadrotor3DScene(object):
         self.cam3p = r3d.Camera(fov=45.0)
 
         if self.model is not None:
-            self.quad_transform = self._quadrotor_3dmodel(self.model)
+            self.quad_transform = quadrotor_3dmodel(self.model)
         else:
-            self.quad_transform = self._quadrotor_simple_3dmodel(self.diameter)
+            self.quad_transform = quadrotor_simple_3dmodel(self.diameter)
+        self.have_state = False
 
         self.shadow_transform = r3d.transform_and_color(
             np.eye(4), (0, 0, 0, 0.4), r3d.circle(0.75*self.diameter, 32))
@@ -214,93 +303,6 @@ class Quadrotor3DScene(object):
             self.obs_target = None
         if self.window_target:
             self._make_scene()
-
-    def _quadrotor_3dmodel(self, model):
-        # params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
-        # params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
-        # params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
-        # params["motors"] = {"h":0.02, "r":0.0035, "m":0.0015}
-        # params["propellers"] = {"h":0.002, "r":0.022, "m":0.00075}
-        
-        # params["motor_pos"] = {"xyz": [0.065/2, 0.065/2, 0.]}
-        # params["arms_pos"] = {"angle": 45., "z": 0.}
-        # params["payload_pos"] = {"xy": [0., 0.], "z_sign": 1}
-
-        ## PROPELLERS 
-        # "X" propeller configuration, start fwd left, go clockwise
-        # IDs: https://wiki.bitcraze.io/projects:crazyflie2:userguide:assembly
-        link_colors = {
-            "body": (0.67843137, 1. , 0.18431373),
-            "payload": (0., 0., 1.),
-            "prop_0":(1,0,0), "prop_1":(0,1,0), "prop_2":(0,1,0), "prop_3": (1,0,0),
-            "motor_0":(0,0,0), "motor_1":(0,0,0), "motor_2":(0,0,0), "motor_3": (0,0,0),
-            "arm_0":(0,0,1), "arm_1":(0,0,1), "arm_2":(0,0,1), "arm_3": (0,0,1),
-            }
-        
-        links = []
-        for i, link in enumerate(model.links):
-            xyz, R, color = model.poses[i].xyz, model.poses[i].R, link_colors[link.name]
-            rot = np.eye(4)
-            rot[:3,:3] = R
-            # print("LINK: ", link.name, "R:", rot, end=" ")
-            if link.name[:4] == "prop":
-                prop_r = link.r
-                color = 0.5 * np.array(color) + 0.2
-            if link.type == "box":
-                # print("Type: Box")
-                link_transf = r3d.transform_and_color(
-                    np.matmul(r3d.translate(xyz), rot), color, 
-                              r3d.box(link.l, link.w, link.h))
-            elif link.type == "cylinder":
-                # print("Type: Cylinder")
-                link_transf = r3d.transform_and_color(r3d.translate(xyz), color,
-                    r3d.cylinder(link.r, link.h, 32))
-            elif link.type == "rod":
-                # print("Type: Rod")
-                R_y = np.eye(4)
-                R_y[:3,:3] = rpy2R(0, np.pi/2, 0)
-                xyz[0] = -link.l / 2
-                link_transf = r3d.transform_and_color(
-                    np.matmul(rot, np.matmul(r3d.translate(xyz), R_y)), color,
-                    r3d.rod(link.r, link.l, 32))
-
-            links.append(link_transf)
-
-
-        ## ARROWS
-        arrow = r3d.Color((0.2, 0.3, 0.9), r3d.arrow(0.12*prop_r, 2.5*prop_r, 16))
-        links.append(arrow)
-
-        self.have_state = False
-        return r3d.Transform(np.eye(4), links)
-
-    def _quadrotor_simple_3dmodel(self, diam):
-        r = diam / 2
-        prop_r = 0.3 * diam
-        prop_h = prop_r / 15.0
-
-        # "X" propeller configuration, start fwd left, go clockwise
-        rr = r * np.sqrt(2)/2
-        deltas = ((rr, rr, 0), (rr, -rr, 0), (-rr, -rr, 0), (-rr, rr, 0))
-        colors = ((1,0,0), (1,0,0), (0,1,0), (0,1,0))
-        def disc(translation, color):
-            color = 0.5 * np.array(list(color)) + 0.2
-            disc = r3d.transform_and_color(r3d.translate(translation), color,
-                r3d.cylinder(prop_r, prop_h, 32))
-            return disc
-        props = [disc(d, c) for d, c in zip(deltas, colors)]
-
-        arm_thicc = diam / 20.0
-        arm_color = (0.6, 0.6, 0.6)
-        arms = r3d.transform_and_color(
-            np.matmul(r3d.translate((0, 0, -arm_thicc)), r3d.rotz(np.pi / 4)), arm_color,
-            [r3d.box(diam/10, diam, arm_thicc), r3d.box(diam, diam/10, arm_thicc)])
-
-        arrow = r3d.Color((0.2, 0.3, 0.9), r3d.arrow(0.12*prop_r, 2.5*prop_r, 16))
-
-        bodies = props + [arms, arrow]
-        self.have_state = False
-        return r3d.Transform(np.eye(4), bodies)
 
     # TODO allow resampling obstacles?
     def reset(self, goal, dynamics):

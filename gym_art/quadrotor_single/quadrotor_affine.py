@@ -20,11 +20,11 @@ import gym.envs.registration as gym_reg
 
 import transforms3d as t3d
 
-import gym_art.quadrotor.rendering3d as r3d
-from gym_art.quadrotor.quadrotor_modular import *
-from gym_art.quadrotor.quadrotor_control import *
-from gym_art.quadrotor.quadrotor_visualization import *
-from gym_art.quadrotor.quad_utils import *
+import gym_art.quadrotor_single.rendering3d as r3d
+from gym_art.quadrotor_single.quadrotor_modular import *
+from gym_art.quadrotor_single.quadrotor_control import *
+from gym_art.quadrotor_single.quadrotor_visualization import *
+from gym_art.quadrotor_single.quad_utils import *
 
 
 ## Affine QuadrotorDynamics calculates dynamics in the form: s += dt(f(s) + G(s)u)
