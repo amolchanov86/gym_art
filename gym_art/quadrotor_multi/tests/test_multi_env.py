@@ -49,14 +49,14 @@ class TestMultiEnv(TestCase):
         env.close()
 
     def test_render(self):
-        num_agents = 7
+        num_agents = 4
         env = create_env(num_agents)
 
         env.reset()
         time.sleep(0.1)
 
         num_steps = 0
-        while num_steps < 100:
+        while num_steps < 1000:
             obs, rewards, dones, infos = env.step([env.action_space.sample() for _ in range(num_agents)])
             num_steps += 1
             print('Rewards: ', rewards)

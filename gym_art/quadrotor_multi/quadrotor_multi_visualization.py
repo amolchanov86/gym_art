@@ -26,9 +26,7 @@ class Quadrotor3DSceneMulti:
         self.obstacles = obstacles
         self.models = models
 
-        self.quad_transforms = []
-        self.shadow_transforms = []
-        self.goal_transforms = []
+        self.quad_transforms, self.shadow_transforms, self.goal_transforms = [], [], []
 
         if goal_diameter:
             self.goal_forced_diameter = goal_diameter
@@ -64,6 +62,8 @@ class Quadrotor3DSceneMulti:
     def _make_scene(self):
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
+
+        self.quad_transforms, self.shadow_transforms, self.goal_transforms = [], [], []
 
         for model in self.models:
             if model is not None:

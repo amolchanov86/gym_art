@@ -64,6 +64,8 @@ class QuadrotorEnvMulti(gym.Env):
         obs, rewards, dones, infos = [], [], [], []
 
         models = tuple(e.dynamics.model for e in self.envs)
+
+        # TODO: don't create scene object if we're just training and no need to visualize?
         if self.scene is None:
             self.scene = Quadrotor3DSceneMulti(
                 models=models,
