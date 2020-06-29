@@ -944,16 +944,6 @@ class QuadrotorEnv(gym.Env, gym_utils.EzPickle):
         self.actions[0] = copy.deepcopy(action)
         # print('actions_norm: ', np.linalg.norm(self.actions[0]-self.actions[1]))
 
-        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
-                    pos=self.dynamics.pos,
-                    vel=self.dynamics.vel,
-                    rot=self.dynamics.rot,
-                    omega=self.dynamics.omega,
-                    acc=self.dynamics.accelerometer,
-                    dt=self.dt
-                )
-        # print("accelerations:", self.dynamics.accelerometer, "noise_raio:", np.abs(self.dynamics.accelerometer-acc)/np.abs(self.dynamics.accelerometer))
-
         if self.excite and self.tick % 5 == 0:
             ## change the goal every 5 time step
             self.goal = np.concatenate([

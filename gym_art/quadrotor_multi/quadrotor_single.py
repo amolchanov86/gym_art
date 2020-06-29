@@ -906,16 +906,6 @@ class QuadrotorSingle:
         self.actions[0] = copy.deepcopy(action)
         # print('actions_norm: ', np.linalg.norm(self.actions[0]-self.actions[1]))
 
-        pos, vel, rot, omega, acc = self.sense_noise.add_noise(
-            pos=self.dynamics.pos,
-            vel=self.dynamics.vel,
-            rot=self.dynamics.rot,
-            omega=self.dynamics.omega,
-            acc=self.dynamics.accelerometer,
-            dt=self.dt
-        )
-        # print("accelerations:", self.dynamics.accelerometer, "noise_raio:", np.abs(self.dynamics.accelerometer-acc)/np.abs(self.dynamics.accelerometer))
-
         # if not self.crashed:
         # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
         self.controller.step_func(dynamics=self.dynamics,
