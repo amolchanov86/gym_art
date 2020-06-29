@@ -11,3 +11,4 @@ _results
 *.ipynb
 *.wpr
 *.cprof
+gym_art.egg-info

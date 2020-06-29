@@ -2,6 +2,8 @@ import copy
 import math
 
 import numpy as np
+import scipy as scp
+from scipy import spatial
 
 import gym
 
@@ -42,7 +44,8 @@ class QuadrotorEnvMulti(gym.Env):
 
         # reward shaping
         self.rew_coeff = dict(
-            pos=1., effort=0.05, action_change=0., crash=1., orient=1., yaw=0., rot=0., attitude=0., spin=0.1, vel=0.
+            pos=1., effort=0.05, action_change=0., crash=1., orient=1., yaw=0., rot=0., attitude=0., spin=0.1, vel=0.,
+            quadcol_bin=0.
         )
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
@@ -56,6 +59,9 @@ class QuadrotorEnvMulti(gym.Env):
         orig_keys = list(rew_coeff_orig.keys())
         # Checking to make sure we didn't provide some false rew_coeffs (for example by misspelling one of the params)
         assert np.all([key in orig_keys for key in self.rew_coeff.keys()])
+
+        ## Aux variables
+        self.pos = np.zeros([self.num_agents, 3]) #Matrix containing all positions
 
     def all_dynamics(self):
         return tuple(e.dynamics for e in self.envs)
@@ -96,6 +102,7 @@ class QuadrotorEnvMulti(gym.Env):
     def step(self, actions):
         obs, rewards, dones, infos = [], [], [], []
 
+
         for i, a in enumerate(actions):
             self.envs[i].rew_coeff = self.rew_coeff
 
@@ -105,6 +112,22 @@ class QuadrotorEnvMulti(gym.Env):
             dones.append(done)
             infos.append(info)
 
+            self.pos[i, :] = self.envs[i].dynamics.pos
+
+        ## SWARM REWARDS
+        # -- BINARY COLLISION REWARD
+        self.dist = spatial.distance_matrix(x=self.pos, y=self.pos)
+        self.collisions = (self.dist < 2 * self.envs[0].dynamics.arm).astype(np.float32)
+        np.fill_diagonal(self.collisions, 0.0) # removing self-collision
+        self.rew_collisions_raw = - np.sum(self.collisions, axis=1)
+        self.rew_collisions = self.rew_coeff["quadcol_bin"] * self.rew_collisions_raw
+
+        for i in range(self.num_agents):
+            rewards[i] += self.rew_collisions[i]
+            infos[i]["rewards"]["rew_quadcol"] = self.rew_collisions[i]
+            infos[i]["rewards"]["rewraw_quadcol"] = self.rew_collisions_raw[i]
+
+        ## DONES
         if any(dones):
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"

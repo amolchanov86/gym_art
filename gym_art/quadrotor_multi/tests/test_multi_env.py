@@ -10,7 +10,8 @@ def create_env(num_agents):
 
     episode_duration = 7  # seconds
 
-    raw_control = raw_control_zero_middle = True
+    raw_control = False
+    raw_control_zero_middle = True
 
     sampler_1 = None
     if dyn_randomization_ratio is not None:
@@ -59,7 +60,7 @@ class TestMultiEnv(TestCase):
         while num_steps < 1000:
             obs, rewards, dones, infos = env.step([env.action_space.sample() for _ in range(num_agents)])
             num_steps += 1
-            print('Rewards: ', rewards)
+            print('Rewards: ', rewards, "\nCollisions: \n", env.collisions, "\nDistances: \n", env.dist)
             env.render()
 
         env.close()
