@@ -1,11 +1,13 @@
 import copy
+import math
+
 import numpy as np
 
 import gym_art.quadrotor_multi.rendering3d as r3d
 
 from gym_art.quadrotor_multi.quadrotor_visualization import ChaseCamera, SideCamera, quadrotor_simple_3dmodel, \
     quadrotor_3dmodel
-
+from gym_art.quadrotor_multi.params import quad_color
 
 class Quadrotor3DSceneMulti:
     def __init__(
@@ -65,9 +67,9 @@ class Quadrotor3DSceneMulti:
 
         self.quad_transforms, self.shadow_transforms, self.goal_transforms = [], [], []
 
-        for model in self.models:
+        for i, model in enumerate(self.models):
             if model is not None:
-                quad_transform = quadrotor_3dmodel(model)
+                quad_transform = quadrotor_3dmodel(model, quad_id=i)
             else:
                 quad_transform = quadrotor_simple_3dmodel(self.diameter)
             self.quad_transforms.append(quad_transform)
@@ -100,7 +102,8 @@ class Quadrotor3DSceneMulti:
 
     def create_goals(self):
         for i in range(len(self.models)):
-            goal_transform = r3d.transform_and_color(np.eye(4), (0.85, 0.55, 0), r3d.sphere(self.goal_diameter / 2, 18))
+            color = quad_color[i]
+            goal_transform = r3d.transform_and_color(np.eye(4), color, r3d.sphere(self.goal_diameter / 2, 18))
             self.goal_transforms.append(goal_transform)
 
     def update_goals(self, goals):
