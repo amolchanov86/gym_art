@@ -67,8 +67,7 @@ class QuadrotorEnvMulti(gym.Env):
         return tuple(e.dynamics for e in self.envs)
 
     def reset(self):
-        if self.num_agents > 1:
-            obs, rewards, dones, infos = [], [], [], []
+        obs, rewards, dones, infos = [], [], [], []
 
         models = tuple(e.dynamics.model for e in self.envs)
 
@@ -93,11 +92,7 @@ class QuadrotorEnvMulti(gym.Env):
             e.rew_coeff = self.rew_coeff
 
             observation = e.reset()
-
-            if self.num_agents == 1:
-                obs = observation
-            else:
-                obs.append(observation)
+            obs.append(observation)
 
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics())
 
@@ -105,27 +100,17 @@ class QuadrotorEnvMulti(gym.Env):
 
     # noinspection PyTypeChecker
     def step(self, actions):
-        if self.num_agents > 1:
-            obs, rewards, dones, infos = [], [], [], []
+        obs, rewards, dones, infos = [], [], [], []
 
-        if self.num_agents <= 1:
-            actions = [actions]
 
         for i, a in enumerate(actions):
             self.envs[i].rew_coeff = self.rew_coeff
 
             observation, reward, done, info = self.envs[i].step(a)
-
-            if self.num_agents == 1:
-                obs = observation
-                rewards = reward
-                dones = done
-                infos = info
-            else:
-                obs.append(observation)
-                rewards.append(reward)
-                dones.append(done)
-                infos.append(info)
+            obs.append(observation)
+            rewards.append(reward)
+            dones.append(done)
+            infos.append(info)
 
             self.pos[i, :] = self.envs[i].dynamics.pos
 
@@ -137,24 +122,15 @@ class QuadrotorEnvMulti(gym.Env):
         self.rew_collisions_raw = - np.sum(self.collisions, axis=1)
         self.rew_collisions = self.rew_coeff["quadcol_bin"] * self.rew_collisions_raw
 
-        if self.num_agents == 1:
-            rewards += self.rew_collisions[i]
-            infos["rewards"]["rew_quadcol"] = self.rew_collisions[i]
-            infos["rewards"]["rewraw_quadcol"] = self.rew_collisions_raw[i]
-        else:
-            for i in range(self.num_agents):
-                rewards[i] += self.rew_collisions[i]
-                infos[i]["rewards"]["rew_quadcol"] = self.rew_collisions[i]
-                infos[i]["rewards"]["rewraw_quadcol"] = self.rew_collisions_raw[i]
+        for i in range(self.num_agents):
+            rewards[i] += self.rew_collisions[i]
+            infos[i]["rewards"]["rew_quadcol"] = self.rew_collisions[i]
+            infos[i]["rewards"]["rewraw_quadcol"] = self.rew_collisions_raw[i]
 
         ## DONES
-        if self.num_agents == 1:
-            if dones == True:
-                obs = self.reset()
-        else:
-            if any(dones):
-                obs = self.reset()
-                dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
+        if any(dones):
+            obs = self.reset()
+            dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
 
         return obs, rewards, dones, infos
 
