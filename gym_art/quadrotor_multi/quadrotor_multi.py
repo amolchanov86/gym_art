@@ -131,12 +131,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         ## SWARM REWARDS
         # -- BINARY COLLISION REWARD
-        # self.dist = spatial.distance_matrix(x=self.pos, y=self.pos)
-
-        # A little bit faster than above, 0.6s / M framesteps
-        self.dist = spatial.distance.cdist(XA=self.pos, XB=self.pos)
-        # print('pos: ', self.pos)
-
+        self.dist = spatial.distance_matrix(x=self.pos, y=self.pos)
         self.collisions = (self.dist < 2 * self.envs[0].dynamics.arm).astype(np.float32)
         np.fill_diagonal(self.collisions, 0.0) # removing self-collision
         self.rew_collisions_raw = - np.sum(self.collisions, axis=1)
