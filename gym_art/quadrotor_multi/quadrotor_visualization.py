@@ -4,6 +4,7 @@ import copy
 
 import gym_art.quadrotor_multi.rendering3d as r3d
 from gym_art.quadrotor_multi.quad_utils import *
+from gym_art.quadrotor_multi.params import quad_color
 
 # for visualization.
 # a rough attempt at a reasonable third-person camera
@@ -87,7 +88,7 @@ class SideCamera(object):
         return eye, center, up
 
 
-def quadrotor_3dmodel(model):
+def quadrotor_3dmodel(model, quad_id=0):
     # params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
     # params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
     # params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
@@ -117,7 +118,7 @@ def quadrotor_3dmodel(model):
         # print("LINK: ", link.name, "R:", rot, end=" ")
         if link.name[:4] == "prop":
             prop_r = link.r
-            color = 0.5 * np.array(color) + 0.2
+            color = np.array(quad_color[quad_id % len(quad_color)])
         if link.type == "box":
             # print("Type: Box")
             link_transf = r3d.transform_and_color(
