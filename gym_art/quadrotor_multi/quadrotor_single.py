@@ -912,7 +912,8 @@ class QuadrotorSingle:
                                   action=action,
                                   goal=self.goal,
                                   dt=self.dt,
-                                  observation=np.expand_dims(self.state_vector(self), axis=0))
+                                  # observation=np.expand_dims(self.state_vector(self), axis=0))
+                                  observation=None)  # assuming we aren't using observations in step function
         # self.oracle.step(self.dynamics, self.goal, self.dt)
         # self.scene.update_state(self.dynamics, self.goal)
 
