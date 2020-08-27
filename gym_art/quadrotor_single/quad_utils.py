@@ -2,6 +2,7 @@ import numpy as np
 import numpy.random as nr
 from numpy.linalg import norm
 from copy import deepcopy
+from numba import jit
 
 # dict pretty printing
 def print_dic(dic, indent=""):
@@ -79,6 +80,7 @@ def log_error(err_str, ):
         # myfile.write('###############################################')
 
 
+@jit(nopython=True)
 def quat2R(qw, qx, qy, qz):
     R = \
     [[1.0 - 2*qy**2 - 2*qz**2,         2*qx*qy - 2*qz*qw,         2*qx*qz + 2*qy*qw],
@@ -89,12 +91,13 @@ def quat2R(qw, qx, qy, qz):
 def qwxyz2R(quat):
     return quat2R(qw=quat[0], qx=quat[1], qy=quat[2], qz=quat[3])
 
+@jit(nopython=True)
 def quatXquat(quat, quat_theta):
     ## quat * quat_theta
-    noisy_quat = np.zeros(4)
-    noisy_quat[0] = quat[0] * quat_theta[0] - quat[1] * quat_theta[1] - quat[2] * quat_theta[2] - quat[3] * quat_theta[3] 
-    noisy_quat[1] = quat[0] * quat_theta[1] + quat[1] * quat_theta[0] - quat[2] * quat_theta[3] + quat[3] * quat_theta[2] 
-    noisy_quat[2] = quat[0] * quat_theta[2] + quat[1] * quat_theta[3] + quat[2] * quat_theta[0] - quat[3] * quat_theta[1] 
+    noisy_quat = np.zeros(4, dtype=quat.dtype)
+    noisy_quat[0] = quat[0] * quat_theta[0] - quat[1] * quat_theta[1] - quat[2] * quat_theta[2] - quat[3] * quat_theta[3]
+    noisy_quat[1] = quat[0] * quat_theta[1] + quat[1] * quat_theta[0] - quat[2] * quat_theta[3] + quat[3] * quat_theta[2]
+    noisy_quat[2] = quat[0] * quat_theta[2] + quat[1] * quat_theta[3] + quat[2] * quat_theta[0] - quat[3] * quat_theta[1]
     noisy_quat[3] = quat[0] * quat_theta[3] - quat[1] * quat_theta[2] + quat[2] * quat_theta[1] + quat[3] * quat_theta[0]
     return noisy_quat
 

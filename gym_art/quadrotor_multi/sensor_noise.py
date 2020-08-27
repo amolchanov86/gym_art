@@ -5,7 +5,10 @@ from numpy.random import uniform
 import matplotlib.pyplot as plt
 from math import exp
 from gym_art.quadrotor_single.quad_utils import quat2R, quatXquat
+from numba import jit
 
+
+@jit(nopython=True)
 def quat_from_small_angle(theta):
     assert theta.shape == (3,)
 
@@ -23,6 +26,7 @@ def quat_from_small_angle(theta):
 '''
 http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/
 '''
+@jit(nopython=True)
 def rot2quat(rot):
 	assert rot.shape == (3, 3)
 
@@ -54,6 +58,34 @@ def rot2quat(rot):
 
 	return np.array([qw, qx, qy, qz])
 
+
+from numba import jit
+from numba.experimental import jitclass
+from numba import int32, float32, float64, boolean
+
+sensor_noise_spec = [
+    ('pos_norm_std', float32),
+    ('pos_unif_range', float32),
+    ('vel_norm_std', float32),
+    ('vel_unif_range', float32),
+
+    ('quat_norm_std', float32),
+    ('quat_unif_range', float32),
+
+    ('gyro_noise_density', float32),
+    ('gyro_random_walk', float32),
+    ('gyro_bias_correlation_time', float32),
+    ('gyro_norm_std', float32),
+
+    ('gyro_bias', float64[:]),
+
+    ('acc_static_noise_std', float32),
+    ('acc_dynamic_noise_ratio', float32),
+
+    ('bypass', boolean),
+]
+
+@jitclass(sensor_noise_spec)
 class SensorNoise:
     def __init__(self, pos_norm_std=0.005, pos_unif_range=0., 
                         vel_norm_std=0.01, vel_unif_range=0., 
@@ -97,66 +129,62 @@ class SensorNoise:
 
         self.bypass = bypass
 
-    def add_noise(self, pos, vel, rot, omega, acc, dt):
-        if self.bypass:
-            return pos, vel, rot, omega, acc
+    def add_noise_acc(self, acc):
+        ## Accelerometer noise
+        acc += normal(loc=0., scale=self.acc_static_noise_std, size=3) + acc * normal(loc=0., scale=self.acc_dynamic_noise_ratio, size=3)
+
+    def add_noise(self, noisy_pos, noisy_vel, noisy_rot, noisy_omega, dt):
         # """
-        # Args: 
+        # Args:
         #     pos: ground truth of the position in world frame
         #     vel: ground truth if the linear velocity in world frame
         #     rot: ground truth of the orientation in rotational matrix / quaterions / euler angles
         #     omega: ground truth of the angular velocity in body frame
         #     dt: integration step
         # """
-        assert pos.shape == (3,)
-        assert vel.shape == (3,)
-        assert omega.shape == (3,)
+        assert noisy_pos.shape == (3,)
+        assert noisy_vel.shape == (3,)
+        assert noisy_omega.shape == (3,)
 
         # add noise to position measurement
-        noisy_pos = pos + \
-                    normal(loc=0., scale=self.pos_norm_std, size=3) + \
-                    uniform(low=-self.pos_unif_range, high=self.pos_unif_range, size=3)
-
+        noisy_pos += normal(loc=0., scale=self.pos_norm_std, size=3) + uniform(-self.pos_unif_range, self.pos_unif_range, 3)
 
         # add noise to linear velocity
-        noisy_vel = vel + \
-                    normal(loc=0., scale=self.vel_norm_std, size=3) + \
-                    uniform(low=-self.vel_unif_range, high=self.vel_unif_range, size=3)
+        noisy_vel += normal(loc=0., scale=self.vel_norm_std, size=3) + uniform(-self.vel_unif_range, self.vel_unif_range, 3)
 
         ## Noise in omega
         if self.gyro_norm_std != 0.:
-            noisy_omega = self.add_noise_to_omega(omega, dt)
+            self.add_noise_to_omega(noisy_omega, dt)
         else:
-            noisy_omega = omega + \
-                    normal(loc=0., scale=self.gyro_noise_density, size=3)
+            noisy_omega += normal(loc=0., scale=self.gyro_noise_density, size=3)
 
         ## Noise in rotation
         theta = normal(0, self.quat_norm_std, size=3) + \
                 uniform(-self.quat_unif_range, self.quat_unif_range, size=3)
-       
-        if rot.shape == (3,):
+
+        if noisy_rot.shape == (3,):
             ## Euler angles (xyz: roll=[-pi, pi], pitch=[-pi/2, pi/2], yaw = [-pi, pi])
-            noisy_rot = np.clip(rot + theta, 
-                a_min=[-np.pi, -np.pi/2, -np.pi], 
-                a_max=[ np.pi,  np.pi/2,  np.pi])
-        elif rot.shape == (3,3):
+            assert False, 'not supported!'
+            noisy_rot += theta
+            # print(noisy_rot)
+            #
+            # noisy_rot[0] = myclip(noisy_rot[0], -np.pi, np.pi)
+            #
+            # # noisy_rot = myclip(, [-np.pi, -np.pi/2, -np.pi], [ np.pi,  np.pi/2,  np.pi])
+        elif noisy_rot.shape == (3,3):
             ## Rotation matrix
             quat_theta = quat_from_small_angle(theta)
-            quat = rot2quat(rot)
+            quat = rot2quat(noisy_rot)
             noisy_quat = quatXquat(quat, quat_theta)
             noisy_rot = quat2R(noisy_quat[0], noisy_quat[1], noisy_quat[2], noisy_quat[3])
-        elif rot.shape == (4,):
+        elif noisy_rot.shape == (4,):
             ## Quaternion
-            quat_theta = quat_from_small_angle(theta)
-            noisy_rot = quatXquat(rot, quat_theta)
-        else:
-            raise ValueError("ERROR: SensNoise: Unknown rotation type: " + str(rot))
-        
-        ## Accelerometer noise
-        noisy_acc = acc + normal(loc=0., scale=self.acc_static_noise_std, size=3) + \
-                    acc * normal(loc=0., scale=self.acc_dynamic_noise_ratio, size=3)
-
-        return noisy_pos, noisy_vel, noisy_rot, noisy_omega, noisy_acc
+            assert False, 'not supported!'
+            # quat_theta = quat_from_small_angle(theta)
+            # noisy_rot = quatXquat(rot, quat_theta)
+        # else:
+        #     raise ValueError("ERROR: SensNoise: Unknown rotation type: " + str(rot))
+        #
 
     ## copy from rotorS imu plugin
     def add_noise_to_omega(self, omega, dt):
@@ -167,7 +195,7 @@ class SensorNoise:
         pi_g_d = exp(-dt / self.gyro_bias_correlation_time)
 
         self.gyro_bias = pi_g_d * self.gyro_bias + sigma_b_g_d * normal(0, 1, 3)
-        return omega + self.gyro_bias + self.gyro_random_walk * normal(0, 1, 3) # + self.gyro_turn_on_bias_sigma * normal(0, 1, 3)
+        omega += self.gyro_bias + self.gyro_random_walk * normal(0, 1, 3) # + self.gyro_turn_on_bias_sigma * normal(0, 1, 3)
 
 
 if __name__ == "__main__":

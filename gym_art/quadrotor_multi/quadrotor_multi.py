@@ -19,9 +19,11 @@ class QuadrotorEnvMulti(gym.Env):
                  raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200.,
                  sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_size=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False):
+                 resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, timing=None):
 
         super().__init__()
+
+        self.timing=timing
 
         self.num_agents = num_agents
         self.envs = []
@@ -31,7 +33,7 @@ class QuadrotorEnvMulti(gym.Env):
                 dynamics_params, dynamics_change, dynamics_randomize_every, dyn_sampler_1, dyn_sampler_2,
                 raw_control, raw_control_zero_middle, dim_mode, tf_control, sim_freq, sim_steps,
                 obs_repr, ep_time, obstacles_num, room_size, init_random_state,
-                rew_coeff, sense_noise, verbose, gravity, t2w_std, t2t_std, excite, dynamics_simplification,
+                rew_coeff, sense_noise, verbose, gravity, t2w_std, t2t_std, excite, dynamics_simplification, timing=timing,
             )
             self.envs.append(e)
 
@@ -137,3 +139,6 @@ class QuadrotorEnvMulti(gym.Env):
     def render(self, mode='human'):
         goals = tuple(e.goal for e in self.envs)
         return self.scene.render_chase(all_dynamics=self.all_dynamics(), goals=goals, mode=mode)
+
+    def close(self):
+        print(str(self.timing))

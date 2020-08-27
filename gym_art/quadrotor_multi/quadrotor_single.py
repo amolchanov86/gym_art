@@ -643,7 +643,7 @@ class QuadrotorSingle:
                  sim_steps=2,
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False):
+                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, timing=None):
         np.seterr(under='ignore')
         """
         Args:
@@ -674,6 +674,8 @@ class QuadrotorSingle:
             excite: [bool] change the setpoint at the fixed frequency to perturb the quad
         """
         ## ARGS
+        self.timing = timing
+
         self.init_random_state = init_random_state
         self.room_size = room_size
         self.obs_repr = obs_repr
@@ -908,11 +910,12 @@ class QuadrotorSingle:
 
         # if not self.crashed:
         # print('goal: ', self.goal, 'goal_type: ', type(self.goal))
+
         self.controller.step_func(dynamics=self.dynamics,
                                   action=action,
                                   goal=self.goal,
                                   dt=self.dt,
-                                  observation=np.expand_dims(self.state_vector(self), axis=0))
+                                  observation=None)  # can we just use None here?
         # self.oracle.step(self.dynamics, self.goal, self.dt)
         # self.scene.update_state(self.dynamics, self.goal)
 
@@ -931,7 +934,9 @@ class QuadrotorSingle:
                                                    rew_coeff=self.rew_coeff, action_prev=self.actions[1])
         self.tick += 1
         done = self.tick > self.ep_len  # or self.crashed
-        sv = self.state_vector(self)
+
+        with self.timing.add_time('state_vector'):
+            sv = self.state_vector(self)
 
         self.traj_count += int(done)
 
