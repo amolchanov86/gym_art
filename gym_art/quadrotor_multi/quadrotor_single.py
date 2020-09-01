@@ -267,16 +267,24 @@ class QuadrotorDynamics(object):
         # assert np.all(thrust_cmds >= 0)
         # assert np.all(thrust_cmds <= 1)
 
-        thrust_cmds = np.clip(thrust_cmds, a_min=0., a_max=1.)
+        # thrust_cmds = np.clip(thrust_cmds, a_min=0., a_max=1.)
+        thrust_cmds = numba_clip(thrust_cmds, 0., 1.)
         ###################################
         ## Filtering the thruster and adding noise
         # I use the multiplier 4, since 4*T ~ time for a step response to finish, where
-        # T is a time constant of the first-order filter
-        self.motor_tau_up = 4 * dt / (self.motor_damp_time_up + EPS)
-        self.motor_tau_down = 4 * dt / (self.motor_damp_time_down + EPS)
-        motor_tau = self.motor_tau_up * np.ones([4, ])
-        motor_tau[thrust_cmds < self.thrust_cmds_damp] = self.motor_tau_down
-        motor_tau[motor_tau > 1.] = 1.
+        # # T is a time constant of the first-order filter
+
+        # if not numb:
+        # self.motor_tau_up = 4 * dt / (self.motor_damp_time_up + EPS)
+        # self.motor_tau_down = 4 * dt / (self.motor_damp_time_down + EPS)
+        # motor_tau = self.motor_tau_up * np.ones([4, ])
+        # motor_tau[thrust_cmds < self.thrust_cmds_damp] = self.motor_tau_down
+        # motor_tau[motor_tau > 1.] = 1.
+        # else:
+        motor_tau, self.motor_tau_up, self.motor_tau_down = calculate_motor_tau(dt, thrust_cmds,
+                                                                                self.motor_damp_time_up,
+                                                                                self.motor_damp_time_down,
+                                                                                self.thrust_cmds_damp, EPS)
 
         ## Since NN commands thrusts we need to convert to rot vel and back
         # WARNING: Unfortunately if the linearity != 1 then filtering using square root is not quite correct
@@ -288,7 +296,8 @@ class QuadrotorDynamics(object):
 
         ## Adding noise
         thrust_noise = thrust_cmds * self.thrust_noise.noise()
-        self.thrust_cmds_damp = np.clip(self.thrust_cmds_damp + thrust_noise, 0.0, 1.0)
+        # self.thrust_cmds_damp = np.clip(self.thrust_cmds_damp + thrust_noise, 0.0, 1.0)
+        self.thrust_cmds_damp = numba_clip(self.thrust_cmds_damp + thrust_noise, 0.0, 1.0)
 
         thrusts = self.thrust_max * self.angvel2thrust(self.thrust_cmds_damp, linearity=self.motor_linearity)
         # Prop crossproduct give torque directions
@@ -298,7 +307,8 @@ class QuadrotorDynamics(object):
         self.torques[:, 2] += self.torque_max * self.prop_ccw * self.thrust_cmds_damp
 
         # net torque: sum over propellers
-        thrust_torque = np.sum(self.torques, axis=0)
+        # thrust_torque = np.sum(self.torques, axis=0)
+        thrust_torque = numba_sum_1(self.torques)
 
         ###################################
         ## Rotor drag and Rolling forces and moments
@@ -351,7 +361,7 @@ class QuadrotorDynamics(object):
         ## (Square) Damping using torques (in case we would like to add damping using torques)
         # damping_torque = - 0.3 * self.omega * np.fabs(self.omega)
         self.torque = thrust_torque + rotor_visc_torque
-        thrust = npa(0, 0, np.sum(thrusts))
+        thrust = npa(0, 0, numba_sum_2(thrusts))
 
         #########################################################
         ## ROTATIONAL DYNAMICS
@@ -383,7 +393,7 @@ class QuadrotorDynamics(object):
         ## Linear damping
 
         # This is only for linear damping of angular velocity.
-        # omega_damp = 0.999   
+        # omega_damp = 0.999
         # self.omega = omega_damp * self.omega + dt * omega_dot
 
         self.omega_dot = ((1.0 / self.inertia) *
@@ -391,9 +401,12 @@ class QuadrotorDynamics(object):
 
         ## Quadratic damping
         # 0.03 corresponds to roughly 1 revolution per sec
-        omega_damp_quadratic = np.clip(self.damp_omega_quadratic * self.omega ** 2, a_min=0.0, a_max=1.0)
+        # omega_damp_quadratic = np.clip(self.damp_omega_quadratic * self.omega ** 2, a_min=0.0, a_max=1.0)
+        omega_damp_quadratic = numba_clip(self.damp_omega_quadratic * self.omega ** 2, 0.0, 1.0)
+
         self.omega = self.omega + (1.0 - omega_damp_quadratic) * dt * self.omega_dot
-        self.omega = np.clip(self.omega, a_min=-self.omega_max, a_max=self.omega_max)
+        # self.omega = np.clip(self.omega, a_min=-self.omega_max, a_max=self.omega_max)
+        self.omega = numba_clip(self.omega, -self.omega_max, self.omega_max)
 
         ## When use square damping on torques - use simple integration
         ## since damping is accounted as part of the net torque
@@ -410,8 +423,9 @@ class QuadrotorDynamics(object):
 
         # Clipping if met the obstacle and nullify velocities (not sure what to do about accelerations)
         self.pos_before_clip = self.pos.copy()
-        self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
-        # self.vel[np.equal(self.pos, self.pos_before_clip)] = 0.
+        # self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
+        # self.pos = numba_clip(self.pos, self.room_box[0], self.room_box[1])
+        self.vel[np.equal(self.pos, self.pos_before_clip)] = 0.
 
         ## Computing accelerations
         acc = [0, 0, -GRAV] + (1.0 / self.mass) * np.matmul(self.rot, (thrust + rotor_drag_force))
@@ -935,13 +949,13 @@ class QuadrotorSingle:
         self.tick += 1
         done = self.tick > self.ep_len  # or self.crashed
 
-        with self.timing.add_time('state_vector'):
-            sv = self.state_vector(self)
+        # with self.timing.add_time('state_vector'):
+        sv = self.state_vector(self)
 
         self.traj_count += int(done)
 
         ## TODO: OPTIMIZATION: sv_comp should be a dictionary formed when state() function is called
-        sv_comp = np.split(sv, self.obs_comp_end[:-1], axis=0)
+        # sv_comp = np.split(sv, self.obs_comp_end[:-1], axis=0)
         obs_comp = {
             "xyz": [self.dynamics.pos],
             "vxyz": [self.dynamics.vel],

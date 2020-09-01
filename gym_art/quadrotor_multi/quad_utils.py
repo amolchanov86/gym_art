@@ -2,6 +2,89 @@ import numpy as np
 import numpy.random as nr
 from numpy.linalg import norm
 from copy import deepcopy
+from numba import njit, types
+from numba.core.errors import TypingError
+from numba.extending import overload
+
+
+# shorter way to construct a numpy array
+@njit
+def npa(*args):
+    return np.array(args)
+
+
+@njit
+def numba_sum_1(val):
+    return np.sum(val, axis=0)
+
+
+@njit
+def numba_sum_2(val):
+    return np.sum(val)
+
+
+@njit
+def calculate_motor_tau(dt, tc, mdtu, mdtd, tcd, eps):
+    mtu = 4 * dt / (mdtu + eps)
+    mtd = 4 * dt / (mdtd + eps)
+    mt = mtu * np.ones(4)
+    mt[tc < tcd] = mtd
+    mt[mt > 1.] = 1.
+    return mt, mtu, mtd
+
+
+@overload(np.clip)
+def impl_clip(a, a_min, a_max):
+    # Check that `a_min` and `a_max` are scalars, and at most one of them is None.
+    if not isinstance(a_min, (types.Integer, types.Float, types.NoneType)):
+        raise TypingError("a_min must be a_min scalar int/float")
+    if not isinstance(a_max, (types.Integer, types.Float, types.NoneType)):
+        raise TypingError("a_max must be a_min scalar int/float")
+    if isinstance(a_min, types.NoneType) and isinstance(a_max, types.NoneType):
+        raise TypingError("a_min and a_max can't both be None")
+
+    if isinstance(a, (types.Integer, types.Float)):
+        # `a` is a scalar with a valid type
+        if isinstance(a_min, types.NoneType):
+            # `a_min` is None
+            def impl(a, a_min, a_max):
+                return min(a, a_max)
+        elif isinstance(a_max, types.NoneType):
+            # `a_max` is None
+            def impl(a, a_min, a_max):
+                return max(a, a_min)
+        else:
+            # neither `a_min` or `a_max` are None
+            def impl(a, a_min, a_max):
+                return min(max(a, a_min), a_max)
+    elif (
+        isinstance(a, types.Array) and
+        a.ndim == 1 and
+        isinstance(a.dtype, (types.Integer, types.Float))
+    ):
+        # `a` is a 1D array of the proper type
+        def impl(a, a_min, a_max):
+            # Allocate an output array using standard numpy functions
+            out = np.empty_like(a)
+            # Iterate over `a`, calling `np.clip` on every element
+            for i in range(a.size):
+                # This will dispatch to the proper scalar implementation (as
+                # defined above) at *compile time*. There should have no
+                # overhead at runtime.
+                out[i] = np.clip(a[i], a_min, a_max)
+            return out
+    else:
+        raise TypingError("`a` must be an int/float or a 1D array of ints/floats")
+
+    # The call to `np.clip` has arguments with valid types, return our
+    # numba-compatible implementation
+    return impl
+
+
+@njit
+def numba_clip(val, min , max):
+    return np.clip(val, min, max)
+
 
 # dict pretty printing
 def print_dic(dic, indent=""):

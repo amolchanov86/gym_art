@@ -129,6 +129,10 @@ class SensorNoise:
 
         self.bypass = bypass
 
+    @staticmethod
+    def compute_sum_nau(val_1, val_2):
+        return normal(val_1[0], val_1[1], size=val_1[2]) + uniform(val_2[0], val_2[1], size=val_2[2])
+
     def add_noise_acc(self, acc):
         ## Accelerometer noise
         acc += normal(loc=0., scale=self.acc_static_noise_std, size=3) + acc * normal(loc=0., scale=self.acc_dynamic_noise_ratio, size=3)
@@ -147,10 +151,12 @@ class SensorNoise:
         assert noisy_omega.shape == (3,)
 
         # add noise to position measurement
-        noisy_pos += normal(loc=0., scale=self.pos_norm_std, size=3) + uniform(-self.pos_unif_range, self.pos_unif_range, 3)
+        noisy_pos += self.compute_sum_nau((0., self.pos_norm_std, 3), (-self.pos_unif_range, self.pos_unif_range, 3))
+        # noisy_pos += normal(loc=0., scale=self.pos_norm_std, size=3) + uniform(-self.pos_unif_range, self.pos_unif_range, 3)
 
         # add noise to linear velocity
-        noisy_vel += normal(loc=0., scale=self.vel_norm_std, size=3) + uniform(-self.vel_unif_range, self.vel_unif_range, 3)
+        noisy_vel += self.compute_sum_nau((0., self.vel_norm_std, 3), (-self.vel_unif_range, self.vel_unif_range, 3))
+        # noisy_vel += normal(loc=0., scale=self.vel_norm_std, size=3) + uniform(-self.vel_unif_range, self.vel_unif_range, 3)
 
         ## Noise in omega
         if self.gyro_norm_std != 0.:
@@ -159,8 +165,9 @@ class SensorNoise:
             noisy_omega += normal(loc=0., scale=self.gyro_noise_density, size=3)
 
         ## Noise in rotation
-        theta = normal(0, self.quat_norm_std, size=3) + \
-                uniform(-self.quat_unif_range, self.quat_unif_range, size=3)
+        theta = self.compute_sum_nau((0., self.quat_norm_std, 3), (-self.quat_unif_range, self.quat_unif_range, 3))
+        # theta = normal(0, self.quat_norm_std, size=3) + \
+        #         uniform(-self.quat_unif_range, self.quat_unif_range, size=3)
 
         if noisy_rot.shape == (3,):
             ## Euler angles (xyz: roll=[-pi, pi], pitch=[-pi/2, pi/2], yaw = [-pi, pi])
