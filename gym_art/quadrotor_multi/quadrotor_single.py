@@ -423,7 +423,7 @@ class QuadrotorDynamics(object):
 
         # Clipping if met the obstacle and nullify velocities (not sure what to do about accelerations)
         self.pos_before_clip = self.pos.copy()
-        # self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
+        self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
         # self.pos = numba_clip(self.pos, self.room_box[0], self.room_box[1])
         self.vel[np.equal(self.pos, self.pos_before_clip)] = 0.
 
