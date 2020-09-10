@@ -1,6 +1,6 @@
 import copy
 import math
-
+import random
 import numpy as np
 import scipy as scp
 from scipy import spatial
@@ -19,7 +19,8 @@ class QuadrotorEnvMulti(gym.Env):
                  raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200.,
                  sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_size=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False):
+                 resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
+                 quads_dist_between_goals=None, quads_mode='circular_config'):
 
         super().__init__()
 
@@ -45,7 +46,7 @@ class QuadrotorEnvMulti(gym.Env):
         # reward shaping
         self.rew_coeff = dict(
             pos=1., effort=0.05, action_change=0., crash=1., orient=1., yaw=0., rot=0., attitude=0., spin=0.1, vel=0.,
-            quadcol_bin=0.
+            quadcol_bin=0., quadsettle=0.
         )
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
@@ -62,6 +63,23 @@ class QuadrotorEnvMulti(gym.Env):
 
         ## Aux variables
         self.pos = np.zeros([self.num_agents, 3]) #Matrix containing all positions
+        self.quads_mode = quads_mode
+	
+	## Set Goals
+        delta = quads_dist_between_goals
+        pi = np.pi
+        self.goal = []
+        for i in range(self.num_agents):
+            degree = 2 * pi * i / self.num_agents
+            goal_x = delta * np.cos(degree)
+            goal_y = delta * np.sin(degree)
+            goal = [goal_x, goal_y, 2.0]
+            self.goal.append(goal)
+
+        self.goal = np.array(self.goal)
+        self.rews_settle = np.zeros(self.num_agents)
+        self.rews_settle_raw = np.zeros(self.num_agents)
+        self.settle_count = np.zeros(self.num_agents)
 
     def all_dynamics(self):
         return tuple(e.dynamics for e in self.envs)
@@ -80,15 +98,8 @@ class QuadrotorEnvMulti(gym.Env):
         else:
             self.scene.update_models(models)
 
-        delta = 0.3
         for i, e in enumerate(self.envs):
-            # x = 0, -delta, +delta, -2*delta, +2*delta, etc.
-            goal_x = ((-1) ** i) * (delta * math.ceil(i / 2))
-            goal = np.array([goal_x, 0., 2.0])
-            # TODO: randomize goals? more patterns?
-
-            e.goal = goal
-
+            e.goal = self.goal[i]
             e.rew_coeff = self.rew_coeff
 
             observation = e.reset()
@@ -126,6 +137,52 @@ class QuadrotorEnvMulti(gym.Env):
             rewards[i] += self.rew_collisions[i]
             infos[i]["rewards"]["rew_quadcol"] = self.rew_collisions[i]
             infos[i]["rewards"]["rewraw_quadcol"] = self.rew_collisions_raw[i]
+
+        if self.quads_mode == "circular_config":
+            for i, e in enumerate(self.envs):
+                dis = np.linalg.norm(self.pos[i] - e.goal)
+                if abs(dis) < 0.02:
+                    self.settle_count[i] += 1
+                else:
+                    self.settle_count[i] = 0
+                    break
+
+            # drones settled at the goal for 1 sec
+            control_step_for_one_sec = int(self.envs[0].control_freq)
+            tmp_count = self.settle_count >= control_step_for_one_sec
+            if all(tmp_count):
+                np.random.shuffle(self.goal)
+                for i, env in enumerate(self.envs):
+                    env.goal = self.goal[i]
+                    # Add settle rewards
+                    self.rews_settle_raw[i] = control_step_for_one_sec
+                    self.rews_settle[i] = self.rew_coeff["quadsettle"] * self.rews_settle_raw[i]
+                    rewards[i] += self.rews_settle[i]
+                    infos[i]["rewards"]["rew_quadsettle"] = self.rews_settle[i]
+                    infos[i]["rewards"]["rewraw_quadsettle"] = self.rews_settle_raw[i]
+
+                self.rews_settle = np.zeros(self.num_agents)
+                self.rews_settle_raw = np.zeros(self.num_agents)
+                self.settle_count = np.zeros(self.num_agents)
+        elif self.quads_mode == "same_goal":
+            tick = self.envs[0].tick
+            # teleport every 5 secs
+            control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
+            if tick % control_step_for_five_sec == 0 and tick > 0:
+                box_size = self.envs[0].box
+                x = (random.random() * 2 - 1) * box_size
+                y = (random.random() * 2 - 1) * box_size
+                z = random.random() * 2 * box_size
+                if z < 0.25:
+                    z = 0.25
+
+                self.goal = [[x, y, z] for i in range(self.num_agents)]
+                self.goal = np.array(self.goal)
+
+                for i, env in enumerate(self.envs):
+                    env.goal = self.goal[i]
+
+
 
         ## DONES
         if any(dones):
