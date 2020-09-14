@@ -37,6 +37,7 @@ from gym_art.quadrotor_multi.inertia import QuadLink, QuadLinkSimplified
 from gym_art.quadrotor_multi.quadrotor_control import *
 from gym_art.quadrotor_multi.quadrotor_visualization import *
 from gym_art.quadrotor_multi.sensor_noise import SensorNoise
+from gym_art.quadrotor_multi.numba_utils import *
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ EPS = 1e-6  # small constant to avoid divisions by 0 and log(0)
 
 
 # WARN:
-# - linearity is set to 1 always, by means of check_quad_param_limits(). 
+# - linearity is set to 1 always, by means of check_quad_param_limits().
 # The def. value of linarity for CF is set to 1 as well (due to firmware nonlinearity compensation)
 
 class QuadrotorDynamics(object):
@@ -61,7 +62,7 @@ class QuadrotorDynamics(object):
     Coord frames: x configuration:
      - x axis between arms looking forward [x - configuration]
      - y axis pointing to the left
-     - z axis up 
+     - z axis up
     TODO:
     - only diagonal inertia is used at the moment
     """
@@ -71,12 +72,14 @@ class QuadrotorDynamics(object):
                  dynamics_steps_num=1,
                  dim_mode="3D",
                  gravity=GRAV,
-                 dynamics_simplification=False):
+                 dynamics_simplification=False,
+                 use_numba=False):
 
         self.dynamics_steps_num = dynamics_steps_num
         self.dynamics_simplification = dynamics_simplification
+        self.use_numba = use_numba
         ###############################################################
-        ## PARAMETERS 
+        ## PARAMETERS
         self.prop_ccw = np.array([-1., 1., -1., 1.])
         # cw = 1 ; ccw = -1 [ccw, cw, ccw, cw]
         # Reference: https://docs.google.com/document/d/1wZMZQ6jilDbj0JtfeYt0TonjxoMPIgHwYbrFrMNls84/edit
@@ -186,7 +189,10 @@ class QuadrotorDynamics(object):
         self.thrust_sum_mx[2, :] = 1  # [0,0,F_sum].T
 
         # sigma = 0.2 gives roughly max noise of -1 .. 1
-        self.thrust_noise = OUNoise(4, sigma=0.2 * self.thrust_noise_ratio)
+        if self.use_numba:
+            self.thrust_noise = OUNoiseNumba(4, sigma=0.2 * self.thrust_noise_ratio)
+        else:
+            self.thrust_noise = OUNoise(4, sigma=0.2 * self.thrust_noise_ratio)
 
         self.arm = np.linalg.norm(self.model.motor_xyz[:2])
 
@@ -250,7 +256,10 @@ class QuadrotorDynamics(object):
         return pos, vel, rot, omega
 
     def step(self, thrust_cmds, dt):
-        [self.step1(thrust_cmds, dt) for t in range(self.dynamics_steps_num)]
+        if self.use_numba:
+            [self.step1_numba(thrust_cmds, dt) for t in range(self.dynamics_steps_num)]
+        else:
+            [self.step1(thrust_cmds, dt) for t in range(self.dynamics_steps_num)]
 
     ## Step function integrates based on current derivative values (best fits affine dynamics model)
     # thrust_cmds is motor thrusts given in normalized range [0, 1].
@@ -383,7 +392,7 @@ class QuadrotorDynamics(object):
         ## Linear damping
 
         # This is only for linear damping of angular velocity.
-        # omega_damp = 0.999   
+        # omega_damp = 0.999
         # self.omega = omega_damp * self.omega + dt * omega_dot
 
         self.omega_dot = ((1.0 / self.inertia) *
@@ -422,7 +431,188 @@ class QuadrotorDynamics(object):
         self.vel = (1.0 - self.vel_damp) * self.vel + dt * acc
         # self.vel[mask] = 0. #If we leave the room - stop flying
 
-        ## Accelerometer measures so called "proper acceleration" 
+        ## Accelerometer measures so called "proper acceleration"
+        # that includes gravity with the opposite sign
+        self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, self.gravity])
+
+    # @profile
+    def step1_numba(self, thrust_cmds, dt):
+        thr_noise = self.thrust_noise.noise()
+        self.motor_tau_up, self.motor_tau_down, self.thrust_rot_damp, self.thrust_cmds_damp, self.torques, \
+        self.torque, self.rot, self.since_last_svd, self.omega_dot, self.omega, self.pos, thrust, rotor_drag_force = \
+            compute_vals(thrust_cmds, dt, EPS, self.motor_damp_time_up, self.motor_damp_time_down,
+                         self.thrust_cmds_damp, self.thrust_rot_damp, thr_noise, self.thrust_max, self.motor_linearity,
+                         self.prop_crossproducts, self.prop_ccw, self.torque_max, self.rot, np.float64(self.omega),
+                         self.eye, self.since_last_svd, self.since_last_svd_limit, self.inertia,
+                         self.damp_omega_quadratic, self.omega_max, self.pos, self.vel)
+
+        # self.pos = self.pos + dt * self.vel
+        self.pos_before_clip = self.pos.copy()
+        self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
+        grav_mass = [0, 0, -GRAV] + (1.0 / self.mass)
+        sum_thr_drag = thrust + rotor_drag_force
+        grav_arr = np.float64([0, 0, self.gravity])
+        self.vel, self.acc, self.accelerometer = update_vel_and_calc_acc(self.vel, self.pos, self.pos_before_clip,
+                                                                         grav_mass, self.rot, sum_thr_drag,
+                                                                         self.vel_damp, dt, self.rot.T, grav_arr)
+
+    def step1_numba1(self, thrust_cmds, dt):
+        thrust_cmds = numba_clip(thrust_cmds, 0., 1.)
+
+        # Filtering the thruster and adding noise
+        # I use the multiplier 4, since 4*T ~ time for a step response to finish, where
+        # T is a time constant of the first-order filter
+        motor_tau, self.motor_tau_up, self.motor_tau_down = calculate_motor_tau(dt, thrust_cmds,
+                                                                                self.motor_damp_time_up,
+                                                                                self.motor_damp_time_down,
+                                                                                self.thrust_cmds_damp, EPS)
+
+        # Since NN commands thrusts we need to convert to rot vel and back
+        # WARNING: Unfortunately if the linearity != 1 then filtering using square root is not quite correct
+        # since it likely means that you are using rotational velocities as an input instead of the thrust and hence
+        # you are filtering square roots of angular velocities
+        thrust_rot = thrust_cmds ** 0.5
+        self.thrust_rot_damp = motor_tau * (thrust_rot - self.thrust_rot_damp) + self.thrust_rot_damp
+        self.thrust_cmds_damp = self.thrust_rot_damp ** 2
+
+        # Adding noise
+        thrust_noise = thrust_cmds * self.thrust_noise.noise()
+        self.thrust_cmds_damp = numba_clip(self.thrust_cmds_damp + thrust_noise, 0.0, 1.0)
+
+        thrusts = self.thrust_max * angvel2thrust_numba(self.thrust_cmds_damp, self.motor_linearity)
+        # Prop crossproduct give torque directions
+        self.torques = self.prop_crossproducts * thrusts[:, None]  # (4,3)=(props, xyz)
+
+        # additional torques along z-axis caused by propeller rotations
+        self.torques[:, 2] += self.torque_max * self.prop_ccw * self.thrust_cmds_damp
+
+        # net torque: sum over propellers
+        thrust_torque = numba_sum_1(self.torques)
+
+        ###################################
+        ## Rotor drag and Rolling forces and moments
+        ## See Ref[1] Sec:2.1 for detailes
+
+        # self.C_rot_drag = 0.0028
+        # self.C_rot_roll = 0.003 # 0.0003
+        if self.C_rot_drag != 0 or self.C_rot_roll != 0:
+            # self.vel = np.zeros_like(self.vel)
+            # v_rotors[3,4]  = (rot[3,3] @ vel[3,])[3,] + (omega[3,] x prop_pos[4,3])[4,3]
+            # v_rotors = self.rot.T @ self.vel + np.cross(self.omega, self.model.prop_pos)
+            vel_body = self.rot.T @ self.vel
+            v_rotors = vel_body + cross_vec_mx4(self.omega, self.model.prop_pos)
+            # assert v_rotors.shape == (4,3)
+            v_rotors[:, 2] = 0.  # Projection to the rotor plane
+
+            # Drag/Roll of rotors (both in body frame)
+            rotor_drag_fi = - self.C_rot_drag * np.sqrt(self.thrust_cmds_damp)[:, None] * v_rotors  # [4,3]
+            rotor_drag_force = numba_sum_1(rotor_drag_fi)
+            # rotor_drag_ti = np.cross(rotor_drag_fi, self.model.prop_pos)#[4,3] x [4,3]
+            rotor_drag_ti = cross_mx4(rotor_drag_fi, self.model.prop_pos)  # [4,3] x [4,3]
+            rotor_drag_torque = numba_sum_1(rotor_drag_ti)
+
+            rotor_roll_torque = - self.C_rot_roll * self.prop_ccw[:, None] * np.sqrt(self.thrust_cmds_damp)[:,
+                                                                             None] * v_rotors  # [4,3]
+            rotor_roll_torque = numba_sum_1(rotor_roll_torque)
+            rotor_visc_torque = rotor_drag_torque + rotor_roll_torque
+
+            ## Constraints (prevent numerical instabilities)
+            vel_norm = np.linalg.norm(vel_body)
+            rdf_norm = np.linalg.norm(rotor_drag_force)
+            rdf_norm_clip = numba_clip(rdf_norm, 0., vel_norm * self.mass / (2 * dt))
+            if rdf_norm > EPS:
+                rotor_drag_force = (rotor_drag_force / rdf_norm) * rdf_norm_clip
+
+            # omega_norm = np.linalg.norm(self.omega)
+            rvt_norm = np.linalg.norm(rotor_visc_torque)
+            rvt_norm_clipped = numba_clip(rvt_norm, 0.,
+                                          np.linalg.norm(self.omega * self.inertia) / (2 * dt))
+            if rvt_norm > EPS:
+                rotor_visc_torque = (rotor_visc_torque / rvt_norm) * rvt_norm_clipped
+        else:
+            rotor_visc_torque = rotor_drag_torque = rotor_drag_force = rotor_roll_torque = np.zeros(3)
+
+        ###################################
+        ## (Square) Damping using torques (in case we would like to add damping using torques)
+        # damping_torque = - 0.3 * self.omega * np.fabs(self.omega)
+        self.torque = thrust_torque + rotor_visc_torque
+        thrust = npa_numba(0, 0, numba_sum_2(thrusts))
+
+        #########################################################
+        ## ROTATIONAL DYNAMICS
+
+        ###################################
+        ## Integrating rotations (based on current values)
+        # omega_vec = np.matmul(self.rot, self.omega)  # Change from body2world frame
+        self.rot = integrate_rot(self.rot, np.float64(self.omega), self.eye, dt)
+
+        # omega_vec = np.matmul(self.rot, self.omega)
+        # self.rot = integrate_rot_1(self.rot, self.eye, omega_vec, dt)
+        # wx, wy, wz = omega_vec
+        # omega_norm = np.linalg.norm(omega_vec)
+        # if omega_norm != 0:
+        #     # See [7]
+        #     K = np.array([[0, -wz, wy], [wz, 0, -wx], [-wy, wx, 0]]) / omega_norm
+        #     rot_angle = omega_norm * dt
+        #     dRdt = self.eye + np.sin(rot_angle) * K + (1. - np.cos(rot_angle)) * (K @ K)
+        #     self.rot = dRdt @ self.rot
+
+        ## SVD is not strictly required anymore. Performing it rarely, just in case
+        self.since_last_svd += dt
+        if self.since_last_svd > self.since_last_svd_limit:
+            ## Perform SVD orthogonolization
+            u, s, v = np.linalg.svd(self.rot)
+            self.rot = np.matmul(u, v)
+            self.since_last_svd = 0
+
+        ###################################
+        ## COMPUTING OMEGA UPDATE
+
+        ## Damping using velocities (I find it more stable numerically)
+        ## Linear damping
+
+        # This is only for linear damping of angular velocity.
+        # omega_damp = 0.999
+        # self.omega = omega_damp * self.omega + dt * omega_dot
+
+        self.omega_dot = ((1.0 / self.inertia) *
+                          (cross(-self.omega, self.inertia * self.omega) + self.torque))
+
+        ## Quadratic damping
+        # 0.03 corresponds to roughly 1 revolution per sec
+        omega_damp_quadratic = numba_clip(self.damp_omega_quadratic * self.omega ** 2, 0.0, 1.0)
+
+        self.omega = self.omega + (1.0 - omega_damp_quadratic) * dt * self.omega_dot
+        self.omega = numba_clip(self.omega, -self.omega_max, self.omega_max)
+
+        ## When use square damping on torques - use simple integration
+        ## since damping is accounted as part of the net torque
+        # self.omega += dt * omega_dot
+
+        #########################################################
+        # TRANSLATIONAL DYNAMICS
+
+        ## Room constraints
+        # mask = np.logical_or(self.pos <= self.room_box[0], self.pos >= self.room_box[1])
+
+        ## Computing position
+        self.pos = self.pos + dt * self.vel
+
+        # Clipping if met the obstacle and nullify velocities (not sure what to do about accelerations)
+        self.pos_before_clip = self.pos.copy()
+        self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
+        self.vel[np.equal(self.pos, self.pos_before_clip)] = 0.
+
+        ## Computing accelerations
+        acc = [0, 0, -GRAV] + (1.0 / self.mass) * np.matmul(self.rot, (thrust + rotor_drag_force))
+        # acc[mask] = 0. #If we leave the room - stop accelerating
+        self.acc = acc
+
+        ## Computing velocities
+        self.vel = (1.0 - self.vel_damp) * self.vel + dt * acc
+        # self.vel[mask] = 0. #If we leave the room - stop flying
+
+        ## Accelerometer measures so called "proper acceleration"
         # that includes gravity with the opposite sign
         self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, self.gravity])
 
@@ -432,7 +622,7 @@ class QuadrotorDynamics(object):
 
     def rotors_drag_roll_glob_frame(self):
         # omega [3,] x prop_pos [4,3] = v_rot_body [4, 3]
-        # R[3,3] @ prop_pos.T[3,4] = v_rotors[3,4]  
+        # R[3,3] @ prop_pos.T[3,4] = v_rotors[3,4]
         v_rotors = self.vel + self.rot @ np.cross(self.omega, self.model.prop_pos).T
         rot_z = self.rot[:, 2]
 
@@ -643,7 +833,7 @@ class QuadrotorSingle:
                  sim_steps=2,
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False):
+                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False):
         np.seterr(under='ignore')
         """
         Args:
@@ -715,6 +905,7 @@ class QuadrotorSingle:
         self.box_scale = 1.0  # scale the initialbox by this factor eache episode
 
         self.goal = None
+        self.use_numba = use_numba
 
         ## Statistics vars
         self.traj_count = 0
@@ -820,7 +1011,8 @@ class QuadrotorSingle:
         self.dynamics = QuadrotorDynamics(model_params=dynamics_params,
                                           dynamics_steps_num=self.sim_steps, room_box=self.room_box,
                                           dim_mode=self.dim_mode,
-                                          gravity=self.gravity, dynamics_simplification=self.dynamics_simplification)
+                                          gravity=self.gravity, dynamics_simplification=self.dynamics_simplification,
+                                          use_numba=self.use_numba)
 
         if self.verbose:
             print("#################################################")
