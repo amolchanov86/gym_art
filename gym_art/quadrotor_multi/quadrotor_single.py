@@ -73,11 +73,11 @@ class QuadrotorDynamics(object):
                  dim_mode="3D",
                  gravity=GRAV,
                  dynamics_simplification=False,
-                 use_numba=False):
+                 quads_use_numba=False):
 
         self.dynamics_steps_num = dynamics_steps_num
         self.dynamics_simplification = dynamics_simplification
-        self.use_numba = use_numba
+        self.quads_use_numba = quads_use_numba
         ###############################################################
         ## PARAMETERS
         self.prop_ccw = np.array([-1., 1., -1., 1.])
@@ -189,7 +189,7 @@ class QuadrotorDynamics(object):
         self.thrust_sum_mx[2, :] = 1  # [0,0,F_sum].T
 
         # sigma = 0.2 gives roughly max noise of -1 .. 1
-        if self.use_numba:
+        if self.quads_use_numba:
             self.thrust_noise = OUNoiseNumba(4, sigma=0.2 * self.thrust_noise_ratio)
         else:
             self.thrust_noise = OUNoise(4, sigma=0.2 * self.thrust_noise_ratio)
@@ -256,7 +256,7 @@ class QuadrotorDynamics(object):
         return pos, vel, rot, omega
 
     def step(self, thrust_cmds, dt):
-        if self.use_numba:
+        if self.quads_use_numba:
             [self.step1_numba(thrust_cmds, dt) for t in range(self.dynamics_steps_num)]
         else:
             [self.step1(thrust_cmds, dt) for t in range(self.dynamics_steps_num)]
@@ -833,7 +833,7 @@ class QuadrotorSingle:
                  sim_steps=2,
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False):
+                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, quads_use_numba=False):
         np.seterr(under='ignore')
         """
         Args:
@@ -905,7 +905,7 @@ class QuadrotorSingle:
         self.box_scale = 1.0  # scale the initialbox by this factor eache episode
 
         self.goal = None
-        self.use_numba = use_numba
+        self.quads_use_numba = quads_use_numba
 
         ## Statistics vars
         self.traj_count = 0
@@ -1012,7 +1012,7 @@ class QuadrotorSingle:
                                           dynamics_steps_num=self.sim_steps, room_box=self.room_box,
                                           dim_mode=self.dim_mode,
                                           gravity=self.gravity, dynamics_simplification=self.dynamics_simplification,
-                                          use_numba=self.use_numba)
+                                          quads_use_numba=self.quads_use_numba)
 
         if self.verbose:
             print("#################################################")

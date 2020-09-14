@@ -20,7 +20,7 @@ class QuadrotorEnvMulti(gym.Env):
                  sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_size=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
-                 quads_dist_between_goals=0.3, quads_mode='circular_config', use_numba=True):
+                 quads_dist_between_goals=0.3, quads_mode='circular_config', quads_use_numba=False):
 
         super().__init__()
 
@@ -33,7 +33,7 @@ class QuadrotorEnvMulti(gym.Env):
                 raw_control, raw_control_zero_middle, dim_mode, tf_control, sim_freq, sim_steps,
                 obs_repr, ep_time, obstacles_num, room_size, init_random_state,
                 rew_coeff, sense_noise, verbose, gravity, t2w_std, t2t_std, excite, dynamics_simplification,
-                use_numba
+                quads_use_numba
             )
             self.envs.append(e)
 
@@ -65,7 +65,7 @@ class QuadrotorEnvMulti(gym.Env):
         ## Aux variables
         self.pos = np.zeros([self.num_agents, 3]) #Matrix containing all positions
         self.quads_mode = quads_mode
-	
+
 	## Set Goals
         delta = quads_dist_between_goals
         pi = np.pi
