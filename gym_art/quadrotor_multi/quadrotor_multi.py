@@ -1,6 +1,6 @@
 import copy
 import math
-
+import random
 import numpy as np
 import scipy as scp
 from scipy import spatial
@@ -19,11 +19,13 @@ class QuadrotorEnvMulti(gym.Env):
                  raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200.,
                  sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_size=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False):
+                 resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
+                 multi_agent=True):
 
         super().__init__()
 
         self.num_agents = num_agents
+        self.multi_agent = multi_agent
         self.envs = []
 
         for i in range(self.num_agents):
@@ -32,6 +34,7 @@ class QuadrotorEnvMulti(gym.Env):
                 raw_control, raw_control_zero_middle, dim_mode, tf_control, sim_freq, sim_steps,
                 obs_repr, ep_time, obstacles_num, room_size, init_random_state,
                 rew_coeff, sense_noise, verbose, gravity, t2w_std, t2t_std, excite, dynamics_simplification,
+                self.multi_agent, self.num_agents
             )
             self.envs.append(e)
 
@@ -67,7 +70,7 @@ class QuadrotorEnvMulti(gym.Env):
         return tuple(e.dynamics for e in self.envs)
 
     def reset(self):
-        obs, rewards, dones, infos = [], [], [], []
+        obs_ext, obs, rewards, dones, infos = [], [], [], [], []
 
         models = tuple(e.dynamics.model for e in self.envs)
 
@@ -93,14 +96,24 @@ class QuadrotorEnvMulti(gym.Env):
 
             observation = e.reset()
             obs.append(observation)
+        # extend obs to see neighbors
+
+        if self.multi_agent and self.num_agents > 1:
+            for i in range(len(obs)):
+                observs = obs[i]
+                for j in range(len(obs)):
+                    if i == j: continue
+                    obs_neighbor = obs[j][:6] # get xyz_vxyz info of neighboring agents
+                    observs = np.concatenate((observs, obs_neighbor))
+                obs_ext.append(observs)
 
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics())
-
+        if self.multi_agent: obs = obs_ext
         return obs
 
     # noinspection PyTypeChecker
     def step(self, actions):
-        obs, rewards, dones, infos = [], [], [], []
+        obs_ext, obs, rewards, dones, infos = [], [], [], [], []
 
 
         for i, a in enumerate(actions):
@@ -113,6 +126,18 @@ class QuadrotorEnvMulti(gym.Env):
             infos.append(info)
 
             self.pos[i, :] = self.envs[i].dynamics.pos
+
+        if self.multi_agent and self.num_agents > 1:
+            # extend the obs space for each agent
+            for i in range(len(obs)):
+                observs = obs[i]
+                for j in range(len(obs)):
+                    if i == j: continue
+                    obs_neighbor = obs[j][:6]  # get xyz_vxyz info of neighboring agents
+                    obs_neighbor_rel = observs[:6] - obs_neighbor # get relative xyz_vxyz of neighbors to current agent
+                    observs = np.concatenate((observs, obs_neighbor_rel))
+                obs_ext.append(observs)
+
 
         ## SWARM REWARDS
         # -- BINARY COLLISION REWARD
@@ -132,6 +157,7 @@ class QuadrotorEnvMulti(gym.Env):
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
 
+        if self.multi_agent: obs = obs_ext
         return obs, rewards, dones, infos
 
     def render(self, mode='human'):

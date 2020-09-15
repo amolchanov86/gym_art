@@ -643,7 +643,7 @@ class QuadrotorSingle:
                  sim_steps=2,
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False):
+                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, multi_agent=False, num_agents=1):
         np.seterr(under='ignore')
         """
         Args:
@@ -687,6 +687,8 @@ class QuadrotorSingle:
         self.raw_control = raw_control
         self.update_sense_noise(sense_noise=sense_noise)
         self.gravity = gravity
+        self.multi_agent = multi_agent
+        self.num_agents = num_agents
         ## t2w and t2t ranges
         self.t2w_std = t2w_std
         self.t2w_min = 1.5
@@ -708,6 +710,7 @@ class QuadrotorSingle:
         self.room_box = np.array(
             [[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
         self.state_vector = self.state_vector = getattr(get_state, "state_" + self.obs_repr)
+
         ## WARN: If you
         # size of the box from which initial position will be randomly sampled
         # if box_scale > 1.0 then it will also growevery episode
@@ -874,6 +877,8 @@ class QuadrotorSingle:
             "quat": [-np.ones(4), np.ones(4)],
             "euler": [-np.pi * np.ones(3), np.pi * np.ones(3)]
         }
+        if self.multi_agent and self.num_agents > 1:
+            self.obs_repr = self.obs_repr + "_xyz_vxyz" * (self.num_agents - 1)
         self.obs_comp_names = list(self.obs_space_low_high.keys())
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
 
@@ -1002,6 +1007,10 @@ class QuadrotorSingle:
         ## Updating params
         self.update_dynamics(dynamics_params=self.dynamics_params)
 
+    def get_simplified_state(self):
+        state = self.state_vector(self)
+        return self[:9] # return xyz_vxyz of this env's multirotor's state
+
     def _reset(self):
         ## I have to update state vector 
         ##############################################################
@@ -1078,6 +1087,8 @@ class QuadrotorSingle:
 
     def step(self, action):
         return self._step(action)
+
+
 
 
 class DummyPolicy(object):
