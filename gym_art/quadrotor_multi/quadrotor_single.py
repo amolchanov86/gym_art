@@ -445,15 +445,13 @@ class QuadrotorDynamics(object):
                          self.eye, self.since_last_svd, self.since_last_svd_limit, self.inertia,
                          self.damp_omega_quadratic, self.omega_max, self.pos, self.vel)
 
-        # self.pos = self.pos + dt * self.vel
-        self.pos_before_clip = self.pos.copy()
         self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
-        grav_mass = [0, 0, -GRAV] + (1.0 / self.mass)
+        grav_cnst_arr = np.float64([0, 0, -GRAV])
         sum_thr_drag = thrust + rotor_drag_force
         grav_arr = np.float64([0, 0, self.gravity])
-        self.vel, self.acc, self.accelerometer = update_vel_and_calc_acc(self.vel, self.pos, self.pos_before_clip,
-                                                                         grav_mass, self.rot, sum_thr_drag,
-                                                                         self.vel_damp, dt, self.rot.T, grav_arr)
+        self.vel, self.acc, self.accelerometer = update_vel_and_calc_acc(self.vel, grav_cnst_arr, self.mass, self.rot,
+                                                                         sum_thr_drag, self.vel_damp, dt, self.rot.T,
+                                                                         grav_arr)
 
     def step1_numba1(self, thrust_cmds, dt):
         thrust_cmds = numba_clip(thrust_cmds, 0., 1.)

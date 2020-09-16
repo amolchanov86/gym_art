@@ -267,10 +267,9 @@ def compute_vals(thrust_cmds, dt, eps, motor_damp_time_up, motor_damp_time_down,
 
 
 @njit
-def update_vel_and_calc_acc(vel, pos, pos_before_clip, grav_mass, rot, thrust_and_rgv, vel_damp, dt, rot_tpose,
+def update_vel_and_calc_acc(vel, grav_cnst_arr, mass, rot, sum_thr_drag, vel_damp, dt, rot_tpose,
                             grav_arr):
-    vel[np.equal(pos, pos_before_clip)] = 0
-    acc = grav_mass * (rot @ thrust_and_rgv)
+    acc = grav_cnst_arr + ((1.0/mass) * (rot @ sum_thr_drag))
     vel = (1.0 - vel_damp) * vel + dt * acc
     accm = rot_tpose @ (acc + grav_arr)
     return vel, acc, accm
