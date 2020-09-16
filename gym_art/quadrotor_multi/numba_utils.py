@@ -84,22 +84,6 @@ def impl_clip(a, a_min, a_max):
     return impl
 
 
-# @overload(np.clip)
-# def np_clip(a, a_min, a_max, out=None):
-#     def np_clip_impl(a, a_min, a_max, out=None):
-#         if out is None:
-#             out = np.empty_like(a)
-#         for i in range(len(a)):
-#             if a[i] < a_min:
-#                 out[i] = a_min
-#             elif a[i] > a_max:
-#                 out[i] = a_max
-#             else:
-#                 out[i] = a[i]
-#         return out
-#     return np_clip_impl
-
-
 @njit
 def numba_clip(val, mn, mx):
     return np.clip(val, mn, mx)
