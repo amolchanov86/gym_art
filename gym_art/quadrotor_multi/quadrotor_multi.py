@@ -86,8 +86,20 @@ class QuadrotorEnvMulti(gym.Env):
     def all_dynamics(self):
         return tuple(e.dynamics for e in self.envs)
 
+    def extend_obs_space(self, obs):
+        obs_ext = []
+        for i in range(len(obs)):
+            observs = obs[i] # obs of current agent
+            for j in range(len(obs)):
+                if i == j: continue
+                obs_neighbor = obs[j][:6] # get xyz_vxyz info of neighboring agents
+                obs_neighbor_rel = obs_neighbor - observs[:6] # get relative xyz_vxyz of neighbors to current agent
+                observs = np.concatenate((observs, obs_neighbor_rel))
+            obs_ext.append(observs)
+        return obs_ext
+
     def reset(self):
-        obs_ext, obs, rewards, dones, infos = [], [], [], [], []
+        obs, rewards, dones, infos = [], [], [], []
 
         models = tuple(e.dynamics.model for e in self.envs)
 
@@ -109,21 +121,15 @@ class QuadrotorEnvMulti(gym.Env):
         # extend obs to see neighbors
 
         if self.multi_agent and self.num_agents > 1:
-            for i in range(len(obs)):
-                observs = obs[i]
-                for j in range(len(obs)):
-                    if i == j: continue
-                    obs_neighbor = obs[j][:6] # get xyz_vxyz info of neighboring agents
-                    observs = np.concatenate((observs, obs_neighbor))
-                obs_ext.append(observs)
+            obs_ext = self.extend_obs_space(obs)
+            obs = obs_ext
 
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics())
-        if self.multi_agent: obs = obs_ext
         return obs
 
     # noinspection PyTypeChecker
     def step(self, actions):
-        obs_ext, obs, rewards, dones, infos = [], [], [], [], []
+        obs, rewards, dones, infos = [], [], [], []
 
 
         for i, a in enumerate(actions):
@@ -138,15 +144,8 @@ class QuadrotorEnvMulti(gym.Env):
             self.pos[i, :] = self.envs[i].dynamics.pos
 
         if self.multi_agent and self.num_agents > 1:
-            # extend the obs space for each agent
-            for i in range(len(obs)):
-                observs = obs[i]
-                for j in range(len(obs)):
-                    if i == j: continue
-                    obs_neighbor = obs[j][:6]  # get xyz_vxyz info of neighboring agents
-                    obs_neighbor_rel = observs[:6] - obs_neighbor # get relative xyz_vxyz of neighbors to current agent
-                    observs = np.concatenate((observs, obs_neighbor_rel))
-                obs_ext.append(observs)
+            obs_ext = self.extend_obs_space(obs)
+            obs = obs_ext
 
 
         ## SWARM REWARDS
@@ -213,7 +212,6 @@ class QuadrotorEnvMulti(gym.Env):
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
 
-        if self.multi_agent: obs = obs_ext
         return obs, rewards, dones, infos
 
     def render(self, mode='human'):
