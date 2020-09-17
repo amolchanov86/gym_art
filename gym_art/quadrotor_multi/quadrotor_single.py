@@ -877,12 +877,12 @@ class QuadrotorSingle:
             "quat": [-np.ones(4), np.ones(4)],
             "euler": [-np.pi * np.ones(3), np.pi * np.ones(3)]
         }
-        if self.multi_agent and self.num_agents > 1:
-            self.obs_repr = self.obs_repr + "_xyz_vxyz" * (self.num_agents - 1)
         self.obs_comp_names = list(self.obs_space_low_high.keys())
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
 
         obs_comps = self.obs_repr.split("_")
+        if self.multi_agent and self.num_agents > 1:
+            obs_comps = obs_comps + (['xyz'] + ['vxyz']) * (self.num_agents-1)
         print("Observation components:", obs_comps)
         obs_low, obs_high = [], []
         for comp in obs_comps:
