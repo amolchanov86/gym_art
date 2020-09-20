@@ -256,10 +256,12 @@ class QuadrotorDynamics(object):
         return pos, vel, rot, omega
 
     def step(self, thrust_cmds, dt):
+        thrust_noise = self.thrust_noise.noise()
+
         if self.quads_use_numba:
-            [self.step1_numba(thrust_cmds, dt) for t in range(self.dynamics_steps_num)]
+            [self.step1_numba(thrust_cmds, dt, thrust_noise) for t in range(self.dynamics_steps_num)]
         else:
-            [self.step1(thrust_cmds, dt) for t in range(self.dynamics_steps_num)]
+            [self.step1(thrust_cmds, dt, thrust_noise) for t in range(self.dynamics_steps_num)]
 
     ## Step function integrates based on current derivative values (best fits affine dynamics model)
     # thrust_cmds is motor thrusts given in normalized range [0, 1].
@@ -270,7 +272,7 @@ class QuadrotorDynamics(object):
     # rot - global
     # omega - body frame
     # goal_pos - global
-    def step1(self, thrust_cmds, dt):
+    def step1(self, thrust_cmds, dt, thrust_noise):
         # print("thrust_cmds:", thrust_cmds)
         # uncomment for debugging. they are slow
         # assert np.all(thrust_cmds >= 0)
@@ -296,7 +298,7 @@ class QuadrotorDynamics(object):
         self.thrust_cmds_damp = self.thrust_rot_damp ** 2
 
         ## Adding noise
-        thrust_noise = thrust_cmds * self.thrust_noise.noise()
+        thrust_noise = thrust_cmds * thrust_noise
         self.thrust_cmds_damp = np.clip(self.thrust_cmds_damp + thrust_noise, 0.0, 1.0)
 
         thrusts = self.thrust_max * self.angvel2thrust(self.thrust_cmds_damp, linearity=self.motor_linearity)
@@ -435,12 +437,11 @@ class QuadrotorDynamics(object):
         # that includes gravity with the opposite sign
         self.accelerometer = np.matmul(self.rot.T, acc + [0, 0, self.gravity])
 
-    def step1_numba(self, thrust_cmds, dt):
-        thr_noise = self.thrust_noise.noise()
+    def step1_numba(self, thrust_cmds, dt, thrust_noise):
         self.motor_tau_up, self.motor_tau_down, self.thrust_rot_damp, self.thrust_cmds_damp, self.torques, \
         self.torque, self.rot, self.since_last_svd, self.omega_dot, self.omega, self.pos, thrust, rotor_drag_force = \
             compute_vals(thrust_cmds, dt, EPS, self.motor_damp_time_up, self.motor_damp_time_down,
-                         self.thrust_cmds_damp, self.thrust_rot_damp, thr_noise, self.thrust_max, self.motor_linearity,
+                         self.thrust_cmds_damp, self.thrust_rot_damp, thrust_noise, self.thrust_max, self.motor_linearity,
                          self.prop_crossproducts, self.prop_ccw, self.torque_max, self.rot, np.float64(self.omega),
                          self.eye, self.since_last_svd, self.since_last_svd_limit, self.inertia,
                          self.damp_omega_quadratic, self.omega_max, self.pos, self.vel)

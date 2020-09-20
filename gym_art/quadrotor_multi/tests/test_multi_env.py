@@ -4,14 +4,13 @@ from unittest import TestCase
 from gym_art.quadrotor_multi.quadrotor_multi import QuadrotorEnvMulti
 
 
-def create_env(num_agents):
+def create_env(num_agents, use_numba=False):
     quad = 'Crazyflie'
     dyn_randomize_every = dyn_randomization_ratio = None
 
     episode_duration = 7  # seconds
 
-    raw_control = False
-    raw_control_zero_middle = True
+    raw_control = raw_control_zero_middle = True
 
     sampler_1 = None
     if dyn_randomization_ratio is not None:
@@ -25,7 +24,7 @@ def create_env(num_agents):
         num_agents=num_agents,
         dynamics_params=quad, raw_control=raw_control, raw_control_zero_middle=raw_control_zero_middle,
         dynamics_randomize_every=dyn_randomize_every, dynamics_change=dynamics_change, dyn_sampler_1=sampler_1,
-        sense_noise=sense_noise, init_random_state=True, ep_time=episode_duration,
+        sense_noise=sense_noise, init_random_state=True, ep_time=episode_duration, quads_use_numba=use_numba,
     )
     return env
 
@@ -57,7 +56,7 @@ class TestMultiEnv(TestCase):
         time.sleep(0.1)
 
         num_steps = 0
-        while num_steps < 1000:
+        while num_steps < 100:
             obs, rewards, dones, infos = env.step([env.action_space.sample() for _ in range(num_agents)])
             num_steps += 1
             print('Rewards: ', rewards, "\nCollisions: \n", env.collisions, "\nDistances: \n", env.dist)
