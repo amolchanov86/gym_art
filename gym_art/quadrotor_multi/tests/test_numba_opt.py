@@ -61,7 +61,7 @@ class TestOpt(TestCase):
         dynamics = env.envs[0].dynamics
 
         dt = 0.005
-        thrusts = [0.77263618, 0.5426721, 0.5024945, 0.66090029]
+        thrusts = numpy.float64([0.77263618, 0.5426721, 0.5024945, 0.66090029])
         thrust_noise = dynamics.thrust_noise.noise()
 
         import copy
