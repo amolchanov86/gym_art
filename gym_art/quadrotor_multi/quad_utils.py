@@ -176,13 +176,15 @@ def dict_update_existing(dic, dic_upd):
         else:
             dic[key] = dic_upd[key]
 
+
 class OUNoise:
     """Ornstein–Uhlenbeck process"""
-    def __init__(self, action_dimension, mu=0, theta=0.15, sigma=0.3):
+    def __init__(self, action_dimension, mu=0, theta=0.15, sigma=0.3, use_seed=False):
         """
         @param: mu: mean of noise
         @param: theta: stabilization coeff (i.e. noise return to mean)
         @param: sigma: noise scale coeff
+        @param: use_seed: set the random number generator to some specific seed for test
         """
         self.action_dimension = action_dimension
         self.mu = mu
@@ -190,6 +192,8 @@ class OUNoise:
         self.sigma = sigma
         self.state = np.ones(self.action_dimension) * self.mu
         self.reset()
+        if use_seed:
+            nr.seed(2)
 
     def reset(self):
         self.state = np.ones(self.action_dimension) * self.mu

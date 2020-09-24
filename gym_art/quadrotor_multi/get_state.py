@@ -5,12 +5,12 @@ import numpy as np
 def state_xyz_vxyz_R_omega(self):
     if self.quads_use_numba:
         pos, vel, rot, omega, acc = self.sense_noise.add_noise_numba(
-            pos=self.dynamics.pos,
-            vel=self.dynamics.vel,
-            rot=self.dynamics.rot,
-            omega=self.dynamics.omega,
-            acc=self.dynamics.accelerometer,
-            dt=self.dt
+            self.dynamics.pos,
+            self.dynamics.vel,
+            self.dynamics.rot,
+            self.dynamics.omega,
+            self.dynamics.accelerometer,
+            self.dt
         )
     else:
         pos, vel, rot, omega, acc = self.sense_noise.add_noise(

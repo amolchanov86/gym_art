@@ -39,6 +39,9 @@ from gym_art.quadrotor_multi.quadrotor_visualization import *
 from gym_art.quadrotor_multi.sensor_noise import SensorNoise
 from gym_art.quadrotor_multi.numba_utils import *
 
+# Numba
+from numba import njit
+
 logger = logging.getLogger(__name__)
 
 GRAV = 9.81  # default gravitational constant
@@ -440,17 +443,20 @@ class QuadrotorDynamics(object):
     def step1_numba(self, thrust_cmds, dt, thrust_noise):
         self.motor_tau_up, self.motor_tau_down, self.thrust_rot_damp, self.thrust_cmds_damp, self.torques, \
         self.torque, self.rot, self.since_last_svd, self.omega_dot, self.omega, self.pos, thrust, rotor_drag_force = \
-            compute_vals(thrust_cmds, dt, EPS, self.motor_damp_time_up, self.motor_damp_time_down,
+            calculate_torque_integrate_rotations_and_update_omega(thrust_cmds, dt, EPS, self.motor_damp_time_up, self.motor_damp_time_down,
                          self.thrust_cmds_damp, self.thrust_rot_damp, thrust_noise, self.thrust_max, self.motor_linearity,
                          self.prop_crossproducts, self.prop_ccw, self.torque_max, self.rot, np.float64(self.omega),
                          self.eye, self.since_last_svd, self.since_last_svd_limit, self.inertia,
                          self.damp_omega_quadratic, self.omega_max, self.pos, self.vel)
 
+        # Clipping if met the obstacle and nullify velocities (not sure what to do about accelerations)
         self.pos = np.clip(self.pos, a_min=self.room_box[0], a_max=self.room_box[1])
+
+        # Set constant variables up for numba
         grav_cnst_arr = np.float64([0, 0, -GRAV])
         sum_thr_drag = thrust + rotor_drag_force
         grav_arr = np.float64([0, 0, self.gravity])
-        self.vel, self.acc, self.accelerometer = update_vel_and_calc_acc(self.vel, grav_cnst_arr, self.mass, self.rot,
+        self.vel, self.acc, self.accelerometer = compute_velocity_and_acceleration(self.vel, grav_cnst_arr, self.mass, self.rot,
                                                                          sum_thr_drag, self.vel_damp, dt, self.rot.T,
                                                                          grav_arr)
 
@@ -713,6 +719,7 @@ class QuadrotorSingle:
         self.verbose = verbose
         self.obstacles_num = obstacles_num
         self.raw_control = raw_control
+        self.quads_use_numba = quads_use_numba
         self.update_sense_noise(sense_noise=sense_noise)
         self.gravity = gravity
         ## t2w and t2t ranges
@@ -743,7 +750,6 @@ class QuadrotorSingle:
         self.box_scale = 1.0  # scale the initialbox by this factor eache episode
 
         self.goal = None
-        self.quads_use_numba = quads_use_numba
 
         ## Statistics vars
         self.traj_count = 0
@@ -833,7 +839,11 @@ class QuadrotorSingle:
             self.sense_noise = SensorNoise(**sense_noise)
         elif isinstance(sense_noise, str):
             if sense_noise == "default":
-                self.sense_noise = SensorNoise(bypass=False)
+                self.sense_noise = SensorNoise(bypass=False, use_numba=self.quads_use_numba)
+                # if self.quads_use_numba:
+                #     self.sense_noise = SensorNoiseNumba(bypass=False)
+                # else:
+                #     self.sense_noise = SensorNoise(bypass=False, use_numba=self.quads_use_numba)
             else:
                 ValueError("ERROR: QuadEnv: sense_noise parameter is of unknown type: " + str(sense_noise))
         elif sense_noise is None:
@@ -1526,6 +1536,95 @@ def main(argv):
             obs_repr=args.obs_repr,
             csv_filename=args.csv_filename,
         )
+
+
+@njit
+def calculate_torque_integrate_rotations_and_update_omega(thrust_cmds, dt, eps, motor_damp_time_up,
+                                                          motor_damp_time_down, thrust_cmds_damp,
+                                                          thrust_rot_damp, thr_noise, thrust_max, motor_linearity,
+                                                          prop_crossproducts, prop_ccw, torque_max, rot, omega,
+                                                          eye, since_last_svd, since_last_svd_limit, inertia,
+                                                          damp_omega_quadratic, omega_max, pos, vel):
+    # Filtering the thruster and adding noise
+    thrust_cmds = np.clip(thrust_cmds, 0., 1.)
+    motor_tau_up = 4 * dt / (motor_damp_time_up + eps)
+    motor_tau_down = 4 * dt / (motor_damp_time_down + eps)
+    motor_tau = motor_tau_up * np.ones(4)
+    motor_tau[thrust_cmds < thrust_cmds_damp] = motor_tau_down
+    motor_tau[motor_tau > 1.] = 1.
+
+    # Since NN commands thrusts we need to convert to rot vel and back
+    thrust_rot = thrust_cmds ** 0.5
+    thrust_rot_damp = motor_tau * (thrust_rot - thrust_rot_damp) + thrust_rot_damp
+    thrust_cmds_damp = thrust_rot_damp ** 2
+
+    # Adding noise
+    thrust_noise = thrust_cmds * thr_noise
+    thrust_cmds_damp = np.clip(thrust_cmds_damp + thrust_noise, 0.0, 1.0)
+    thrusts = thrust_max * angvel2thrust_numba(thrust_cmds_damp, motor_linearity)
+
+    # Prop cross-product gives torque directions
+    torques = prop_crossproducts * np.reshape(thrusts, (-1, 1))
+
+    # Additional torques along z-axis caused by propeller rotations
+    torques[:, 2] += torque_max * prop_ccw * thrust_cmds_damp
+
+    # Net torque: sum over propellers
+    thrust_torque = np.sum(torques, 0)
+
+    # Rotor drag and Rolling forces and moments
+    rotor_visc_torque = rotor_drag_force = np.zeros(3)
+
+    # (Square) Damping using torques (in case we would like to add damping using torques)
+    torque = thrust_torque + rotor_visc_torque
+    thrust = np.array([0, 0, np.sum(thrusts)])
+
+    # ROTATIONAL DYNAMICS
+    # Integrating rotations (based on current values)
+    omega_vec = rot @ omega
+    wx, wy, wz = omega_vec
+    omega_norm = np.linalg.norm(omega_vec)
+    if omega_norm != 0:
+        K = np.array([[0, -wz, wy], [wz, 0, -wx], [-wy, wx, 0]]) / omega_norm
+        rot_angle = omega_norm * dt
+        dRdt = eye + np.sin(rot_angle) * K + (1. - np.cos(rot_angle)) * (K @ K)
+        rot = dRdt @ rot
+
+    # SVD is not strictly required anymore. Performing it rarely, just in case
+    since_last_svd += dt
+    if since_last_svd > since_last_svd_limit:
+        u, s, v = np.linalg.svd(rot)
+        rot = u @ v
+        since_last_svd = 0
+
+    # COMPUTING OMEGA UPDATE
+    # Linear damping
+    omega_dot = ((1.0 / inertia) * (numba_cross(-omega, inertia * omega) + torque))
+
+    # Quadratic damping
+    omega_damp_quadratic = np.clip(damp_omega_quadratic * omega ** 2, 0.0, 1.0)
+    omega = omega + (1.0 - omega_damp_quadratic) * dt * omega_dot
+    omega = numba_clip(omega, -omega_max, omega_max)
+
+    # Computing position
+    pos = pos + dt * vel
+
+    return motor_tau_up, motor_tau_down, thrust_rot_damp, thrust_cmds_damp, torques, \
+           torque, rot, since_last_svd, omega_dot, omega, pos, thrust, rotor_drag_force
+
+
+@njit
+def compute_velocity_and_acceleration(vel, grav_cnst_arr, mass, rot, sum_thr_drag, vel_damp, dt, rot_tpose,
+                                      grav_arr):
+    # Computing accelerations
+    acc = grav_cnst_arr + ((1.0 / mass) * (rot @ sum_thr_drag))
+
+    # Computing velocities
+    vel = (1.0 - vel_damp) * vel + dt * acc
+
+    # Accelerometer measures so called "proper acceleration" that includes gravity with the opposite sign
+    accm = rot_tpose @ (acc + grav_arr)
+    return vel, acc, accm
 
 
 if __name__ == '__main__':
