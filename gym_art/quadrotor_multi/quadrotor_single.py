@@ -840,10 +840,6 @@ class QuadrotorSingle:
         elif isinstance(sense_noise, str):
             if sense_noise == "default":
                 self.sense_noise = SensorNoise(bypass=False, use_numba=self.quads_use_numba)
-                # if self.quads_use_numba:
-                #     self.sense_noise = SensorNoiseNumba(bypass=False)
-                # else:
-                #     self.sense_noise = SensorNoise(bypass=False, use_numba=self.quads_use_numba)
             else:
                 ValueError("ERROR: QuadEnv: sense_noise parameter is of unknown type: " + str(sense_noise))
         elif sense_noise is None:

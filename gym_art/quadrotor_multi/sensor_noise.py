@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 import numpy as np
-from numpy.random import normal 
+from numpy.random import normal
 from numpy.random import uniform
 import matplotlib.pyplot as plt
 from math import exp
 from gym_art.quadrotor_single.quad_utils import quat2R, quatXquat
-from gym_art.quadrotor_multi.numba_utils import add_noise_to_measurement, prod_with_norm
 from numba import njit
 
 
@@ -33,35 +32,35 @@ def rot2quat(rot):
 	if trace > 0:
 		S = (trace + 1.0)**0.5 * 2
 		qw = 0.25 * S
-		qx = (rot[2][1] - rot[1][2]) / S 
+		qx = (rot[2][1] - rot[1][2]) / S
 		qy = (rot[0][2] - rot[2][0]) / S
 		qz = (rot[1][0] - rot[0][1]) / S
 	elif rot[0][0] > rot[1][1] and rot[0][0] > rot[2][2]:
 		S = (1.0 + rot[0][0] - rot[1][1] - rot[2][2])**0.5 * 2
 		qw = (rot[2][1] - rot[1][2]) / S
-		qx = 0.25 * S 
+		qx = 0.25 * S
 		qy = (rot[0][1] + rot[1][0]) / S
 		qz = (rot[0][2] + rot[2][0]) / S
 	elif rot[1][1] > rot[2][2]:
 		S = (1.0 + rot[1][1] - rot[0][0] - rot[2][2])**0.5 * 2
-		qw = (rot[0][2] - rot[2][0]) / S 
+		qw = (rot[0][2] - rot[2][0]) / S
 		qx = (rot[0][1] + rot[1][0]) / S
 		qy = 0.25 * S
 		qz = (rot[1][2] + rot[2][1]) / S
 	else:
 		S = (1.0 + rot[2][2] - rot[0][0] - rot[1][1])**0.5 * 2
 		qw = (rot[1][0] - rot[0][1]) / S
-		qx = (rot[0][2] + rot[2][0]) / S 
+		qx = (rot[0][2] + rot[2][0]) / S
 		qy = (rot[1][2] + rot[2][1]) / S
 		qz = 0.25 * S
 
 	return np.array([qw, qx, qy, qz])
 
 class SensorNoise:
-    def __init__(self, pos_norm_std=0.005, pos_unif_range=0., 
+    def __init__(self, pos_norm_std=0.005, pos_unif_range=0.,
                         vel_norm_std=0.01, vel_unif_range=0.,
                         quat_norm_std=0., quat_unif_range=0., gyro_norm_std=0.,
-                        gyro_noise_density=0.000175, gyro_random_walk=0.0105, 
+                        gyro_noise_density=0.000175, gyro_random_walk=0.0105,
                         gyro_bias_correlation_time=1000., bypass=False,
                         acc_static_noise_std=0.002, acc_dynamic_noise_ratio=0.005,
                         use_numba=False):
@@ -142,11 +141,11 @@ class SensorNoise:
         ## Noise in rotation
         theta = normal(0, self.quat_norm_std, size=3) + \
                 uniform(-self.quat_unif_range, self.quat_unif_range, size=3)
-       
+
         if rot.shape == (3,):
             ## Euler angles (xyz: roll=[-pi, pi], pitch=[-pi/2, pi/2], yaw = [-pi, pi])
-            noisy_rot = np.clip(rot + theta, 
-                a_min=[-np.pi, -np.pi/2, -np.pi], 
+            noisy_rot = np.clip(rot + theta,
+                a_min=[-np.pi, -np.pi/2, -np.pi],
                 a_max=[ np.pi,  np.pi/2,  np.pi])
         elif rot.shape == (3,3):
             ## Rotation matrix
@@ -160,7 +159,7 @@ class SensorNoise:
             noisy_rot = quatXquat(rot, quat_theta)
         else:
             raise ValueError("ERROR: SensNoise: Unknown rotation type: " + str(rot))
-        
+
         ## Accelerometer noise
         noisy_acc = acc + normal(loc=0., scale=self.acc_static_noise_std, size=3) + \
                     acc * normal(loc=0., scale=self.acc_dynamic_noise_ratio, size=3)
@@ -182,20 +181,17 @@ class SensorNoise:
         assert vel.shape == (3,)
         assert omega.shape == (3,)
 
-        # add noise to position measurement
-        noisy_pos = add_noise_to_measurement(pos, (0., self.pos_norm_std, 3), (-self.pos_unif_range, self.pos_unif_range, 3))
+        noisy_pos, noisy_vel, noisy_omega, noisy_acc, theta = add_noise_to_vel_acc_pos_omega_rot(pos, vel, omega, acc,
+                                                             pos_rand_var=(self.pos_norm_std, self.pos_unif_range),
+                                                             vel_rand_var=(self.vel_norm_std, self.vel_unif_range),
+                                                             omega_rand_var=self.gyro_noise_density,
+                                                             acc_rand_var=(self.acc_static_noise_std,
+                                                                           self.acc_dynamic_noise_ratio),
+                                                             rot_rand_var=(self.quat_norm_std, self.quat_unif_range))
 
-        # add noise to linear velocity
-        noisy_vel = add_noise_to_measurement(vel, (0., self.vel_norm_std, 3), (-self.vel_unif_range, self.vel_unif_range, 3))
-
-        ## Noise in omega
+        # Noise in omega
         if self.gyro_norm_std != 0.:
             noisy_omega = self.add_noise_to_omega(omega, dt)
-        else:
-            noisy_omega = add_noise_to_measurement(omega, (0., self.gyro_noise_density, 3), (0., 0., 3))
-
-        ## Noise in rotation
-        theta = add_noise_to_measurement(0, (0., self.quat_norm_std, 3), (-self.quat_unif_range, self.quat_unif_range, 3))
 
         if rot.shape == (3,):
             ## Euler angles (xyz: roll=[-pi, pi], pitch=[-pi/2, pi/2], yaw = [-pi, pi])
@@ -215,10 +211,6 @@ class SensorNoise:
         else:
             raise ValueError("ERROR: SensNoise: Unknown rotation type: " + str(rot))
 
-        ## Accelerometer noise
-        noisy_acc = add_noise_to_measurement(acc, (0., self.acc_static_noise_std, 3), (0., 0., 3)) + \
-                    prod_with_norm(acc, (0., self.acc_dynamic_noise_ratio, 3))
-
         return noisy_pos, noisy_vel, noisy_rot, noisy_omega, noisy_acc
 
     ## copy from rotorS imu plugin
@@ -233,9 +225,38 @@ class SensorNoise:
         return omega + self.gyro_bias + self.gyro_random_walk * normal(0, 1, 3) # + self.gyro_turn_on_bias_sigma * normal(0, 1, 3)
 
 
+@njit
+def add_noise_to_vel_acc_pos_omega_rot(pos, vel, omega, acc, pos_rand_var, vel_rand_var, omega_rand_var,
+                         acc_rand_var, rot_rand_var):
+
+    # add noise to position measurement
+    noisy_pos = pos + \
+                normal(loc=0., scale=pos_rand_var[0], size=3) + \
+                uniform(-pos_rand_var[1], pos_rand_var[1], 3)
+
+    # Add noise to linear velocity
+    noisy_vel = vel + \
+                normal(loc=0., scale=vel_rand_var[0], size=3) + \
+                uniform(-vel_rand_var[1], vel_rand_var[1], 3)
+
+    # Noise in omega
+    noisy_omega = omega + \
+                  normal(loc=0., scale=omega_rand_var, size=3)
+
+    # Noise in rotation
+    theta = normal(loc=0, scale=rot_rand_var[0], size=3) + \
+            uniform(-rot_rand_var[1], rot_rand_var[1], 3)
+
+    # Accelerometer noise
+    noisy_acc = acc + normal(loc=0., scale=acc_rand_var[0], size=3) + \
+                (acc * normal(loc=0., scale=acc_rand_var[1], size=3))
+
+    return noisy_pos, noisy_vel, noisy_omega, noisy_acc, theta
+
+
 if __name__ == "__main__":
     sens = SensorNoise()
-    import time 
+    import time
     start_time = time.time()
     sens.add_noise(np.zeros(3), np.zeros(3), np.eye(3), np.zeros(3), 0.005)
     print("Noise generation time: ", time.time() - start_time)
