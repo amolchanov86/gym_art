@@ -1600,7 +1600,7 @@ def calculate_torque_integrate_rotations_and_update_omega(thrust_cmds, dt, eps, 
     # Quadratic damping
     omega_damp_quadratic = np.clip(damp_omega_quadratic * omega ** 2, 0.0, 1.0)
     omega = omega + (1.0 - omega_damp_quadratic) * dt * omega_dot
-    omega = numba_clip(omega, -omega_max, omega_max)
+    omega = np.clip(omega, -omega_max, omega_max)
 
     # Computing position
     pos = pos + dt * vel

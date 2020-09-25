@@ -54,11 +54,6 @@ def impl_clip(a, a_min, a_max):
     return impl
 
 
-@njit
-def numba_clip(val, mn, mx):
-    return np.clip(val, mn, mx)
-
-
 @vectorize(nopython=True)
 def angvel2thrust_numba(w, linearity=0.424):
     return (1 - linearity) * w ** 2 + linearity * w
