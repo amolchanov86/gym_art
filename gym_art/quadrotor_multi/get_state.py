@@ -3,7 +3,7 @@ import numpy as np
 ## NOTE: the state_* methods are static because otherwise getattr memorizes self
 
 def state_xyz_vxyz_R_omega(self):
-    if self.quads_use_numba:
+    if self.use_numba:
         pos, vel, rot, omega, acc = self.sense_noise.add_noise_numba(
             self.dynamics.pos,
             self.dynamics.vel,
