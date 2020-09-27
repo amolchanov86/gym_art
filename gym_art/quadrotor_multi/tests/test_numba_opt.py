@@ -58,7 +58,7 @@ class TestOpt(TestCase):
         print('Numba: ', fps_numba, elapsed_sec_numba)
 
     def test_step_and_noise_opt(self):
-        for _ in range(3):
+        for _ in range(30):
             num_agents = 4
             env = create_env(num_agents)
             env.reset()

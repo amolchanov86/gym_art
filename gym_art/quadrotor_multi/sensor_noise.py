@@ -4,8 +4,9 @@ from numpy.random import normal
 from numpy.random import uniform
 import matplotlib.pyplot as plt
 from math import exp
-from gym_art.quadrotor_single.quad_utils import quat2R, quatXquat
 from numba import njit
+
+from gym_art.quadrotor_multi.quad_utils import quatXquat, quat2R, quat2R_numba, quatXquat_numba
 
 
 def quat_from_small_angle(theta):
@@ -21,6 +22,9 @@ def quat_from_small_angle(theta):
 
     q_theta = q_theta / np.linalg.norm(q_theta)
     return q_theta
+
+
+quat_from_small_angle_numba = njit()(quat_from_small_angle)
 
 
 '''
@@ -58,6 +62,9 @@ def rot2quat(rot):
         qz = 0.25 * S
 
     return np.array([qw, qx, qy, qz])
+
+
+rot2quat_numba = njit()(rot2quat)
 
 
 class SensorNoise:
@@ -102,12 +109,6 @@ class SensorNoise:
         self.acc_static_noise_std = acc_static_noise_std
         self.acc_dynamic_noise_ratio = acc_dynamic_noise_ratio
         self.bypass = bypass
-
-        if use_numba:
-            self.quat_from_small_angle_numba = njit()(quat_from_small_angle)
-            self.rot2quat_numba = njit()(rot2quat)
-            self.quat2R_numba = njit()(quat2R)
-            self.quatXquat_numba = njit()(quatXquat)
 
     def add_noise(self, pos, vel, rot, omega, acc, dt):
         if self.bypass:
@@ -204,14 +205,14 @@ class SensorNoise:
                                 a_max=[np.pi, np.pi / 2, np.pi])
         elif rot.shape == (3, 3):
             # Rotation matrix
-            quat_theta = self.quat_from_small_angle_numba(theta)
-            quat = self.rot2quat_numba(rot)
-            noisy_quat = self.quatXquat_numba(quat, quat_theta)
-            noisy_rot = self.quat2R_numba(noisy_quat[0], noisy_quat[1], noisy_quat[2], noisy_quat[3])
+            quat_theta = quat_from_small_angle_numba(theta)
+            quat = rot2quat_numba(rot)
+            noisy_quat = quatXquat_numba(quat, quat_theta)
+            noisy_rot = quat2R_numba(noisy_quat[0], noisy_quat[1], noisy_quat[2], noisy_quat[3])
         elif rot.shape == (4,):
             # Quaternion
-            quat_theta = self.quat_from_small_angle_numba(theta)
-            noisy_rot = self.quatXquat_numba(rot, quat_theta)
+            quat_theta = quat_from_small_angle_numba(theta)
+            noisy_rot = quatXquat_numba(rot, quat_theta)
         else:
             raise ValueError("ERROR: SensNoise: Unknown rotation type: " + str(rot))
 

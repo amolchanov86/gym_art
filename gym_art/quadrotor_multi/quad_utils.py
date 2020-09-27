@@ -1,5 +1,6 @@
 import numpy as np
 import numpy.random as nr
+from numba import njit
 from numpy.linalg import norm
 from copy import deepcopy
 
@@ -86,6 +87,10 @@ def quat2R(qw, qx, qy, qz):
      [      2*qx*qz - 2*qy*qw,         2*qy*qz + 2*qx*qw,   1.0 - 2*qx**2 - 2*qy**2]]
     return np.array(R)
 
+
+quat2R_numba = njit()(quat2R)
+
+
 def qwxyz2R(quat):
     return quat2R(qw=quat[0], qx=quat[1], qy=quat[2], qz=quat[3])
 
@@ -97,6 +102,10 @@ def quatXquat(quat, quat_theta):
     noisy_quat[2] = quat[0] * quat_theta[2] + quat[1] * quat_theta[3] + quat[2] * quat_theta[0] - quat[3] * quat_theta[1] 
     noisy_quat[3] = quat[0] * quat_theta[3] - quat[1] * quat_theta[2] + quat[2] * quat_theta[1] + quat[3] * quat_theta[0]
     return noisy_quat
+
+
+quatXquat_numba = njit()(quatXquat)
+
 
 def R2quat(rot):
     # print('R2quat: ', rot, type(rot))

@@ -445,7 +445,7 @@ if __name__ == "__main__":
     start_time = time.time()
     import argparse
     import yaml
-    from gym_art.quadrotor_single.quad_models import *
+    from gym_art.quadrotor_multi.quad_models import *
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
