@@ -643,7 +643,7 @@ class QuadrotorSingle:
                  sim_steps=2,
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, multi_agent=False, num_agents=1):
+                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, swarm_obs=False, num_agents=1):
         np.seterr(under='ignore')
         """
         Args:
@@ -687,7 +687,7 @@ class QuadrotorSingle:
         self.raw_control = raw_control
         self.update_sense_noise(sense_noise=sense_noise)
         self.gravity = gravity
-        self.multi_agent = multi_agent
+        self.swarm_obs = swarm_obs
         self.num_agents = num_agents
         ## t2w and t2t ranges
         self.t2w_std = t2w_std
@@ -881,7 +881,7 @@ class QuadrotorSingle:
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
 
         obs_comps = self.obs_repr.split("_")
-        if self.multi_agent and self.num_agents > 1:
+        if self.swarm_obs and self.num_agents > 1:
             obs_comps = obs_comps + (['xyz'] + ['vxyz']) * (self.num_agents-1)
         print("Observation components:", obs_comps)
         obs_low, obs_high = [], []
@@ -1007,9 +1007,6 @@ class QuadrotorSingle:
         ## Updating params
         self.update_dynamics(dynamics_params=self.dynamics_params)
 
-    def get_simplified_state(self):
-        state = self.state_vector(self)
-        return self[:9] # return xyz_vxyz of this env's multirotor's state
 
     def _reset(self):
         ## I have to update state vector 
@@ -1087,8 +1084,6 @@ class QuadrotorSingle:
 
     def step(self, action):
         return self._step(action)
-
-
 
 
 class DummyPolicy(object):

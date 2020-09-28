@@ -20,12 +20,12 @@ class QuadrotorEnvMulti(gym.Env):
                  sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_size=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
-                 quads_dist_between_goals=0.3, quads_mode='circular_config', multi_agent=False):
+                 quads_dist_between_goals=0.3, quads_mode='circular_config', swarm_obs=False):
 
         super().__init__()
 
         self.num_agents = num_agents
-        self.multi_agent = multi_agent
+        self.swarm_obs = swarm_obs
         self.envs = []
 
         for i in range(self.num_agents):
@@ -34,7 +34,7 @@ class QuadrotorEnvMulti(gym.Env):
                 raw_control, raw_control_zero_middle, dim_mode, tf_control, sim_freq, sim_steps,
                 obs_repr, ep_time, obstacles_num, room_size, init_random_state,
                 rew_coeff, sense_noise, verbose, gravity, t2w_std, t2t_std, excite, dynamics_simplification,
-                self.multi_agent, self.num_agents
+                self.swarm_obs, self.num_agents
             )
             self.envs.append(e)
 
@@ -87,16 +87,17 @@ class QuadrotorEnvMulti(gym.Env):
         return tuple(e.dynamics for e in self.envs)
 
     def extend_obs_space(self, obs):
-        obs_ext = []
+        obs_neighbors = []
         for i in range(len(obs)):
-            observs = obs[i] # obs of current agent
-            for j in range(len(obs)):
-                if i == j: continue
-                obs_neighbor = obs[j][:6] # get xyz_vxyz info of neighboring agents
-                obs_neighbor_rel = obs_neighbor - observs[:6] # get relative xyz_vxyz of neighbors to current agent
-                observs = np.concatenate((observs, obs_neighbor_rel))
-            obs_ext.append(observs)
+            observs = obs[i]
+            obs_neighbor = np.array([obs[j][:6] for j in range(len(obs)) if j != i])
+            obs_neighbor_rel = obs_neighbor - observs[:6]
+            obs_neighbors.append(obs_neighbor_rel.reshape(-1))
+        obs_neighbors = np.stack(obs_neighbors)
+        obs_neighbors = np.clip(obs_neighbors, -10, 10)
+        obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
+
 
     def reset(self):
         obs, rewards, dones, infos = [], [], [], []
@@ -120,7 +121,7 @@ class QuadrotorEnvMulti(gym.Env):
             obs.append(observation)
         # extend obs to see neighbors
 
-        if self.multi_agent and self.num_agents > 1:
+        if self.swarm_obs and self.num_agents > 1:
             obs_ext = self.extend_obs_space(obs)
             obs = obs_ext
 
@@ -143,7 +144,7 @@ class QuadrotorEnvMulti(gym.Env):
 
             self.pos[i, :] = self.envs[i].dynamics.pos
 
-        if self.multi_agent and self.num_agents > 1:
+        if self.swarm_obs and self.num_agents > 1:
             obs_ext = self.extend_obs_space(obs)
             obs = obs_ext
 
