@@ -1,12 +1,12 @@
 import copy
 import math
-
+import random
 import numpy as np
 import scipy as scp
 from scipy import spatial
 
 import gym
-import random
+
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
 
@@ -20,7 +20,7 @@ class QuadrotorEnvMulti(gym.Env):
                  sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_size=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
-                 quads_dist_between_goals=0.3, quads_mode='circular_config', swarm_obs=False):
+                 quads_dist_between_goals=0.3, quads_mode='circular_config', swarm_obs=False, quads_use_numba=False):
 
         super().__init__()
 
@@ -34,7 +34,7 @@ class QuadrotorEnvMulti(gym.Env):
                 raw_control, raw_control_zero_middle, dim_mode, tf_control, sim_freq, sim_steps,
                 obs_repr, ep_time, obstacles_num, room_size, init_random_state,
                 rew_coeff, sense_noise, verbose, gravity, t2w_std, t2t_std, excite, dynamics_simplification,
-                self.swarm_obs, self.num_agents
+                quads_use_numba, self.swarm_obs, self.num_agents
             )
             self.envs.append(e)
 
@@ -66,7 +66,7 @@ class QuadrotorEnvMulti(gym.Env):
         ## Aux variables
         self.pos = np.zeros([self.num_agents, 3]) #Matrix containing all positions
         self.quads_mode = quads_mode
-
+	
 	## Set Goals
         delta = quads_dist_between_goals
         pi = np.pi
@@ -126,6 +126,7 @@ class QuadrotorEnvMulti(gym.Env):
             obs = obs_ext
 
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics())
+
         return obs
 
     # noinspection PyTypeChecker
