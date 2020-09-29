@@ -677,7 +677,7 @@ class QuadrotorSingle:
                  sim_steps=2,
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False):
+                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs=False, num_agents=1):
         np.seterr(under='ignore')
         """
         Args:
@@ -722,6 +722,8 @@ class QuadrotorSingle:
         self.use_numba = use_numba
         self.update_sense_noise(sense_noise=sense_noise)
         self.gravity = gravity
+        self.swarm_obs = swarm_obs
+        self.num_agents = num_agents
         ## t2w and t2t ranges
         self.t2w_std = t2w_std
         self.t2w_min = 1.5
@@ -743,6 +745,7 @@ class QuadrotorSingle:
         self.room_box = np.array(
             [[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
         self.state_vector = self.state_vector = getattr(get_state, "state_" + self.obs_repr)
+
         ## WARN: If you
         # size of the box from which initial position will be randomly sampled
         # if box_scale > 1.0 then it will also growevery episode
@@ -914,6 +917,8 @@ class QuadrotorSingle:
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
 
         obs_comps = self.obs_repr.split("_")
+        if self.swarm_obs and self.num_agents > 1:
+            obs_comps = obs_comps + (['xyz'] + ['vxyz']) * (self.num_agents-1)
         print("Observation components:", obs_comps)
         obs_low, obs_high = [], []
         for comp in obs_comps:
@@ -1037,6 +1042,7 @@ class QuadrotorSingle:
 
         ## Updating params
         self.update_dynamics(dynamics_params=self.dynamics_params)
+
 
     def _reset(self):
         ## I have to update state vector 
