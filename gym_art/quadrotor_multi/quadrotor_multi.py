@@ -66,6 +66,10 @@ class QuadrotorEnvMulti(gym.Env):
         ## Aux variables
         self.pos = np.zeros([self.num_agents, 3]) #Matrix containing all positions
         self.quads_mode = quads_mode
+        self.neighbor_obs_size = 6
+        self.clip_length = (num_agents-1) * self.neighbor_obs_size
+        self.clip_min_box = self.observation_space.low[-self.clip_length:]
+        self.clip_max_box = self.observation_space.high[-self.clip_length:]
 	
 	## Set Goals
         delta = quads_dist_between_goals
@@ -90,16 +94,13 @@ class QuadrotorEnvMulti(gym.Env):
         obs_neighbors = []
         for i in range(len(obs)):
             observs = obs[i]
-            obs_neighbor = np.array([obs[j][:6] for j in range(len(obs)) if j != i])
-            obs_neighbor_rel = obs_neighbor - observs[:6]
+            obs_neighbor = np.array([obs[j][:self.neighbor_obs_size] for j in range(len(obs)) if j != i])
+            obs_neighbor_rel = obs_neighbor - observs[:self.neighbor_obs_size]
             obs_neighbors.append(obs_neighbor_rel.reshape(-1))
         obs_neighbors = np.stack(obs_neighbors)
 
         # clip observation space of neighborhoods
-        clip_length = (len(obs)-1) * 6
-        clip_min_box = self.observation_space.low[-clip_length:]
-        clip_max_box = self.observation_space.high[-clip_length:]
-        obs_neighbors = np.clip(obs_neighbors, a_min=clip_min_box, a_max=clip_max_box)
+        obs_neighbors = np.clip(obs_neighbors, a_min=self.clip_min_box, a_max=self.clip_max_box)
         obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
 
