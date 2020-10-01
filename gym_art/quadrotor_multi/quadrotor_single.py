@@ -911,14 +911,16 @@ class QuadrotorSingle:
             "h": [0. * np.ones(1), self.room_box[1][2] * np.ones(1)],
             "act": [np.zeros(4), np.ones(4)],
             "quat": [-np.ones(4), np.ones(4)],
-            "euler": [-np.pi * np.ones(3), np.pi * np.ones(3)]
+            "euler": [-np.pi * np.ones(3), np.pi * np.ones(3)],
+            "rxyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]],
+            "rvxyz": [-2.0 * self.dynamics.vxyz_max * np.ones(3), 2.0 * self.dynamics.vxyz_max * np.ones(3)],
         }
         self.obs_comp_names = list(self.obs_space_low_high.keys())
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
 
         obs_comps = self.obs_repr.split("_")
         if self.swarm_obs and self.num_agents > 1:
-            obs_comps = obs_comps + (['xyz'] + ['vxyz']) * (self.num_agents-1)
+            obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * (self.num_agents-1)
         print("Observation components:", obs_comps)
         obs_low, obs_high = [], []
         for comp in obs_comps:
