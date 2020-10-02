@@ -222,7 +222,7 @@ if __name__ == "__main__":
     v_rotors = np.array([[1,2,3,4],[5,6,7,8],[9,8,7,6]])
 
     start_time = time.time()
-    cr1_ = v_rotors - (v_rotors.T @ rot_z).T * np.repeat(rot_z,4, axis=1)
+    cr1 = v_rotors - (v_rotors.T @ rot_z).T * np.repeat(rot_z,4, axis=1)
     print("cr1 time:", time.time() - start_time)
 
     start_time = time.time()
