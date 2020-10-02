@@ -67,9 +67,9 @@ class QuadrotorEnvMulti(gym.Env):
         self.pos = np.zeros([self.num_agents, 3]) #Matrix containing all positions
         self.quads_mode = quads_mode
         self.neighbor_obs_size = 6
-        self.clip_length = (num_agents-1) * self.neighbor_obs_size
-        self.clip_min_box = self.observation_space.low[-self.clip_length:]
-        self.clip_max_box = self.observation_space.high[-self.clip_length:]
+        self.clip_neighbor_obs_length = (num_agents-1) * self.neighbor_obs_size
+        self.clip_neighbor_obs_min_box = self.observation_space.low[-self.clip_neighbor_obs_length:]
+        self.clip_neighbor_obs_max_box = self.observation_space.high[-self.clip_neighbor_obs_length:]
 	
 	## Set Goals
         delta = quads_dist_between_goals
@@ -100,7 +100,7 @@ class QuadrotorEnvMulti(gym.Env):
         obs_neighbors = np.stack(obs_neighbors)
 
         # clip observation space of neighborhoods
-        obs_neighbors = np.clip(obs_neighbors, a_min=self.clip_min_box, a_max=self.clip_max_box)
+        obs_neighbors = np.clip(obs_neighbors, a_min=self.clip_neighbor_obs_min_box, a_max=self.clip_neighbor_obs_max_box)
         obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
 
@@ -133,12 +133,16 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics())
 
+        if self.num_agents == 1:
+            obs = obs[0]
+
         return obs
 
     # noinspection PyTypeChecker
     def step(self, actions):
         obs, rewards, dones, infos = [], [], [], []
-
+        if self.num_agents == 1:
+            actions = [actions]
 
         for i, a in enumerate(actions):
             self.envs[i].rew_coeff = self.rew_coeff
@@ -158,18 +162,19 @@ class QuadrotorEnvMulti(gym.Env):
 
         ## SWARM REWARDS
         # -- BINARY COLLISION REWARD
-        self.dist = spatial.distance_matrix(x=self.pos, y=self.pos)
-        self.collisions = (self.dist < 2 * self.envs[0].dynamics.arm).astype(np.float32)
-        np.fill_diagonal(self.collisions, 0.0) # removing self-collision
-        self.rew_collisions_raw = - np.sum(self.collisions, axis=1)
-        self.rew_collisions = self.rew_coeff["quadcol_bin"] * self.rew_collisions_raw
+        if self.num_agents > 1:
+            self.dist = spatial.distance_matrix(x=self.pos, y=self.pos)
+            self.collisions = (self.dist < 2 * self.envs[0].dynamics.arm).astype(np.float32)
+            np.fill_diagonal(self.collisions, 0.0) # removing self-collision
+            self.rew_collisions_raw = - np.sum(self.collisions, axis=1)
+            self.rew_collisions = self.rew_coeff["quadcol_bin"] * self.rew_collisions_raw
 
-        for i in range(self.num_agents):
-            rewards[i] += self.rew_collisions[i]
-            infos[i]["rewards"]["rew_quadcol"] = self.rew_collisions[i]
-            infos[i]["rewards"]["rewraw_quadcol"] = self.rew_collisions_raw[i]
+            for i in range(self.num_agents):
+                rewards[i] += self.rew_collisions[i]
+                infos[i]["rewards"]["rew_quadcol"] = self.rew_collisions[i]
+                infos[i]["rewards"]["rewraw_quadcol"] = self.rew_collisions_raw[i]
 
-        if self.quads_mode == "circular_config":
+        if self.quads_mode == "circular_config" and self.num_agents > 1:
             for i, e in enumerate(self.envs):
                 dis = np.linalg.norm(self.pos[i] - e.goal)
                 if abs(dis) < 0.02:
@@ -195,7 +200,7 @@ class QuadrotorEnvMulti(gym.Env):
                 self.rews_settle = np.zeros(self.num_agents)
                 self.rews_settle_raw = np.zeros(self.num_agents)
                 self.settle_count = np.zeros(self.num_agents)
-        elif self.quads_mode == "same_goal":
+        elif self.quads_mode == "same_goal" and self.num_agents > 1:
             tick = self.envs[0].tick
             # teleport every 5 secs
             control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
@@ -219,6 +224,12 @@ class QuadrotorEnvMulti(gym.Env):
         if any(dones):
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
+
+        if self.num_agents == 1:
+            obs = obs[0]
+            rewards = rewards[0]
+            dones = dones[0]
+            infos = infos[0]
 
         return obs, rewards, dones, infos
 
