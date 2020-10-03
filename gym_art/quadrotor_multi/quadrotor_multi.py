@@ -20,7 +20,7 @@ class QuadrotorEnvMulti(gym.Env):
                  sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_size=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
-                 quads_dist_between_goals=0.3, quads_mode='circular_config', swarm_obs=False, quads_use_numba=False):
+                 quads_dist_between_goals=0.0, quads_mode='sanity_check', swarm_obs='origin', quads_use_numba=False):
 
         super().__init__()
 
@@ -105,6 +105,43 @@ class QuadrotorEnvMulti(gym.Env):
         obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
 
+    def histogram_obs_space(self, obs):
+        # For histogram observation space, we use two-dimensional histogram over the distance
+        # and bearing space to other agents. For distance, the interval of each bin is
+        # 2.0 * the arm of the quadrotors
+        obs_ext = []
+        obs_histogram = []
+        standard_dis = 2.0 * self.envs[0].dynamics.arm
+        standard_bearing = np.pi / 4.0
+        pos_arr = np.array(obs)[:, :3]
+        vel_arr = np.array(obs)[:, 3: 6]
+        relative_dist = spatial.distance_matrix(x=pos_arr, y=pos_arr)
+
+        for i in range(len(obs)):
+            obs_two_dim_bin = np.zeros([8, 8])
+            # Get distance
+            dist_index = np.array([int(np.clip(relative_dist[i][j] / standard_dis, 0, 7)) for j in range(len(obs)) if j != i])
+            # Get velocity
+            tmp_rel_dist_arr = np.array([pos_arr[j] - pos_arr[i] for j in range(len(obs)) if j != i])
+
+            # vel_dist_dot_prod = np.array([np.sum(vel_arr[i] * (pos_arr[j] - pos_arr[i])) for j in range(len(obs)) if j != i])
+            vel_dist_dot_prod = np.sum(vel_arr[i] * tmp_rel_dist_arr, axis=1)
+
+            vel_dist_length_prod = np.linalg.norm(vel_arr[i]) * np.linalg.norm(tmp_rel_dist_arr, axis=1)
+            cos_theta = vel_dist_dot_prod / vel_dist_length_prod
+            bear_index = np.clip(np.arccos(cos_theta) / standard_bearing, 0, 7).astype(int)
+            # Put dist and bearing to two dimensional bins
+            for idx in range(len(dist_index)):
+                obs_two_dim_bin[dist_index[idx], bear_index[idx]] += 1
+
+            obs_histogram.append(obs_two_dim_bin.reshape(-1))
+
+        obs_histogram = np.stack(obs_histogram)
+        obs_ext = np.concatenate((obs, obs_histogram), axis=1)
+
+        return obs_ext
+
+
     def reset(self):
         obs, rewards, dones, infos = [], [], [], []
 
@@ -127,7 +164,10 @@ class QuadrotorEnvMulti(gym.Env):
             obs.append(observation)
         # extend obs to see neighbors
 
-        if self.swarm_obs and self.num_agents > 1:
+        if self.swarm_obs == 'histogram' and self.num_agents > 1:
+            obs_ext = self.histogram_obs_space(obs)
+            obs = obs_ext
+        elif self.swarm_obs == 'mean_embed' and self.num_agents > 1:
             obs_ext = self.extend_obs_space(obs)
             obs = obs_ext
 
@@ -151,7 +191,10 @@ class QuadrotorEnvMulti(gym.Env):
 
             self.pos[i, :] = self.envs[i].dynamics.pos
 
-        if self.swarm_obs and self.num_agents > 1:
+        if self.swarm_obs == 'histogram' and self.num_agents > 1:
+            obs_ext = self.histogram_obs_space(obs)
+            obs = obs_ext
+        elif self.swarm_obs == 'mean_embed' and self.num_agents > 1:
             obs_ext = self.extend_obs_space(obs)
             obs = obs_ext
 

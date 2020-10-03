@@ -677,7 +677,7 @@ class QuadrotorSingle:
                  sim_steps=2,
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs=False, num_agents=1):
+                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs='origin', num_agents=1):
         np.seterr(under='ignore')
         """
         Args:
@@ -914,12 +914,15 @@ class QuadrotorSingle:
             "euler": [-np.pi * np.ones(3), np.pi * np.ones(3)],
             "rxyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]], # rxyz stands for relative xyz
             "rvxyz": [-2.0 * self.dynamics.vxyz_max * np.ones(3), 2.0 * self.dynamics.vxyz_max * np.ones(3)], # rvxyz stands for relative vxyz
+            "his_bin": [np.zeros(64), (self.num_agents - 1) * np.ones(64)], # his_bin stands for the number of bins we used in the histogram method
         }
         self.obs_comp_names = list(self.obs_space_low_high.keys())
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
 
         obs_comps = self.obs_repr.split("_")
-        if self.swarm_obs and self.num_agents > 1:
+        if self.swarm_obs == 'histogram' and self.num_agents > 1:
+            obs_comps = obs_comps + ['his_bin']
+        elif self.swarm_obs == 'mean_embed' and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * (self.num_agents-1)
         print("Observation components:", obs_comps)
         obs_low, obs_high = [], []
