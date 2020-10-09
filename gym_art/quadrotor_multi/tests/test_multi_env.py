@@ -49,17 +49,27 @@ class TestMultiEnv(TestCase):
         env.close()
 
     def test_render(self):
-        num_agents = 4
-        env = create_env(num_agents)
+        num_agents = 16
+        env = create_env(num_agents, use_numba=True)
+        env.render_speed = 1.0
 
         env.reset()
         time.sleep(0.1)
 
         num_steps = 0
-        while num_steps < 100:
+        render_n_frames = 500
+
+        render_start = None
+        while num_steps < render_n_frames:
             obs, rewards, dones, infos = env.step([env.action_space.sample() for _ in range(num_agents)])
             num_steps += 1
-            print('Rewards: ', rewards, "\nCollisions: \n", env.collisions, "\nDistances: \n", env.dist)
+            # print('Rewards: ', rewards, "\nCollisions: \n", env.collisions, "\nDistances: \n", env.dist)
             env.render()
+
+            if num_steps <= 1:
+                render_start = time.time()
+
+        render_took = time.time() - render_start
+        print(f'Rendering of {render_n_frames} frames took {render_took:.3f} sec')
 
         env.close()
