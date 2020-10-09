@@ -89,9 +89,10 @@ class QuadrotorEnvMulti(gym.Env):
         self.rews_settle_raw = np.zeros(self.num_agents)
         self.settle_count = np.zeros(self.num_agents)
 
-        self.render_every_nth_frame = 2
-        self.render_times = deque()
-        self.frame_counter = 0
+        self.simulation_start_time = 0
+        self.frames_since_last_render = self.render_skip_frames = 0
+        self.render_every_nth_frame = 1
+        self.render_speed = 1.0  # set to below 1 for slowmo, higher than 1 for fast forward (if simulator can keep up)
 
     def all_dynamics(self):
         return tuple(e.dynamics for e in self.envs)
@@ -145,7 +146,6 @@ class QuadrotorEnvMulti(gym.Env):
     def step(self, actions):
         obs, rewards, dones, infos = [], [], [], []
 
-
         for i, a in enumerate(actions):
             self.envs[i].rew_coeff = self.rew_coeff
 
@@ -160,7 +160,6 @@ class QuadrotorEnvMulti(gym.Env):
         if self.swarm_obs and self.num_agents > 1:
             obs_ext = self.extend_obs_space(obs)
             obs = obs_ext
-
 
         ## SWARM REWARDS
         # -- BINARY COLLISION REWARD
@@ -226,19 +225,48 @@ class QuadrotorEnvMulti(gym.Env):
 
         return obs, rewards, dones, infos
 
-    def render(self, mode='human'):
-        self.frame_counter += 1
-        if self.frame_counter % self.render_every_nth_frame != 0:
+    def render(self, mode='human', verbose=False):
+        self.frames_since_last_render += 1
+
+        if self.render_skip_frames > 0:
+            self.render_skip_frames -= 1
             return None
 
-        goals = tuple(e.goal for e in self.envs)
-        render_start = time.time()
-        self.scene.render_chase(all_dynamics=self.all_dynamics(), goals=goals, mode=mode)
-        time_to_render = render_start - time.time()
-        self.render_times.append(time_to_render)
-        avg_render_time = np.mean(self.render_times)
+        # this is to handle the 1st step of the simulation that will typically be very slow
+        if self.simulation_start_time > 0:
+            simulation_time = time.time() - self.simulation_start_time
+        else:
+            simulation_time = 0
 
-        simulation_time = 1 / self.envs[0].control_freq
-        self.render_every_nth_frame = math.ceil(avg_render_time / simulation_time)
-        if self.render_every_nth_frame > 3:
-            print(f'Rendering too slow, skipping {self.render_every_nth_frame - 1} frames!')
+        realtime_control_period = 1 / self.envs[0].control_freq
+
+        render_start = time.time()
+        goals = tuple(e.goal for e in self.envs)
+        self.scene.render_chase(all_dynamics=self.all_dynamics(), goals=goals, mode=mode)
+        render_time = time.time() - render_start
+
+        desired_time_between_frames = realtime_control_period * self.frames_since_last_render / self.render_speed
+        time_to_sleep = desired_time_between_frames - simulation_time - render_time
+
+        # wait so we don't simulate/render faster than realtime
+        if mode == 'human' and time_to_sleep > 0:
+            time.sleep(time_to_sleep)
+
+        if simulation_time + render_time > desired_time_between_frames:
+            self.render_every_nth_frame += 1
+            if verbose:
+                print(f'Last render + simulation time {render_time + simulation_time:.3f}')
+                print(f'Rendering does not keep up, rendering every {self.render_every_nth_frame} frames')
+        elif simulation_time + render_time < realtime_control_period * (self.frames_since_last_render - 1) / self.render_speed:
+            self.render_every_nth_frame -= 1
+            if verbose:
+                print(f'We can increase rendering framerate, rendering every {self.render_every_nth_frame} frames')
+
+        if self.render_every_nth_frame > 4:
+            self.render_every_nth_frame = 4
+            print(f'Rendering cannot keep up! Rendering every {self.render_every_nth_frame} frames')
+
+        self.render_skip_frames = self.render_every_nth_frame - 1
+        self.frames_since_last_render = 0
+
+        self.simulation_start_time = time.time()
