@@ -88,8 +88,8 @@ class QuadrotorEnvMulti(gym.Env):
         self.rews_settle = np.zeros(self.num_agents)
         self.rews_settle_raw = np.zeros(self.num_agents)
         self.settle_count = np.zeros(self.num_agents)
+
         self.render_every_nth_frame = 2
-        self.simulation_time = 1/self.envs[0].control_freq
         self.render_times = deque()
         self.frame_counter = 0
 
@@ -219,8 +219,6 @@ class QuadrotorEnvMulti(gym.Env):
                 for i, env in enumerate(self.envs):
                     env.goal = self.goal[i]
 
-
-
         ## DONES
         if any(dones):
             obs = self.reset()
@@ -232,15 +230,15 @@ class QuadrotorEnvMulti(gym.Env):
         self.frame_counter += 1
         if self.frame_counter % self.render_every_nth_frame != 0:
             return None
+
         goals = tuple(e.goal for e in self.envs)
         render_start = time.time()
         self.scene.render_chase(all_dynamics=self.all_dynamics(), goals=goals, mode=mode)
         time_to_render = render_start - time.time()
         self.render_times.append(time_to_render)
         avg_render_time = np.mean(self.render_times)
-        if avg_render_time > self.simulation_time * 2:
-            self.render_every_nth_frame = 3
-        elif self.simulation_time <= avg_render_time <= self.simulation_time * 2:
-            self.render_every_nth_frame = 2
-        else:
-            self.render_every_nth_frame = 1
+
+        simulation_time = 1 / self.envs[0].control_freq
+        self.render_every_nth_frame = math.ceil(avg_render_time / simulation_time)
+        if self.render_every_nth_frame > 3:
+            print(f'Rendering too slow, skipping {self.render_every_nth_frame - 1} frames!')
