@@ -4,6 +4,8 @@ import random
 import numpy as np
 import scipy as scp
 from scipy import spatial
+import time
+from collections import deque
 
 import gym
 
@@ -70,7 +72,7 @@ class QuadrotorEnvMulti(gym.Env):
         self.clip_length = (num_agents-1) * self.neighbor_obs_size
         self.clip_min_box = self.observation_space.low[-self.clip_length:]
         self.clip_max_box = self.observation_space.high[-self.clip_length:]
-	
+
 	## Set Goals
         delta = quads_dist_between_goals
         pi = np.pi
@@ -86,6 +88,10 @@ class QuadrotorEnvMulti(gym.Env):
         self.rews_settle = np.zeros(self.num_agents)
         self.rews_settle_raw = np.zeros(self.num_agents)
         self.settle_count = np.zeros(self.num_agents)
+        self.render_every_nth_frame = 2
+        self.simulation_time = 1/self.envs[0].control_freq
+        self.render_times = deque()
+        self.frame_counter = 0
 
     def all_dynamics(self):
         return tuple(e.dynamics for e in self.envs)
@@ -223,5 +229,18 @@ class QuadrotorEnvMulti(gym.Env):
         return obs, rewards, dones, infos
 
     def render(self, mode='human'):
+        self.frame_counter += 1
+        if self.frame_counter % self.render_every_nth_frame != 0:
+            return None
         goals = tuple(e.goal for e in self.envs)
-        return self.scene.render_chase(all_dynamics=self.all_dynamics(), goals=goals, mode=mode)
+        render_start = time.time()
+        self.scene.render_chase(all_dynamics=self.all_dynamics(), goals=goals, mode=mode)
+        time_to_render = render_start - time.time()
+        self.render_times.append(time_to_render)
+        avg_render_time = np.mean(self.render_times)
+        if avg_render_time > self.simulation_time * 2:
+            self.render_every_nth_frame = 3
+        elif self.simulation_time <= avg_render_time <= self.simulation_time * 2:
+            self.render_every_nth_frame = 2
+        else:
+            self.render_every_nth_frame = 1
