@@ -131,14 +131,14 @@ class WindowTarget(object):
 
     def bind(self):
         self.window.switch_to()
-        self.window.set_vsync(True)
+        # self.window.set_vsync(True)
         self.window.dispatch_events()
         glViewport(0, 0, self.window.width, self.window.height)
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
     def finish(self):
         self.window.flip()
-        self.window.set_vsync(False)
+        # self.window.set_vsync(False)
 
 
 class Camera(object):
@@ -208,7 +208,7 @@ def draw(scene, camera, target):
     glClearColor(r, g, b, 1.0)
     glFrontFace(GL_CCW)
     glCullFace(GL_BACK)
-    glEnable(GL_CULL_FACE);
+    glEnable(GL_CULL_FACE)
     glEnable(GL_DEPTH_TEST)
     glEnable(GL_NORMALIZE)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
