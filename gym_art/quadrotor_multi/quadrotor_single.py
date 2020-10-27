@@ -563,12 +563,19 @@ class QuadrotorDynamics(object):
 
 
 # reasonable reward function for hovering at a goal and not flying too high
-def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, rew_coeff, action_prev):
+def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, rew_coeff, action_prev, quads_settle=False):
     ##################################################
     ## log to create a sharp peak at the goal
     dist = np.linalg.norm(goal - dynamics.pos)
     cost_pos_raw = dist
     cost_pos = rew_coeff["pos"] * cost_pos_raw
+
+    ##  sphere of equal reward if drones are less than 10 arm-lengths to the goal pos
+    radius_coeff = 10
+    vel_coeff = rew_coeff["vel"]
+    if dist <= radius_coeff * dynamics.model.arm_length and quads_settle:  # standard = 0.022, simplified = 0.092
+        cost_pos = 0
+        vel_coeff = 0.8  # penalize movement once drones are close to the goal
 
     ##################################################
     # penalize amount of control effort
@@ -582,7 +589,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     ##################################################
     ## loss velocity
     cost_vel_raw = np.linalg.norm(dynamics.vel)
-    cost_vel = rew_coeff["vel"] * cost_vel_raw
+    cost_vel = vel_coeff * cost_vel_raw
 
     ##################################################
     ## Loss orientation
@@ -677,7 +684,7 @@ class QuadrotorSingle:
                  sim_steps=2,
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs=False, num_agents=1):
+                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs=False, num_agents=1, quads_settle=False):
         np.seterr(under='ignore')
         """
         Args:
@@ -724,6 +731,7 @@ class QuadrotorSingle:
         self.gravity = gravity
         self.swarm_obs = swarm_obs
         self.num_agents = num_agents
+        self.quads_settle = quads_settle
         ## t2w and t2t ranges
         self.t2w_std = t2w_std
         self.t2w_min = 1.5
@@ -972,7 +980,7 @@ class QuadrotorSingle:
         self.time_remain = self.ep_len - self.tick
         reward, rew_info = compute_reward_weighted(self.dynamics, self.goal, action, self.dt, self.crashed,
                                                    self.time_remain,
-                                                   rew_coeff=self.rew_coeff, action_prev=self.actions[1])
+                                                   rew_coeff=self.rew_coeff, action_prev=self.actions[1], quads_settle=self.quads_settle)
         self.tick += 1
         done = self.tick > self.ep_len  # or self.crashed
         sv = self.state_vector(self)
