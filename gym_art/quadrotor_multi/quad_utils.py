@@ -2,6 +2,7 @@ import numpy as np
 import numpy.random as nr
 from numba import njit
 from numpy.linalg import norm
+from scipy import spatial
 from copy import deepcopy
 
 # dict pretty printing
@@ -184,6 +185,33 @@ def dict_update_existing(dic, dic_upd):
             dict_update_existing(dic[key], dic_upd[key])
         else:
             dic[key] = dic_upd[key]
+
+
+def calculate_collision_matrix(positions, arm):
+    dist = spatial.distance_matrix(x=positions, y=positions)
+    collision_matrix = (dist < 2 * arm).astype(np.float32)
+    np.fill_diagonal(collision_matrix, 0.0)
+
+    # get upper triangular matrix and check if they have collisions and append to all collisions
+    upt = np.triu(collision_matrix)
+    up_w1 = np.where(upt >= 1)
+    all_collisions = []
+    if len(up_w1[0]) > 0:
+        for i, val in enumerate(up_w1[0]):
+            all_collisions.append((up_w1[0][i], up_w1[1][i]))
+
+    return collision_matrix, all_collisions
+
+
+def perform_collision(dyn1, dyn2):
+    coll_vector = dyn1.pos - dyn2.pos
+    coll_vector = coll_vector/len(coll_vector)
+    v1new = np.dot(dyn1.vel, coll_vector)
+    v2new = np.dot(dyn2.vel, coll_vector)
+    dyn1.vel += (v2new - v1new) * coll_vector
+    dyn2.vel += (v1new - v2new) * coll_vector
+    dyn1.vel += 0.05 * np.random.normal(0, 0.5)
+    dyn2.vel += 0.05 * np.random.normal(0, 0.5)
 
 
 class OUNoise:
