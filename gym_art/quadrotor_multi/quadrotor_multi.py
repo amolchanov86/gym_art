@@ -11,7 +11,7 @@ import gym
 
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
-from gym_art.quadrotor_multi.quad_utils import calculate_collision_matrix
+from gym_art.quadrotor_multi.quad_utils import calculate_collision_matrix, perform_collision
 
 
 class QuadrotorEnvMulti(gym.Env):
@@ -185,6 +185,10 @@ class QuadrotorEnvMulti(gym.Env):
         unique_collisions = np.setdiff1d(self.curr_collisions, self.prev_collisions)
         self.collisions_per_episode += len(unique_collisions) if unique_collisions.any() else 0
         self.prev_collisions = self.curr_collisions
+
+        # performing all collisions
+        for val in self.curr_collisions:
+            perform_collision(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
 
         for i in range(self.num_agents):
             rewards[i] += self.rew_collisions[i]

@@ -6,7 +6,7 @@ import gym_art.quadrotor_multi.rendering3d as r3d
 from gym_art.quadrotor_multi.quadrotor_visualization import ChaseCamera, SideCamera, quadrotor_simple_3dmodel, \
     quadrotor_3dmodel
 from gym_art.quadrotor_multi.params import quad_color
-from gym_art.quadrotor_multi.quad_utils import perform_collision, calculate_collision_matrix
+from gym_art.quadrotor_multi.quad_utils import calculate_collision_matrix
 from scipy import spatial
 
 
@@ -103,7 +103,7 @@ class Quadrotor3DSceneMulti:
         self.scene = r3d.Scene(batches=[batch], bgcolor=(0, 0, 0))
         self.scene.initialize()
 
-        # Collision spheres have to be added in th ending after everything has been rendered, as it transparent
+        # Collision spheres have to be added in the ending after everything has been rendered, as it transparent
         bodies = []
         bodies.extend(self.collision_transforms)
         world = r3d.World(bodies)
@@ -165,9 +165,6 @@ class Quadrotor3DSceneMulti:
                 else:
                     self.collision_transforms[i].set_transform_and_color(matrix, (0, 0, 0, 0.0))
 
-            # performing all collisions
-            for val in all_collisions:
-                perform_collision(all_dynamics[val[0]], all_dynamics[val[1]])
 
     def render_chase(self, all_dynamics, goals, mode='human'):
         if mode == 'human':

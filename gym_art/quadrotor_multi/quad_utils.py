@@ -196,22 +196,33 @@ def calculate_collision_matrix(positions, arm):
     upt = np.triu(collision_matrix)
     up_w1 = np.where(upt >= 1)
     all_collisions = []
-    if len(up_w1[0]) > 0:
-        for i, val in enumerate(up_w1[0]):
-            all_collisions.append((up_w1[0][i], up_w1[1][i]))
+    for i, val in enumerate(up_w1[0]):
+        all_collisions.append((up_w1[0][i], up_w1[1][i]))
 
     return collision_matrix, all_collisions
 
 
+# This function is to change the velocities after a collision happens between two bodies
 def perform_collision(dyn1, dyn2):
-    coll_vector = dyn1.pos - dyn2.pos
-    coll_vector = coll_vector/len(coll_vector)
-    v1new = np.dot(dyn1.vel, coll_vector)
-    v2new = np.dot(dyn2.vel, coll_vector)
-    dyn1.vel += (v2new - v1new) * coll_vector
-    dyn2.vel += (v1new - v2new) * coll_vector
-    dyn1.vel += 0.05 * np.random.normal(0, 0.5)
-    dyn2.vel += 0.05 * np.random.normal(0, 0.5)
+
+    # Ge the collision normal, i.e difference in position
+    collision_norm = dyn1.pos - dyn2.pos
+    collision_norm = collision_norm/np.linalg.norm(collision_norm)
+
+    # Get the components of the velocity vectors which are parallel to the collision.
+    # The perpendicular component remains the same.
+    v1new = np.dot(dyn1.vel, collision_norm)
+    v2new = np.dot(dyn2.vel, collision_norm)
+
+    # Solve for the new velocities using the elastic collision equations. It's really simple when the
+    dyn1.vel += (v2new - v1new) * collision_norm
+    dyn2.vel += (v1new - v2new) * collision_norm
+
+    # Now adding two different random components, one that preserves momentum in opposite directions
+    # and another that does not preserve momentum
+    cons_rand_val = np.random.normal(0, 0.8, 3)
+    dyn1.vel += cons_rand_val + np.random.normal(0, 0.15, 3)
+    dyn2.vel += -cons_rand_val + np.random.normal(0, 0.15, 3)
 
 
 class OUNoise:
