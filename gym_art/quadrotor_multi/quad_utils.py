@@ -207,7 +207,8 @@ def perform_collision(dyn1, dyn2):
 
     # Ge the collision normal, i.e difference in position
     collision_norm = dyn1.pos - dyn2.pos
-    collision_norm = collision_norm/np.linalg.norm(collision_norm)
+    coll_norm_mag = np.linalg.norm(collision_norm)
+    collision_norm = collision_norm/(coll_norm_mag + 0.00001 if coll_norm_mag == 0.0 else coll_norm_mag)
 
     # Get the components of the velocity vectors which are parallel to the collision.
     # The perpendicular component remains the same.
@@ -218,8 +219,9 @@ def perform_collision(dyn1, dyn2):
     dyn1.vel += (v2new - v1new) * collision_norm
     dyn2.vel += (v1new - v2new) * collision_norm
 
-    # Now adding two different random components, one that preserves momentum in opposite directions
-    # and another that does not preserve momentum
+    # Now adding two different random components,
+    # One that preserves momentum in opposite directions
+    # Second that does not preserve momentum
     cons_rand_val = np.random.normal(0, 0.8, 3)
     dyn1.vel += cons_rand_val + np.random.normal(0, 0.15, 3)
     dyn2.vel += -cons_rand_val + np.random.normal(0, 0.15, 3)

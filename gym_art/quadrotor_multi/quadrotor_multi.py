@@ -24,8 +24,8 @@ class QuadrotorEnvMulti(gym.Env):
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_dist_between_goals=0.3, quads_mode='circular_config', swarm_obs=False, quads_use_numba=False, quads_settle=False,
-                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8
-                 ):
+                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8,
+                 collision_force=False):
 
         super().__init__()
 
@@ -108,6 +108,7 @@ class QuadrotorEnvMulti(gym.Env):
         self.collisions_per_episode = 0
         self.prev_collisions = []
         self.curr_collisions = []
+        self.apply_collision_force = collision_force
 
     def all_dynamics(self):
         return tuple(e.dynamics for e in self.envs)
@@ -187,8 +188,9 @@ class QuadrotorEnvMulti(gym.Env):
         self.prev_collisions = self.curr_collisions
 
         # performing all collisions
-        for val in self.curr_collisions:
-            perform_collision(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
+        if self.apply_collision_force:
+            for val in self.curr_collisions:
+                perform_collision(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
 
         for i in range(self.num_agents):
             rewards[i] += self.rew_collisions[i]
