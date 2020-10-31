@@ -22,12 +22,17 @@ class QuadrotorEnvMulti(gym.Env):
                  sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_size=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
-                 quads_dist_between_goals=0.3, quads_mode='circular_config', swarm_obs=False, quads_use_numba=False, quads_settle=False):
+                 quads_dist_between_goals=0.3, quads_mode='circular_config', swarm_obs=False, quads_use_numba=False, quads_settle=False,
+                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8
+                 ):
 
         super().__init__()
 
         self.num_agents = num_agents
         self.swarm_obs = swarm_obs
+        # Set this parameter to True is for supporting num_agents=1,
+        # More info, please look at sample-factory: envs/quadrotors/wrappers/reward_shaping.py
+        self.is_multiagent = True
         self.envs = []
 
         for i in range(self.num_agents):
@@ -36,7 +41,7 @@ class QuadrotorEnvMulti(gym.Env):
                 raw_control, raw_control_zero_middle, dim_mode, tf_control, sim_freq, sim_steps,
                 obs_repr, ep_time, obstacles_num, room_size, init_random_state,
                 rew_coeff, sense_noise, verbose, gravity, t2w_std, t2t_std, excite, dynamics_simplification,
-                quads_use_numba, self.swarm_obs, self.num_agents, quads_settle
+                quads_use_numba, self.swarm_obs, self.num_agents, quads_settle, quads_settle_range_coeff, quads_vel_reward_out_range
             )
             self.envs.append(e)
 
@@ -68,12 +73,17 @@ class QuadrotorEnvMulti(gym.Env):
         ## Aux variables
         self.pos = np.zeros([self.num_agents, 3]) #Matrix containing all positions
         self.quads_mode = quads_mode
-        self.neighbor_obs_size = 6
-        self.clip_length = (num_agents-1) * self.neighbor_obs_size
-        self.clip_min_box = self.observation_space.low[-self.clip_length:]
-        self.clip_max_box = self.observation_space.high[-self.clip_length:]
+        if obs_repr == 'xyz_vxyz_R_omega':
+            obs_self_size = 18
+        else:
+            raise NotImplementedError(f'{obs_repr} not supported!')
 
-	## Set Goals
+        self.neighbor_obs_size = 6
+        self.clip_neighbor_space_length = (num_agents-1) * self.neighbor_obs_size
+        self.clip_neighbor_space_min_box = self.observation_space.low[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
+        self.clip_neighbor_space_max_box = self.observation_space.high[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
+
+	    ## Set Goals
         delta = quads_dist_between_goals
         pi = np.pi
         self.goal = []
@@ -107,7 +117,7 @@ class QuadrotorEnvMulti(gym.Env):
         obs_neighbors = np.stack(obs_neighbors)
 
         # clip observation space of neighborhoods
-        obs_neighbors = np.clip(obs_neighbors, a_min=self.clip_min_box, a_max=self.clip_max_box)
+        obs_neighbors = np.clip(obs_neighbors, a_min=self.clip_neighbor_space_min_box, a_max=self.clip_neighbor_space_max_box)
         obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
 
