@@ -2,6 +2,8 @@ import numpy as np
 import numpy.random as nr
 from numba import njit
 from numpy.linalg import norm
+from copy import deepcopy
+from numpy import cos, sin
 from scipy import spatial
 from copy import deepcopy
 
@@ -185,6 +187,30 @@ def dict_update_existing(dic, dic_upd):
             dict_update_existing(dic[key], dic_upd[key])
         else:
             dic[key] = dic_upd[key]
+
+
+def spherical_coordinate(x, y):
+    return [cos(x) * cos(y), sin(x) * cos(y), sin(y)]
+
+
+def NX(n, x):
+    pts = []
+    start = (-1. + 1. / (n - 1.))
+    increment = (2. - 2. / (n - 1.)) / (n - 1.)
+    pi = np.pi
+    for j in range(0, n):
+        s = start + j * increment
+        pts.append(spherical_coordinate(
+            s * x, pi / 2. * np.sign(s) * (1. - np.sqrt(1. - abs(s)))
+        ))
+    return pts
+
+
+def generate_points(n=3):
+    if n < 3:
+        print("The number of goals can not smaller than 3, The system has cast it to 3")
+        n = 3
+    return NX(n, 0.1 + 1.2 * n)
 
 
 def calculate_collision_matrix(positions, arm):
