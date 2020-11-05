@@ -244,8 +244,8 @@ class QuadrotorEnvMulti(gym.Env):
         ## DONES
         if any(dones):
             for i in range(len(infos)):
-                infos[i]['eps_data'] = {}
-                infos[i]['eps_data']['num_collisions'] = self.collisions_per_episode
+                infos[i]['eps_extra_stats'] = {}
+                infos[i]['eps_extra_stats']['num_collisions'] = self.collisions_per_episode
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
         return obs, rewards, dones, infos
