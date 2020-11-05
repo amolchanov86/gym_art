@@ -262,6 +262,11 @@ class Transform(SceneNode):
     def set_transform_nocollide(self, t):
         self.pyg_grp.set_matrix(t)
 
+    def set_transform_and_color(self, t, rgba):
+        self.pyg_grp.set_matrix(t)
+        for child in self.children:
+            child.set_rgba(rgba[0], rgba[1], rgba[2], rgba[3])
+
     def collide_sphere(self, x, radius):
         xh = [x[0], x[1], x[2], 1]
         xlocal = np.matmul(self.mat_inv, xh)[:3]
@@ -291,6 +296,9 @@ class Color(SceneNode):
 
     def set_rgb(self, r, g, b):
         self.pyg_grp.set_rgb(r, g, b)
+
+    def set_rgba(self, r, g, b, a):
+        self.pyg_grp.set_rgba(r, g, b, a)
 
 def transform_and_color(transform, color, children):
     return Transform(transform, Color(color, children))

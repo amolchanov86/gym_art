@@ -6,6 +6,8 @@ import gym_art.quadrotor_multi.rendering3d as r3d
 from gym_art.quadrotor_multi.quadrotor_visualization import ChaseCamera, SideCamera, quadrotor_simple_3dmodel, \
     quadrotor_3dmodel
 from gym_art.quadrotor_multi.params import quad_color
+from gym_art.quadrotor_multi.quad_utils import calculate_collision_matrix
+from scipy import spatial
 
 
 class Quadrotor3DSceneMulti:
@@ -64,7 +66,7 @@ class Quadrotor3DSceneMulti:
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
 
-        self.quad_transforms, self.shadow_transforms, self.goal_transforms = [], [], []
+        self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms = [], [], [], []
 
         for i, model in enumerate(self.models):
             if model is not None:
@@ -75,6 +77,9 @@ class Quadrotor3DSceneMulti:
 
             self.shadow_transforms.append(
                 r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.4), r3d.circle(0.75 * self.diameter, 32))
+            )
+            self.collision_transforms.append(
+                r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), r3d.sphere(0.75 * self.diameter, 32))
             )
 
         # TODO make floor size or walls to indicate world_box
@@ -95,9 +100,16 @@ class Quadrotor3DSceneMulti:
         world = r3d.World(bodies)
         batch = r3d.Batch()
         world.build(batch)
-
         self.scene = r3d.Scene(batches=[batch], bgcolor=(0, 0, 0))
         self.scene.initialize()
+
+        # Collision spheres have to be added in the ending after everything has been rendered, as it transparent
+        bodies = []
+        bodies.extend(self.collision_transforms)
+        world = r3d.World(bodies)
+        batch = r3d.Batch()
+        world.build(batch)
+        self.scene.batches.extend([batch])
 
     def create_goals(self):
         for i in range(len(self.models)):
@@ -133,6 +145,11 @@ class Quadrotor3DSceneMulti:
 
             self.update_goals(goals=goals)
 
+            # computing collisions
+            positions = np.array([dyn.pos for dyn in all_dynamics])
+            collision_matrix, all_collisions = calculate_collision_matrix(positions, all_dynamics[0].arm)
+            collision_sums = np.sum(collision_matrix, axis=1)
+
             for i, dyn in enumerate(all_dynamics):
                 matrix = r3d.trans_and_rot(dyn.pos, dyn.rot)
                 self.quad_transforms[i].set_transform_nocollide(matrix)
@@ -141,6 +158,13 @@ class Quadrotor3DSceneMulti:
                 shadow_pos[2] = 0.001  # avoid z-fighting
                 matrix = r3d.translate(shadow_pos)
                 self.shadow_transforms[i].set_transform_nocollide(matrix)
+
+                matrix = r3d.translate(dyn.pos)
+                if collision_sums[i] > 0.0:
+                    self.collision_transforms[i].set_transform_and_color(matrix, (1, 0, 0, 0.4))
+                else:
+                    self.collision_transforms[i].set_transform_and_color(matrix, (0, 0, 0, 0.0))
+
 
     def render_chase(self, all_dynamics, goals, mode='human'):
         if mode == 'human':
