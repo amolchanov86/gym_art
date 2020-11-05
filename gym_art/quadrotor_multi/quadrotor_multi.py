@@ -228,12 +228,32 @@ class QuadrotorEnvMulti(gym.Env):
                 for i, env in enumerate(self.envs):
                     env.goal = self.goal[i]
 
-        ## DONES
+        elif self.quads_mode == "lissajous3D":
+            control_freq = self.envs[0].control_freq
+            tick = self.envs[0].tick / control_freq
+            x, y, z = self.lissajous3D(tick)
+            goal_x, goal_y, goal_z = self.goal[0][0], self.goal[0][1], self.goal[0][2]
+            x_new, y_new, z_new = x + goal_x, y + goal_y,  z+ goal_z
+            self.goal = [[x_new, y_new, z_new] for i in range(self.num_agents)]
+            self.goal = np.array(self.goal)
+
+            for i, env in enumerate(self.envs):
+                env.goal = self.goal[i]
+
+
+            # DONES
         if any(dones):
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
 
         return obs, rewards, dones, infos
+
+    # Based on https://mathcurve.com/courbes3d.gb/lissajous3d/lissajous3d.shtml
+    def lissajous3D(self, tick, a=0.03, b=0.01, c=0.01, n=2, m=2, phi=90, psi=90):
+        x = a * np.sin(tick)
+        y = b * np.sin(n * tick + phi)
+        z = c * np.cos(m * tick + psi)
+        return x, y, z
 
     def render(self, mode='human', verbose=False):
         self.frames_since_last_render += 1
