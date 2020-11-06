@@ -11,6 +11,7 @@ import gym
 
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
+from gym_art.quadrotor_multi.quad_utils import calculate_collision_matrix, perform_collision
 
 
 class QuadrotorEnvMulti(gym.Env):
@@ -23,8 +24,7 @@ class QuadrotorEnvMulti(gym.Env):
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_dist_between_goals=0.3, quads_mode='circular_config', swarm_obs=False, quads_use_numba=False, quads_settle=False,
-                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8
-                 ):
+                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8, collision_force=True):
 
         super().__init__()
 
@@ -104,6 +104,11 @@ class QuadrotorEnvMulti(gym.Env):
         self.render_every_nth_frame = 1
         self.render_speed = 1.0  # set to below 1 for slowmo, higher than 1 for fast forward (if simulator can keep up)
 
+        self.collisions_per_episode = 0
+        self.prev_collisions = []
+        self.curr_collisions = []
+        self.apply_collision_force = collision_force
+
     def all_dynamics(self):
         return tuple(e.dynamics for e in self.envs)
 
@@ -120,7 +125,6 @@ class QuadrotorEnvMulti(gym.Env):
         obs_neighbors = np.clip(obs_neighbors, a_min=self.clip_neighbor_space_min_box, a_max=self.clip_neighbor_space_max_box)
         obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
-
 
     def reset(self):
         obs, rewards, dones, infos = [], [], [], []
@@ -150,6 +154,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics())
 
+        self.collisions_per_episode = 0
         return obs
 
     # noinspection PyTypeChecker
@@ -173,11 +178,18 @@ class QuadrotorEnvMulti(gym.Env):
 
         ## SWARM REWARDS
         # -- BINARY COLLISION REWARD
-        self.dist = spatial.distance_matrix(x=self.pos, y=self.pos)
-        self.collisions = (self.dist < 2 * self.envs[0].dynamics.arm).astype(np.float32)
-        np.fill_diagonal(self.collisions, 0.0) # removing self-collision
+        self.collisions, self.curr_collisions = calculate_collision_matrix(self.pos, self.envs[0].dynamics.arm)
         self.rew_collisions_raw = - np.sum(self.collisions, axis=1)
         self.rew_collisions = self.rew_coeff["quadcol_bin"] * self.rew_collisions_raw
+
+        unique_collisions = np.setdiff1d(self.curr_collisions, self.prev_collisions)
+        self.collisions_per_episode += len(unique_collisions) if unique_collisions.any() else 0
+        self.prev_collisions = self.curr_collisions
+
+        # performing all collisions
+        if self.apply_collision_force:
+            for val in self.curr_collisions:
+                perform_collision(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
 
         for i in range(self.num_agents):
             rewards[i] += self.rew_collisions[i]
@@ -240,12 +252,13 @@ class QuadrotorEnvMulti(gym.Env):
             for i, env in enumerate(self.envs):
                 env.goal = self.goal[i]
 
-
-            # DONES
+        ## DONES
         if any(dones):
+            for i in range(len(infos)):
+                infos[i]['eps_extra_stats'] = {}
+                infos[i]['eps_extra_stats']['num_collisions'] = self.collisions_per_episode
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
-
         return obs, rewards, dones, infos
 
     # Based on https://mathcurve.com/courbes3d.gb/lissajous3d/lissajous3d.shtml
