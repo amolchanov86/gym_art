@@ -193,12 +193,12 @@ def spherical_coordinate(x, y):
     return [cos(x) * cos(y), sin(x) * cos(y), sin(y)]
 
 
-def NX(n, x):
+def points_in_sphere(n, x):
     pts = []
     start = (-1. + 1. / (n - 1.))
     increment = (2. - 2. / (n - 1.)) / (n - 1.)
     pi = np.pi
-    for j in range(0, n):
+    for j in range(n):
         s = start + j * increment
         pts.append(spherical_coordinate(
             s * x, pi / 2. * np.sign(s) * (1. - np.sqrt(1. - abs(s)))
@@ -210,7 +210,7 @@ def generate_points(n=3):
     if n < 3:
         print("The number of goals can not smaller than 3, The system has cast it to 3")
         n = 3
-    return NX(n, 0.1 + 1.2 * n)
+    return points_in_sphere(n, 0.1 + 1.2 * n)
 
 
 def calculate_collision_matrix(positions, arm):

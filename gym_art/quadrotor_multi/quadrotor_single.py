@@ -686,7 +686,7 @@ class QuadrotorSingle:
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs=False, num_agents=1,quads_settle=False,
                  quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8,
-                 view_mode='local', obstacle_mode='None', obstacle_num=0):
+                 view_mode='local', obstacle_mode='no_obstacles', obstacle_num=0):
         np.seterr(under='ignore')
         """
         Args:
@@ -946,7 +946,7 @@ class QuadrotorSingle:
         obs_comps = self.obs_repr.split("_")
         if self.swarm_obs and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * (self.num_agents-1)
-        if self.obstacle_mode != 'None':
+        if self.obstacle_mode != 'no_obstacles':
             obs_comps = obs_comps + (['roxyz'] + ['rovxyz']) * (self.obstacle_num)
 
         print("Observation components:", obs_comps)

@@ -27,18 +27,16 @@ class QuadrotorEnvMulti(gym.Env):
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_dist_between_goals=0.0, quads_mode='static_goal', swarm_obs=False, quads_use_numba=False, quads_settle=False,
-                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8, quads_goal_dimension='2D', quads_obstacle_mode='None', quads_view_mode='local', quads_obstacle_num=0,
+                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8, quads_goal_dimension='2D', quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
                  quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True):
 
         super().__init__()
 
         self.num_agents = num_agents
         self.swarm_obs = swarm_obs
-        # Set this parameter to True is for supporting num_agents=1,
-        # More info, please look at sample-factory: envs/quadrotors/wrappers/reward_shaping.py
+        # Set to True means that sample_factory will treat it as a multi-agent vectorized environment even with
+        # num_agents=1. More info, please look at sample-factory: envs/quadrotors/wrappers/reward_shaping.py
         self.is_multiagent = True
-        if self.num_agents == 1:
-            self.is_multiagent = False
 
         self.envs = []
 
@@ -193,7 +191,7 @@ class QuadrotorEnvMulti(gym.Env):
         self.set_obstacles = False
         self.obstacle_settle_count = np.zeros(self.num_agents)
         quads_pos = np.array(quads_pos)
-        quads_vel = obs[:, 3:6]
+        quads_vel = np.array(obs)[:, 3:6]
         obs = self.obstacles.reset(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel, set_obstacles=self.set_obstacles)
 
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics(), obstacles=self.obstacles)
@@ -298,7 +296,7 @@ class QuadrotorEnvMulti(gym.Env):
             pass
 
         if self.obstacle_mode == 'dynamic':
-            quads_vel = obs[:, 3:6]
+            quads_vel = np.array(obs)[:, 3:6]
             tmp_obs = self.obstacles.step(obs=obs, quads_pos=self.pos, quads_vel=quads_vel,
                                       set_obstacles=self.set_obstacles)
 

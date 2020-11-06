@@ -14,7 +14,7 @@ class Quadrotor3DSceneMulti:
     def __init__(
             self, w, h,
             quad_arm=None, models=None, obstacles=None, visible=True, resizable=True, goal_diameter=None,
-            viewpoint='chase', obs_hw=None, obstacle_mode='None'
+            viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles'
     ):
         if obs_hw is None:
             obs_hw = [64, 64]
@@ -98,8 +98,7 @@ class Quadrotor3DSceneMulti:
         bodies.extend(self.goal_transforms)
         bodies.extend(self.quad_transforms)
 
-        # TODO: obstacles?
-        if self.obstacle_mode != 'None':
+        if self.obstacle_mode != 'no_obstacles':
             self.create_obstacles()
             bodies.extend(self.obstacle_transforms)
 
@@ -166,7 +165,7 @@ class Quadrotor3DSceneMulti:
             self.fpv_lookat = all_dynamics[0].look_at()
 
             self.update_goals(goals=goals)
-            if self.obstacle_mode != 'None':
+            if self.obstacle_mode != 'no_obstacles':
                 self.update_obstacles(obstacles=obstacles)
 
             # computing collisions

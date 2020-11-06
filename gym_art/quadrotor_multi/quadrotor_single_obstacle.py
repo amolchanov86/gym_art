@@ -3,8 +3,8 @@ from scipy import spatial
 EPS = 1e-6
 
 
-class Single_Obstacle():
-    def __init__(self, max_init_vel=1., init_box=2.0, mean_goals=2.0, goal_central=np.array([0., 0., 2.0]), mode='None',
+class SingleObstacle():
+    def __init__(self, max_init_vel=1., init_box=2.0, mean_goals=2.0, goal_central=np.array([0., 0., 2.0]), mode='no_obstacles',
                  type='sphere', size=0.0, quad_size=0.04, dt=0.05):
         self.max_init_vel = max_init_vel
         self.init_box = init_box
@@ -38,8 +38,8 @@ class Single_Obstacle():
         force_pos = force_pos + force_noise
         rel_force_obstacle = force_pos - self.pos
         radius = 2.0 * np.linalg.norm(rel_force_obstacle)
-        if radius == 0:
-            raduis = EPS
+        radius = max(EPS, radius)
+
         force_direction = rel_force_obstacle / radius
         force = radius * radius * force_direction
         # Calculate acceleration, F = ma, here, m = 1.0
