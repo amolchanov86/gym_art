@@ -1,6 +1,6 @@
 import numpy as np
 
-from gym_art.quadrotor_multi.quadrotor_single_obstacle import Single_Obstacle
+from gym_art.quadrotor_multi.quadrotor_single_obstacle import SingleObstacle
 
 EPS = 1e-6
 
@@ -20,7 +20,7 @@ class MultiObstacles():
         self.type = type
         self.obstacles = []
         for i in range(num_obstacles):
-            obstacle = Single_Obstacle(max_init_vel=self.max_init_vel, init_box=self.init_box,
+            obstacle = SingleObstacle(max_init_vel=self.max_init_vel, init_box=self.init_box,
                                        mean_goals=self.mean_goals, goal_central=self.goal_central,
                                        mode=self.mode, type=self.type, size=self.size, quad_size=self.quad_size,
                                        dt=self.dt
@@ -49,7 +49,7 @@ class MultiObstacles():
 
         return obs
 
-    def collision_detection(self, pos_quads=None, saft_dist=0.05):
+    def collision_detection(self, pos_quads=None):
         collision_arr = np.zeros((len(self.obstacles), len(pos_quads)))
         for i, obstacle in enumerate(self.obstacles):
             col_arr = obstacle.collision_detection(pos_quads=pos_quads)

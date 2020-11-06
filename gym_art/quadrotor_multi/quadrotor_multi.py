@@ -10,7 +10,7 @@ from collections import deque
 import gym
 
 from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, perform_collision
-from gym_art.quadrotor_multi.quadrotor_multi_obstacles import Multi_Obstacles
+from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
 
@@ -125,7 +125,7 @@ class QuadrotorEnvMulti(gym.Env):
         self.set_obstacles = False
         self.obstacle_settle_count = np.zeros(self.num_agents)
 
-        self.obstacles = Multi_Obstacles(mode=self.obstacle_mode, num_obstacles=self.obstacle_num,
+        self.obstacles = MultiObstacles(mode=self.obstacle_mode, num_obstacles=self.obstacle_num,
                                      max_init_vel=self.obstacle_max_init_vel, init_box=self.obstacle_init_box,
                                      mean_goals=self.mean_goals_z, goal_central=self.goal_central,
                                      dt=self.dt, quad_size=self.envs[0].dynamics.arm, type=self.obstacle_type, size=self.obstacle_size)
@@ -180,7 +180,7 @@ class QuadrotorEnvMulti(gym.Env):
 
             observation = e.reset()
             obs.append(observation)
-            quads_pos.append(observation[:3] + e.goal)
+            quads_pos.append(e.dynamics.pos)
 
         # extend obs to see neighbors
         if self.swarm_obs and self.num_agents > 1:
@@ -212,7 +212,7 @@ class QuadrotorEnvMulti(gym.Env):
             dones.append(done)
             infos.append(info)
 
-            self.pos[i, :] = observation[:3] + self.envs[i].goal
+            self.pos[i, :] = self.envs[i].dynamics.pos
 
         if self.swarm_obs and self.num_agents > 1:
             obs_ext = self.extend_obs_space(obs)
