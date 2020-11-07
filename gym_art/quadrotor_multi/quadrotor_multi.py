@@ -87,12 +87,14 @@ class QuadrotorEnvMulti(gym.Env):
         delta = quads_dist_between_goals
         pi = np.pi
         self.goal = []
+        self.init_goal_pos = []
         for i in range(self.num_agents):
             degree = 2 * pi * i / self.num_agents
             goal_x = delta * np.cos(degree)
             goal_y = delta * np.sin(degree)
             goal = [goal_x, goal_y, 2.0]
             self.goal.append(goal)
+            self.init_goal_pos.append(goal)
 
         self.goal = np.array(self.goal)
         self.rews_settle = np.zeros(self.num_agents)
@@ -141,6 +143,7 @@ class QuadrotorEnvMulti(gym.Env):
             self.scene.update_models(models)
 
         for i, e in enumerate(self.envs):
+            self.goal[i] = self.init_goal_pos[i]
             e.goal = self.goal[i]
             e.rew_coeff = self.rew_coeff
 
