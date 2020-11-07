@@ -163,6 +163,13 @@ class Quadrotor3DSceneMulti:
         if self.scene:
             self.chase_cam.step(all_dynamics[0].pos, all_dynamics[0].vel)
             self.fpv_lookat = all_dynamics[0].look_at()
+            # use this to get trails on the goals and visualize the paths they follow
+            # bodies = []
+            # bodies.extend(self.goal_transforms)
+            # world = r3d.World(bodies)
+            # batch = r3d.Batch()
+            # world.build(batch)
+            # self.scene.batches.extend([batch])
 
             self.update_goals(goals=goals)
             if self.obstacle_mode != 'no_obstacles':
