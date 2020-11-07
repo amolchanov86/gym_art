@@ -793,6 +793,7 @@ class QuadrotorEnv(gym.Env, gym_utils.EzPickle):
         self.tick = 0
         self.crashed = False
         self.control_freq = sim_freq / sim_steps
+        self.is_multiagent = False
 
         #########################################
         ## REWARDS PARAMS

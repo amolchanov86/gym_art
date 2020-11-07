@@ -684,8 +684,9 @@ class QuadrotorSingle:
                  sim_steps=2,
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs=False, num_agents=1, quads_settle=False,
-                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8):
+                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs=False, num_agents=1,quads_settle=False,
+                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8,
+                 view_mode='local', obstacle_mode='no_obstacles', obstacle_num=0):
         np.seterr(under='ignore')
         """
         Args:
@@ -768,6 +769,13 @@ class QuadrotorSingle:
         ## Statistics vars
         self.traj_count = 0
 
+        ## View / Camera mode
+        self.view_mode = view_mode
+
+        ## Obstacle Mode
+        self.obstacle_mode = obstacle_mode
+        self.obstacle_num = obstacle_num
+
         ###############################################################################
         ## DYNAMICS (and randomization)
 
@@ -817,10 +825,13 @@ class QuadrotorSingle:
 
         ################################################################################
         ## DIMENSIONALITY
-        if self.dim_mode == '1D' or self.dim_mode == '2D':
-            self.viewpoint = 'side'
+        if self.view_mode == 'local':
+            if self.dim_mode == '1D' or self.dim_mode == '2D':
+                self.viewpoint = 'side'
+            else:
+                self.viewpoint = 'chase'
         else:
-            self.viewpoint = 'chase'
+            self.viewpoint = 'global'
 
         ################################################################################
         ## EPISODE PARAMS
@@ -923,8 +934,11 @@ class QuadrotorSingle:
             "act": [np.zeros(4), np.ones(4)],
             "quat": [-np.ones(4), np.ones(4)],
             "euler": [-np.pi * np.ones(3), np.pi * np.ones(3)],
-            "rxyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]], # rxyz stands for relative xyz
-            "rvxyz": [-2.0 * self.dynamics.vxyz_max * np.ones(3), 2.0 * self.dynamics.vxyz_max * np.ones(3)], # rvxyz stands for relative vxyz
+            "rxyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]], # rxyz stands for relative pos between quadrotors
+            "rvxyz": [-2.0 * self.dynamics.vxyz_max * np.ones(3), 2.0 * self.dynamics.vxyz_max * np.ones(3)], # rvxyz stands for relative velocity between quadrotors
+            "roxyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]], # roxyz stands for relative pos between quadrotor and obstacle
+            "rovxyz": [-20.0 * np.ones(3), 20.0 * np.ones(3)], # rovxyz stands for relative velocity between quadrotor and obstacle
+
         }
         self.obs_comp_names = list(self.obs_space_low_high.keys())
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
@@ -932,6 +946,9 @@ class QuadrotorSingle:
         obs_comps = self.obs_repr.split("_")
         if self.swarm_obs and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * (self.num_agents-1)
+        if self.obstacle_mode != 'no_obstacles':
+            obs_comps = obs_comps + (['roxyz'] + ['rovxyz']) * (self.obstacle_num)
+
         print("Observation components:", obs_comps)
         obs_low, obs_high = [], []
         for comp in obs_comps:
