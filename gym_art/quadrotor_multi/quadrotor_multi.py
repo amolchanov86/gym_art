@@ -96,16 +96,19 @@ class QuadrotorEnvMulti(gym.Env):
 
         if self.goal_dimension == "2D":
             self.goal = []
+            self.init_goal_pos = []
             for i in range(self.num_agents):
                 degree = 2 * pi * i / self.num_agents
                 goal_x = delta * np.cos(degree)
                 goal_y = delta * np.sin(degree)
                 goal = [goal_x, goal_y, 2.0]
                 self.goal.append(goal)
+                self.init_goal_pos.append(goal)
             self.goal = np.array(self.goal)
         elif self.goal_dimension == "3D":
             self.goal = delta * np.array(generate_points(self.num_agents))
             self.goal[:, 2] += 2.0
+            self.init_goal_pos = self.goal
         else:
             raise NotImplementedError()
 
