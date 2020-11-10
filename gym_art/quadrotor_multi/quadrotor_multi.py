@@ -96,12 +96,15 @@ class QuadrotorEnvMulti(gym.Env):
 
         if self.goal_dimension == "2D":
             self.goal = []
+            self.init_goal_pos = []
             for i in range(self.num_agents):
                 degree = 2 * pi * i / self.num_agents
                 goal_x = delta * np.cos(degree)
                 goal_y = delta * np.sin(degree)
                 goal = [goal_x, goal_y, 2.0]
                 self.goal.append(goal)
+                self.init_goal_pos.append(goal)
+
             self.goal = np.array(self.goal)
         elif self.goal_dimension == "3D":
             self.goal = delta * np.array(generate_points(self.num_agents))
@@ -161,7 +164,6 @@ class QuadrotorEnvMulti(gym.Env):
 
     def reset(self):
         obs, rewards, dones, infos = [], [], [], []
-        quads_pos = []
 
         models = tuple(e.dynamics.model for e in self.envs)
 
@@ -182,7 +184,6 @@ class QuadrotorEnvMulti(gym.Env):
 
             observation = e.reset()
             obs.append(observation)
-            quads_pos.append(e.dynamics.pos)
 
         # extend obs to see neighbors
         if self.swarm_obs and self.num_agents > 1:
@@ -192,8 +193,8 @@ class QuadrotorEnvMulti(gym.Env):
         # Reset Obstacles
         self.set_obstacles = False
         self.obstacle_settle_count = np.zeros(self.num_agents)
-        quads_pos = np.array(quads_pos)
-        quads_vel = np.array(obs)[:, 3:6]
+        quads_pos = np.array([e.dynamics.pos for e in self.envs])
+        quads_vel = np.array([e.dynamics.vel for e in self.envs])
         obs = self.obstacles.reset(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel, set_obstacles=self.set_obstacles)
 
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics(), obstacles=self.obstacles)
@@ -309,9 +310,9 @@ class QuadrotorEnvMulti(gym.Env):
             pass
 
         if self.obstacle_mode == 'dynamic':
-            quads_vel = np.array(obs)[:, 3:6]
+            quads_vel = np.array([e.dynamics.vel for e in self.envs])
             tmp_obs = self.obstacles.step(obs=obs, quads_pos=self.pos, quads_vel=quads_vel,
-                                      set_obstacles=self.set_obstacles)
+                                          set_obstacles=self.set_obstacles)
 
             if not self.set_obstacles:
                 for i, e in enumerate(self.envs):
@@ -328,10 +329,9 @@ class QuadrotorEnvMulti(gym.Env):
                 if all(tmp_count):
                     self.set_obstacles = True
                     tmp_obs = self.obstacles.reset(obs=obs, quads_pos=self.pos, quads_vel=quads_vel,
-                                               set_obstacles=self.set_obstacles)
+                                                   set_obstacles=self.set_obstacles)
 
             obs = tmp_obs
-
 
         ## DONES
         if any(dones):
