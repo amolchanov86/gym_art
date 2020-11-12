@@ -61,7 +61,7 @@ class QuadrotorEnvMulti(gym.Env):
         # reward shaping
         self.rew_coeff = dict(
             pos=1., effort=0.05, action_change=0., crash=1., orient=1., yaw=0., rot=0., attitude=0., spin=0.1, vel=0.,
-            quadcol_bin=0., quadsettle=0.
+            quadcol_bin=0., quadsettle=0., quadcol_bin_obst=0.,
         )
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
@@ -130,20 +130,21 @@ class QuadrotorEnvMulti(gym.Env):
         self.set_obstacles = False
         self.obstacle_settle_count = np.zeros(self.num_agents)
 
-        self.obstacles = MultiObstacles(mode=self.obstacle_mode, num_obstacles=self.obstacle_num,
-                                     max_init_vel=self.obstacle_max_init_vel, init_box=self.obstacle_init_box,
-                                     mean_goals=self.mean_goals_z, goal_central=self.goal_central,
-                                     dt=self.dt, quad_size=self.envs[0].dynamics.arm, type=self.obstacle_type, size=self.obstacle_size)
+        self.obstacles = MultiObstacles(
+            mode=self.obstacle_mode, num_obstacles=self.obstacle_num,
+            max_init_vel=self.obstacle_max_init_vel, init_box=self.obstacle_init_box,
+            mean_goals=self.mean_goals_z, goal_central=self.goal_central,
+            dt=self.dt, quad_size=self.envs[0].dynamics.arm, type=self.obstacle_type, size=self.obstacle_size,
+        )
 
-        ## Set Render
+        # set render
         self.simulation_start_time = 0
         self.frames_since_last_render = self.render_skip_frames = 0
         self.render_every_nth_frame = 1
         self.render_speed = 1.0  # set to below 1 for slowmo, higher than 1 for fast forward (if simulator can keep up)
 
         self.collisions_per_episode = 0
-        self.prev_collisions = []
-        self.curr_collisions = []
+        self.prev_collisions, self.curr_collisions = [], []
         self.apply_collision_force = collision_force
 
     def all_dynamics(self):
@@ -159,7 +160,9 @@ class QuadrotorEnvMulti(gym.Env):
         obs_neighbors = np.stack(obs_neighbors)
 
         # clip observation space of neighborhoods
-        obs_neighbors = np.clip(obs_neighbors, a_min=self.clip_neighbor_space_min_box, a_max=self.clip_neighbor_space_max_box)
+        obs_neighbors = np.clip(
+            obs_neighbors, a_min=self.clip_neighbor_space_min_box, a_max=self.clip_neighbor_space_max_box,
+        )
         obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
 
@@ -222,15 +225,18 @@ class QuadrotorEnvMulti(gym.Env):
             obs_ext = self.extend_obs_space(obs)
             obs = obs_ext
 
-        ## SWARM REWARDS
+        # SWARM REWARDS
         # -- BINARY COLLISION REWARD
-        self.collisions, self.curr_collisions = calculate_collision_matrix(self.pos, self.envs[0].dynamics.arm)
-        self.rew_collisions_raw = - np.sum(self.collisions, axis=1)
-        self.rew_collisions = self.rew_coeff["quadcol_bin"] * self.rew_collisions_raw
+        collisions, self.curr_collisions = calculate_collision_matrix(self.pos, self.envs[0].dynamics.arm)
 
         unique_collisions = np.setdiff1d(self.curr_collisions, self.prev_collisions)
-        self.collisions_per_episode += len(unique_collisions) if unique_collisions.any() else 0
+        self.collisions_per_episode += len(unique_collisions)
         self.prev_collisions = self.curr_collisions
+
+        rew_collisions_raw = np.zeros(self.num_agents)
+        if unique_collisions.any():
+            rew_collisions_raw[unique_collisions] = -1.0
+        rew_collisions = self.rew_coeff["quadcol_bin"] * rew_collisions_raw
 
         # performing all collisions
         if self.apply_collision_force:
@@ -238,18 +244,18 @@ class QuadrotorEnvMulti(gym.Env):
                 perform_collision(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
 
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
-        self.col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos)
-        self.rew_col_obst_quad_raw = - np.sum(self.col_obst_quad, axis=0)
-        self.rew_col_obst_quad = self.rew_coeff["quadcol_bin_obst"] * self.rew_col_obst_quad_raw
+        col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos)
+        rew_col_obst_quad_raw = - np.sum(col_obst_quad, axis=0)
+        rew_col_obst_quad = self.rew_coeff["quadcol_bin_obst"] * rew_col_obst_quad_raw
 
         for i in range(self.num_agents):
-            rewards[i] += self.rew_collisions[i]
-            infos[i]["rewards"]["rew_quadcol"] = self.rew_collisions[i]
-            infos[i]["rewards"]["rewraw_quadcol"] = self.rew_collisions_raw[i]
+            rewards[i] += rew_collisions[i]
+            infos[i]["rewards"]["rew_quadcol"] = rew_collisions[i]
+            infos[i]["rewards"]["rewraw_quadcol"] = rew_collisions_raw[i]
 
-            rewards[i] += self.rew_col_obst_quad[i]
-            infos[i]["rewards"]["rew_quadcol_obstacle"] = self.rew_col_obst_quad[i]
-            infos[i]["rewards"]["rewraw_quadcol_obstacle"] = self.rew_col_obst_quad_raw[i]
+            rewards[i] += rew_col_obst_quad[i]
+            infos[i]["rewards"]["rew_quadcol_obstacle"] = rew_col_obst_quad[i]
+            infos[i]["rewards"]["rewraw_quadcol_obstacle"] = rew_col_obst_quad_raw[i]
 
         if self.quads_mode == "circular_config":
             for i, e in enumerate(self.envs):
@@ -334,18 +340,18 @@ class QuadrotorEnvMulti(gym.Env):
 
             obs = tmp_obs
 
-        ## DONES
+        # DONES
         if any(dones):
             for i in range(len(infos)):
-                infos[i]['eps_extra_stats'] = {}
-                infos[i]['eps_extra_stats']['num_collisions'] = self.collisions_per_episode
+                infos[i]['episode_extra_stats'] = {'num_collisions': self.collisions_per_episode}
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
 
         return obs, rewards, dones, infos
 
     # Based on https://mathcurve.com/courbes3d.gb/lissajous3d/lissajous3d.shtml
-    def lissajous3D(self, tick, a=0.03, b=0.01, c=0.01, n=2, m=2, phi=90, psi=90):
+    @staticmethod
+    def lissajous3D(tick, a=0.03, b=0.01, c=0.01, n=2, m=2, phi=90, psi=90):
         x = a * np.sin(tick)
         y = b * np.sin(n * tick + phi)
         z = c * np.cos(m * tick + psi)
