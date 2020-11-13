@@ -22,7 +22,7 @@ class TestOpt(TestCase):
         while num_steps < 100:
             obs, rewards, dones, infos = env.step([env.action_space.sample() for _ in range(num_agents)])
             num_steps += 1
-            print('Rewards: ', rewards, "\nCollisions: \n", env.collisions, "\nDistances: \n", env.dist)
+            print('Rewards: ', rewards, "\nCollisions: \n", env.collisions_per_episode)
 
         env.close()
 
