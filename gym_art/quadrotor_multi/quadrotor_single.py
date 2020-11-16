@@ -225,9 +225,8 @@ class QuadrotorDynamics(object):
 
     # generate a random state (meters, meters/sec, radians/sec)
     def random_state(self, box, vel_max=15.0, omega_max=2 * np.pi):
-        x, y, z = np.random.uniform(low=-box[0], high=box[0]), np.random.uniform(low=-box[1], high=box[1]), \
-            np.random.uniform(low=-box[2], high=box[2])
-        pos = np.array([x, y, z])
+        box = np.array(box)
+        pos = np.random.uniform(low=-box, high=box, size=(3,))
 
         vel = np.random.uniform(low=-vel_max, high=vel_max, size=(3,))
         vel_magn = np.random.uniform(low=0., high=vel_max)
