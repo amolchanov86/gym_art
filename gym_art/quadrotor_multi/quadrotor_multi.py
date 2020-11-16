@@ -23,12 +23,12 @@ class QuadrotorEnvMulti(gym.Env):
                  dynamics_params='DefaultQuad', dynamics_change=None,
                  dynamics_randomize_every=None, dyn_sampler_1=None, dyn_sampler_2=None,
                  raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200.,
-                 sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_size=10,
+                 sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_length=10, room_width=10, room_height=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_dist_between_goals=0.0, quads_mode='static_goal', swarm_obs=False, quads_use_numba=False, quads_settle=False,
                  quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8, quads_goal_dimension='2D', quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
-                 quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True):
+                 quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True, adaptive_env=False):
 
         super().__init__()
 
@@ -37,14 +37,16 @@ class QuadrotorEnvMulti(gym.Env):
         # Set to True means that sample_factory will treat it as a multi-agent vectorized environment even with
         # num_agents=1. More info, please look at sample-factory: envs/quadrotors/wrappers/reward_shaping.py
         self.is_multiagent = True
+        self.room_dims = (room_length, room_width, room_height)
 
         self.envs = []
+        self.adaptive_env = adaptive_env
 
         for i in range(self.num_agents):
             e = QuadrotorSingle(
                 dynamics_params, dynamics_change, dynamics_randomize_every, dyn_sampler_1, dyn_sampler_2,
                 raw_control, raw_control_zero_middle, dim_mode, tf_control, sim_freq, sim_steps,
-                obs_repr, ep_time, obstacles_num, room_size, init_random_state,
+                obs_repr, ep_time, obstacles_num, room_length, room_width, room_height, init_random_state,
                 rew_coeff, sense_noise, verbose, gravity, t2w_std, t2t_std, excite, dynamics_simplification,
                 quads_use_numba, self.swarm_obs, self.num_agents, quads_settle, quads_settle_range_coeff, quads_vel_reward_out_range, quads_view_mode, 
                 quads_obstacle_mode, quads_obstacle_num
@@ -171,20 +173,29 @@ class QuadrotorEnvMulti(gym.Env):
 
         models = tuple(e.dynamics.model for e in self.envs)
 
+        if self.adaptive_env:
+            # TODO: introduce logic to choose the new room dims i.e. based on statistics from last N episodes, etc
+            # e.g. self.room_dims = ....
+            pass
+
         # TODO: don't create scene object if we're just training and no need to visualize?
         if self.scene is None:
             self.scene = Quadrotor3DSceneMulti(
                 models=models,
                 w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.envs[0].viewpoint,
-                obstacle_mode=self.obstacle_mode
+                obstacle_mode=self.obstacle_mode, room_dims=self.room_dims
             )
         else:
             self.scene.update_models(models)
+            if self.adaptive_env:
+                self.scene.update_env(self.room_dims)
 
         for i, e in enumerate(self.envs):
             self.goal[i] = self.init_goal_pos[i]
             e.goal = self.goal[i]
             e.rew_coeff = self.rew_coeff
+            if self.adaptive_env:
+                e.update_env(*self.room_dims)
 
             observation = e.reset()
             obs.append(observation)

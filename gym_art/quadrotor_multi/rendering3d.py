@@ -604,6 +604,14 @@ def box(x, y, z):
     collider = AxisBoxCollision(corner0, corner1)
     return Mesh(v, collider=collider)
 
+# Box representing the environment. Shortcut way to add walls during visualization
+def envBox(x, y, z):
+    corner1 = np.array([-x, -y, z])
+    corner2 = np.array([-x, y, 0])
+    v = room_mesh(x, y, z)
+    collider = AxisBoxCollision(corner1, corner2)
+    return Mesh(v, collider=collider)
+
 # cylinder sitting on xy plane pointing +z
 def cylinder(radius, height, sections):
     v, n = cylinder_strip(radius, height, sections)
@@ -649,6 +657,21 @@ def rect(dim, srange=(0,1), trange=(0,1)):
         [s0, t1], [s0, t0], [s1, t0]])
     return Mesh(v, n, st)
 
+# def vert_rect():
+#     v = np.array([
+#         [500, 500, 0],
+#         [-500, 500, 0],
+#         [500, 500, 500],
+#         [-500, 500, 0],
+#         [-500, 500, 500],
+#         [500, 500, 500]
+#     ])
+#     v = v * 0.01
+#     n = np.array([
+#         [0,1,0] for i in range(6)
+#     ])
+#     return Mesh(v, n)
+
 def circle(radius, facets):
     v, n = circle_fan(radius, facets)
     return TriFan(v, n)
@@ -668,6 +691,19 @@ def box_mesh(x, y, z):
     t = np.array([[1, 3, 2,], [1, 4, 3,], [1, 2, 5,], [2, 6, 5,], [2, 3, 6,], [3, 7, 6,], [3, 4, 8,], [3, 8, 7,], [4, 1, 8,], [1, 5, 8,], [5, 6, 7,], [5, 7, 8,]]) - 1
     t = t.flatten()
     v = v[t,:]
+    return v
+
+def room_mesh(x, y, z):
+    vtop = np.array([[x, y, z], [x, -y, z], [-x, -y, z], [-x, y, z]])
+    vbottom = deepcopy(vtop)
+    vbottom[:, 2] = 0
+    v = np.concatenate([vtop, vbottom], axis=0)
+    # WTF IS THIS?????? lol
+    t = np.array(
+        [[1, 3, 2, ], [1, 4, 3, ], [1, 2, 5, ], [2, 6, 5, ], [2, 3, 6, ], [3, 7, 6, ], [3, 4, 8, ], [3, 8, 7, ],
+         [4, 1, 8, ], [1, 5, 8, ], [5, 6, 7, ], [5, 7, 8, ]]) - 1
+    t = t.flatten()
+    v = v[t, :]
     return v
 
 # circle in the x-y plane
