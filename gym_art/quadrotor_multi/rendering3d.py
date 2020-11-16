@@ -657,20 +657,6 @@ def rect(dim, srange=(0,1), trange=(0,1)):
         [s0, t1], [s0, t0], [s1, t0]])
     return Mesh(v, n, st)
 
-# def vert_rect():
-#     v = np.array([
-#         [500, 500, 0],
-#         [-500, 500, 0],
-#         [500, 500, 500],
-#         [-500, 500, 0],
-#         [-500, 500, 500],
-#         [500, 500, 500]
-#     ])
-#     v = v * 0.01
-#     n = np.array([
-#         [0,1,0] for i in range(6)
-#     ])
-#     return Mesh(v, n)
 
 def circle(radius, facets):
     v, n = circle_fan(radius, facets)
@@ -693,6 +679,7 @@ def box_mesh(x, y, z):
     v = v[t,:]
     return v
 
+# need a different mesh function for the envBox
 def room_mesh(x, y, z):
     vtop = np.array([[x, y, z], [x, -y, z], [-x, -y, z], [-x, y, z]])
     vbottom = deepcopy(vtop)
