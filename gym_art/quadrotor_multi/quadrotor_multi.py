@@ -8,6 +8,7 @@ import time
 from collections import deque
 
 import gym
+import bezier
 
 from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, perform_collision
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
@@ -313,17 +314,41 @@ class QuadrotorEnvMulti(gym.Env):
                     env.goal = self.goal[i]
         elif self.quads_mode == "static_goal":
             pass
-        elif self.quads_mode == "lissajous3D":
+        elif self.quads_mode == "ep_lissajous3D":
             control_freq = self.envs[0].control_freq
             tick = self.envs[0].tick / control_freq
             x, y, z = self.lissajous3D(tick)
             goal_x, goal_y, goal_z = self.goal[0][0], self.goal[0][1], self.goal[0][2]
-            x_new, y_new, z_new = x + goal_x, y + goal_y,  z+ goal_z
+            x_new, y_new, z_new = x + goal_x, y + goal_y,  z + goal_z
             self.goal = [[x_new, y_new, z_new] for i in range(self.num_agents)]
             self.goal = np.array(self.goal)
 
             for i, env in enumerate(self.envs):
                 env.goal = self.goal[i]
+        elif self.quads_mode == "ep_rand_bezier":
+            # randomly sample new goal pos in free space and have the goal move there following a bezier curve
+            tick = self.envs[0].tick
+            control_freq = self.envs[0].control_freq
+            num_secs = 5
+            control_steps = int(num_secs * control_freq)
+            t = tick % control_steps
+            if tick % control_steps == 0 or tick == 1:
+                low, high = np.zeros(3), np.array(self.room_dims)
+                new_pos = np.random.uniform(low=low, high=high,
+                                            size=(2, 3)).reshape(3, 2)
+                nodes = np.concatenate((self.goal[0].reshape(3, 1), new_pos), axis=1)
+                nodes = np.asfortranarray(nodes)
+                pts = np.linspace(0, 1, control_steps)
+                curve = bezier.Curve(nodes, degree=2)
+                self.interp = curve.evaluate_multi(pts)
+                self.interp = np.clip(self.interp, a_min=low.reshape(3,1), a_max=high.reshape(3,1))
+            if tick % control_steps != 0 and tick > 1:
+                self.goal = [self.interp[:, t] for _ in range(self.num_agents)]
+                self.goal = np.array(self.goal)
+
+                for i, env in enumerate(self.envs):
+                    env.goal = self.goal[i]
+
         else:
             pass
 
