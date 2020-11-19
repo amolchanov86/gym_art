@@ -144,7 +144,8 @@ class QuadrotorEnvMulti(gym.Env):
         self.render_speed = 1.0  # set to below 1 for slowmo, higher than 1 for fast forward (if simulator can keep up)
 
         self.collisions_per_episode = 0
-        self.prev_collisions, self.curr_collisions = [], []
+        self.prev_drone_collisions, self.curr_drone_collisions = [], []
+        self.all_collisions = {}
         self.apply_collision_force = collision_force
 
     def all_dynamics(self):
@@ -200,8 +201,8 @@ class QuadrotorEnvMulti(gym.Env):
         quads_pos = np.array([e.dynamics.pos for e in self.envs])
         quads_vel = np.array([e.dynamics.vel for e in self.envs])
         obs = self.obstacles.reset(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel, set_obstacles=self.set_obstacles)
-
-        self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics(), obstacles=self.obstacles)
+        self.all_collisions = {val: [0.0 for _ in range(len(self.envs))] for val in ['drone', 'ground', 'obstacle']}
+        self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics(), self.obstacles, self.all_collisions)
 
         self.collisions_per_episode = 0
         return obs
@@ -225,28 +226,33 @@ class QuadrotorEnvMulti(gym.Env):
             obs_ext = self.extend_obs_space(obs)
             obs = obs_ext
 
-        # SWARM REWARDS
-        # -- BINARY COLLISION REWARD
-        collisions, self.curr_collisions = calculate_collision_matrix(self.pos, self.envs[0].dynamics.arm)
+        # Calculating collisions between drones
+        drone_col_matrix, self.curr_drone_collisions = calculate_collision_matrix(self.pos, self.envs[0].dynamics.arm)
 
-        unique_collisions = np.setdiff1d(self.curr_collisions, self.prev_collisions)
+        unique_collisions = np.setdiff1d(self.curr_drone_collisions, self.prev_drone_collisions)
         self.collisions_per_episode += len(unique_collisions)
-        self.prev_collisions = self.curr_collisions
+        self.prev_drone_collisions = self.curr_drone_collisions
 
         rew_collisions_raw = np.zeros(self.num_agents)
         if unique_collisions.any():
             rew_collisions_raw[unique_collisions] = -1.0
         rew_collisions = self.rew_coeff["quadcol_bin"] * rew_collisions_raw
 
-        # performing all collisions
+        # Applying random forces for all collisions between drones
         if self.apply_collision_force:
-            for val in self.curr_collisions:
+            for val in self.curr_drone_collisions:
                 perform_collision(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
 
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
         col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos)
         rew_col_obst_quad_raw = - np.sum(col_obst_quad, axis=0)
         rew_col_obst_quad = self.rew_coeff["quadcol_bin_obst"] * rew_col_obst_quad_raw
+
+        # Collisions with ground
+        ground_collisions = [1.0 if pos[2] < 0.25 else 0.0 for pos in self.pos]
+
+        self.all_collisions = {'drone': np.sum(drone_col_matrix, axis=1), 'ground': ground_collisions,
+                               'obstacle': col_obst_quad.sum(axis=0)}
 
         for i in range(self.num_agents):
             rewards[i] += rew_collisions[i]
@@ -374,7 +380,8 @@ class QuadrotorEnvMulti(gym.Env):
 
         render_start = time.time()
         goals = tuple(e.goal for e in self.envs)
-        self.scene.render_chase(all_dynamics=self.all_dynamics(), goals=goals, mode=mode, obstalces=self.obstacles)
+        self.scene.render_chase(all_dynamics=self.all_dynamics(), goals=goals, collisions=self.all_collisions,
+                                mode=mode, obstacles=self.obstacles)
         render_time = time.time() - render_start
 
         desired_time_between_frames = realtime_control_period * self.frames_since_last_render / self.render_speed
