@@ -27,7 +27,7 @@ class QuadrotorEnvMulti(gym.Env):
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_dist_between_goals=0.0, quads_mode='static_goal', swarm_obs=False, quads_use_numba=False, quads_settle=False,
-                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8, quads_goal_dimension='2D', quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
+                 quads_settle_range_meters=1.0, quads_vel_reward_out_range=0.8, quads_goal_dimension='2D', quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
                  quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True):
 
         super().__init__()
@@ -46,7 +46,7 @@ class QuadrotorEnvMulti(gym.Env):
                 raw_control, raw_control_zero_middle, dim_mode, tf_control, sim_freq, sim_steps,
                 obs_repr, ep_time, obstacles_num, room_size, init_random_state,
                 rew_coeff, sense_noise, verbose, gravity, t2w_std, t2t_std, excite, dynamics_simplification,
-                quads_use_numba, self.swarm_obs, self.num_agents, quads_settle, quads_settle_range_coeff, quads_vel_reward_out_range, quads_view_mode, 
+                quads_use_numba, self.swarm_obs, self.num_agents, quads_settle, quads_settle_range_meters, quads_vel_reward_out_range, quads_view_mode,
                 quads_obstacle_mode, quads_obstacle_num
             )
             self.envs.append(e)
@@ -230,7 +230,9 @@ class QuadrotorEnvMulti(gym.Env):
         drone_col_matrix, self.curr_drone_collisions = calculate_collision_matrix(self.pos, self.envs[0].dynamics.arm)
 
         unique_collisions = np.setdiff1d(self.curr_drone_collisions, self.prev_drone_collisions)
-        self.collisions_per_episode += len(unique_collisions)
+
+        # collision between 2 drones counts as a single collision
+        self.collisions_per_episode += len(unique_collisions) // 2
         self.prev_drone_collisions = self.curr_drone_collisions
 
         rew_collisions_raw = np.zeros(self.num_agents)

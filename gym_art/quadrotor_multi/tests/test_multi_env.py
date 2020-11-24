@@ -32,7 +32,7 @@ def create_env(num_agents, use_numba=False):
 class TestMultiEnv(TestCase):
     def test_basic(self):
         num_agents = 2
-        env = create_env(num_agents)
+        env = create_env(num_agents, use_numba=False)
 
         self.assertTrue(hasattr(env, 'num_agents'))
         self.assertEqual(env.num_agents, num_agents)
@@ -40,11 +40,14 @@ class TestMultiEnv(TestCase):
         obs = env.reset()
         self.assertIsNotNone(obs)
 
-        obs, rewards, dones, infos = env.step([env.action_space.sample() for i in range(num_agents)])
-        self.assertIsInstance(obs, list)
-        self.assertIsInstance(rewards, list)
-        self.assertIsInstance(dones, list)
-        self.assertIsInstance(infos, list)
+        for i in range(1000):
+            obs, rewards, dones, infos = env.step([env.action_space.sample() for i in range(num_agents)])
+            self.assertIsInstance(obs, list)
+            self.assertIsInstance(rewards, list)
+            self.assertIsInstance(dones, list)
+            self.assertIsInstance(infos, list)
+            if any(dones):
+                env.reset()
 
         env.close()
 
