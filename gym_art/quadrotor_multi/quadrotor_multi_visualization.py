@@ -13,7 +13,7 @@ from scipy import spatial
 class Quadrotor3DSceneMulti:
     def __init__(
             self, w, h,
-            quad_arm=None, models=None, obstacles=None, visible=False, resizable=True, goal_diameter=None,
+            quad_arm=None, models=None, obstacles=None, visible=True, resizable=True, goal_diameter=None,
             viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10)
     ):
         if obs_hw is None:
