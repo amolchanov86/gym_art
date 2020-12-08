@@ -24,7 +24,7 @@ class QuadrotorEnvMulti(gym.Env):
                  dynamics_params='DefaultQuad', dynamics_change=None,
                  dynamics_randomize_every=None, dyn_sampler_1=None, dyn_sampler_2=None,
                  raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200.,
-                 sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_length=20, room_width=20, room_height=20,
+                 sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_length=10, room_width=10, room_height=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_dist_between_goals=0.0, quads_mode='static_goal', swarm_obs=False, quads_use_numba=False, quads_settle=False,
@@ -332,10 +332,16 @@ class QuadrotorEnvMulti(gym.Env):
             num_secs = 5
             control_steps = int(num_secs * control_freq)
             t = tick % control_steps
+            # min and max distance the goal can spawn away from its current location. 30 = empirical upper bound on
+            # velocity that the drones can handle. If the room box is smaller than 30 on one dim, we want to use the
+            # smaller dim so that the goal doesn't sample outside the room, which can cause problems even with clipping
+            min_dist, max_dist = 10, min(30, self.room_dims[0])
             if tick % control_steps == 0 or tick == 1:
                 low, high = np.zeros(3), np.array(self.room_dims)
                 new_pos = np.random.uniform(low=low, high=high,
                                             size=(2, 3)).reshape(3, 2)
+                new_pos = new_pos * np.random.randint(min_dist, max_dist+1) / np.linalg.norm(new_pos) # add some velocity randomization
+                new_pos = self.goal[0].reshape(3, 1) + new_pos
                 nodes = np.concatenate((self.goal[0].reshape(3, 1), new_pos), axis=1)
                 nodes = np.asfortranarray(nodes)
                 pts = np.linspace(0, 1, control_steps)
