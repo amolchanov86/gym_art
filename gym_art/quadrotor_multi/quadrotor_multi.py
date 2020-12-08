@@ -335,9 +335,10 @@ class QuadrotorEnvMulti(gym.Env):
             # min and max distance the goal can spawn away from its current location. 30 = empirical upper bound on
             # velocity that the drones can handle. If the room box is smaller than 30 on one dim, we want to use the
             # smaller dim so that the goal doesn't sample outside the room, which can cause problems even with clipping
-            min_dist, max_dist = 10, min(30, self.room_dims[0])
+            max_dist = min(30, self.room_dims[0])
+            min_dist = max_dist / 2
             if tick % control_steps == 0 or tick == 1:
-                low, high = np.zeros(3), np.array(self.room_dims)
+                low, high = -np.array(self.room_dims), np.array(self.room_dims)
                 new_pos = np.random.uniform(low=low, high=high,
                                             size=(2, 3)).reshape(3, 2)
                 new_pos = new_pos * np.random.randint(min_dist, max_dist+1) / np.linalg.norm(new_pos) # add some velocity randomization
@@ -347,7 +348,7 @@ class QuadrotorEnvMulti(gym.Env):
                 pts = np.linspace(0, 1, control_steps)
                 curve = bezier.Curve(nodes, degree=2)
                 self.interp = curve.evaluate_multi(pts)
-                self.interp = np.clip(self.interp, a_min=low.reshape(3,1), a_max=high.reshape(3,1))
+                self.interp = np.clip(self.interp, a_min=np.array([0,0,0.2]).reshape(3,1), a_max=high.reshape(3,1)) # want goal clipping to be slightly above the floor
             if tick % control_steps != 0 and tick > 1:
                 self.goal = [self.interp[:, t] for _ in range(self.num_agents)]
                 self.goal = np.array(self.goal)
