@@ -228,18 +228,23 @@ def calculate_collision_matrix(positions, arm):
     return collision_matrix, all_collisions
 
 
-# This function is to change the velocities after a collision happens between two bodies
-def perform_collision(dyn1, dyn2):
-
+def compute_col_norm_and_new_velocities(dyn1, dyn2):
     # Ge the collision normal, i.e difference in position
     collision_norm = dyn1.pos - dyn2.pos
     coll_norm_mag = np.linalg.norm(collision_norm)
-    collision_norm = collision_norm/(coll_norm_mag + 0.00001 if coll_norm_mag == 0.0 else coll_norm_mag)
+    collision_norm = collision_norm / (coll_norm_mag + 0.00001 if coll_norm_mag == 0.0 else coll_norm_mag)
 
     # Get the components of the velocity vectors which are parallel to the collision.
     # The perpendicular component remains the same.
     v1new = np.dot(dyn1.vel, collision_norm)
     v2new = np.dot(dyn2.vel, collision_norm)
+
+    return v1new, v2new, collision_norm
+
+
+# This function is to change the velocities after a collision happens between two bodies
+def perform_collision_between_drones(dyn1, dyn2):
+    v1new, v2new, collision_norm = compute_col_norm_and_new_velocities(dyn1, dyn2)
 
     # Solve for the new velocities using the elastic collision equations. It's really simple when the
     dyn1.vel += (v2new - v1new) * collision_norm
@@ -255,6 +260,23 @@ def perform_collision(dyn1, dyn2):
     cons_rand_omega = np.random.normal(0, 0.8, 3)
     dyn1.omega += cons_rand_omega + np.random.normal(0, 0.15, 3)
     dyn2.omega += -cons_rand_omega + np.random.normal(0, 0.15, 3)
+
+
+def perform_collision_with_obstacle(obs, drone_dyn):
+    v1new, v2new, collision_norm = compute_col_norm_and_new_velocities(obs, drone_dyn)
+    drone_dyn.vel += (v1new - v2new) * collision_norm
+
+    # Now adding random force components
+    drone_dyn.vel += np.random.normal(0, 0.8, 3)
+    drone_dyn.omega += np.random.normal(0, 0.8, 3)
+
+
+def perform_collision_with_ground(drone_dyn):
+    drone_dyn.vel = -drone_dyn.vel
+
+    # Now adding random force components
+    drone_dyn.vel += -np.random.normal(0, 0.2, 3)
+    drone_dyn.omega += -np.random.normal(0, 0.8, 3)
 
 
 class OUNoise:
