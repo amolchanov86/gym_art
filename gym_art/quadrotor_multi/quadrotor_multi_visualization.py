@@ -162,12 +162,12 @@ class Quadrotor3DSceneMulti:
         if self.window_target:
             self._make_scene()
 
-    def reset(self, goals, dynamics, obstacles):
+    def reset(self, goals, dynamics, obstacles, collisions):
         first_goal = goals[0]  # TODO: make a camera that can look at all drones
         self.chase_cam.reset(first_goal[0:3], dynamics[0].pos, dynamics[0].vel)
-        self.update_state(dynamics, goals, obstacles)
+        self.update_state(dynamics, goals, obstacles, collisions)
 
-    def update_state(self, all_dynamics, goals, obstacles):
+    def update_state(self, all_dynamics, goals, obstacles, collisions):
         if self.scene:
             self.chase_cam.step(all_dynamics[0].pos, all_dynamics[0].vel)
             self.fpv_lookat = all_dynamics[0].look_at()
@@ -183,11 +183,6 @@ class Quadrotor3DSceneMulti:
             if self.obstacle_mode != 'no_obstacles':
                 self.update_obstacles(obstacles=obstacles)
 
-            # computing collisions
-            positions = np.array([dyn.pos for dyn in all_dynamics])
-            collision_matrix, all_collisions = calculate_collision_matrix(positions, all_dynamics[0].arm)
-            collision_sums = np.sum(collision_matrix, axis=1)
-
             for i, dyn in enumerate(all_dynamics):
                 matrix = r3d.trans_and_rot(dyn.pos, dyn.rot)
                 self.quad_transforms[i].set_transform_nocollide(matrix)
@@ -198,18 +193,20 @@ class Quadrotor3DSceneMulti:
                 self.shadow_transforms[i].set_transform_nocollide(matrix)
 
                 matrix = r3d.translate(dyn.pos)
-                if collision_sums[i] > 0.0:
-                    self.collision_transforms[i].set_transform_and_color(matrix, (1, 0, 0, 0.4))
+                if collisions['drone'][i] > 0.0 or collisions['obstacle'][i] > 0.0 or collisions['ground'][i] > 0.0:
+                    # Multiplying by 1 converts bool into float
+                    self.collision_transforms[i].set_transform_and_color(matrix, (
+                        (collisions['drone'][i] > 0.0) * 1.0, (collisions['obstacle'][i] > 0.0) * 1.0,
+                        (collisions['ground'][i] > 0.0) * 1.0, 0.4))
                 else:
                     self.collision_transforms[i].set_transform_and_color(matrix, (0, 0, 0, 0.0))
 
-
-    def render_chase(self, all_dynamics, goals, mode='human', obstalces=None):
+    def render_chase(self, all_dynamics, goals, collisions, mode='human', obstacles=None):
         if mode == 'human':
             if self.window_target is None:
                 self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
                 self._make_scene()
-            self.update_state(all_dynamics=all_dynamics, goals=goals, obstacles=obstalces)
+            self.update_state(all_dynamics=all_dynamics, goals=goals, obstacles=obstacles, collisions=collisions)
             self.cam3p.look_at(*self.chase_cam.look_at())
             r3d.draw(self.scene, self.cam3p, self.window_target)
             return None
@@ -217,8 +214,7 @@ class Quadrotor3DSceneMulti:
             if self.video_target is None:
                 self.video_target = r3d.FBOTarget(self.window_h, self.window_h)
                 self._make_scene()
-            self.update_state(all_dynamics=all_dynamics, goals=goals, obstacles=obstalces)
+            self.update_state(all_dynamics=all_dynamics, goals=goals, obstacles=obstacles, collisions=collisions)
             self.cam3p.look_at(*self.chase_cam.look_at())
             r3d.draw(self.scene, self.cam3p, self.video_target)
             return np.flipud(self.video_target.read())
-

@@ -565,16 +565,16 @@ class QuadrotorDynamics(object):
 
 # reasonable reward function for hovering at a goal and not flying too high
 def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, rew_coeff, action_prev,
-                            quads_settle=False, quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8):
+                            quads_settle=False, quads_settle_range_meters=1.0, quads_vel_reward_out_range=0.8):
     ##################################################
     ## log to create a sharp peak at the goal
     dist = np.linalg.norm(goal - dynamics.pos)
     cost_pos_raw = dist
     cost_pos = rew_coeff["pos"] * cost_pos_raw
 
-    ##  sphere of equal reward if drones are less than 10 arm-lengths to the goal pos
+    # sphere of equal reward if drones are close to the goal position
     vel_coeff = rew_coeff["vel"]
-    if dist <= quads_settle_range_coeff * dynamics.model.arm_length and quads_settle:  # standard = 0.022, simplified = 0.092
+    if dist <= quads_settle_range_meters and quads_settle:
         cost_pos = 0
         vel_coeff = quads_vel_reward_out_range  # penalize movement once drones are close to the goal
 
@@ -616,7 +616,7 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
     cost_spin = rew_coeff["spin"] * cost_spin_raw
 
     ##################################################
-    ## loss crash
+    # loss crash
     cost_crash_raw = float(crashed)
     cost_crash = rew_coeff["crash"] * cost_crash_raw
 
@@ -659,6 +659,10 @@ def compute_reward_weighted(dynamics, goal, action, dt, crashed, time_remain, re
         "rewraw_vel": -cost_vel_raw,
     }
 
+    # report rewards in the same format as they are added to the actual agent's reward (easier to debug this way)
+    for k, v in rew_info.items():
+        rew_info[k] = dt * v
+
     if np.isnan(reward) or not np.isfinite(reward):
         for key, value in locals().items():
             print('%s: %s \n' % (key, str(value)))
@@ -686,7 +690,7 @@ class QuadrotorSingle:
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_length=10, room_width=10, room_height=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs=False, num_agents=1,quads_settle=False,
-                 quads_settle_range_coeff=10, quads_vel_reward_out_range=0.8,
+                 quads_settle_range_meters=1.0, quads_vel_reward_out_range=0.8,
                  view_mode='local', obstacle_mode='no_obstacles', obstacle_num=0):
         np.seterr(under='ignore')
         """
@@ -738,7 +742,7 @@ class QuadrotorSingle:
         self.swarm_obs = swarm_obs
         self.num_agents = num_agents
         self.quads_settle = quads_settle
-        self.quads_settle_range_coeff = quads_settle_range_coeff
+        self.quads_settle_range_meters = quads_settle_range_meters
         self.quads_vel_reward_out_range = quads_vel_reward_out_range
         ## t2w and t2t ranges
         self.t2w_std = t2w_std
@@ -1013,7 +1017,7 @@ class QuadrotorSingle:
         reward, rew_info = compute_reward_weighted(self.dynamics, self.goal, action, self.dt, self.crashed,
                                                    self.time_remain,
                                                    rew_coeff=self.rew_coeff, action_prev=self.actions[1], quads_settle=self.quads_settle,
-                                                   quads_settle_range_coeff=self.quads_settle_range_coeff,
+                                                   quads_settle_range_meters=self.quads_settle_range_meters,
                                                    quads_vel_reward_out_range=self.quads_vel_reward_out_range
         )
         self.tick += 1
