@@ -225,6 +225,7 @@ class QuadrotorDynamics(object):
 
     # generate a random state (meters, meters/sec, radians/sec)
     def random_state(self, box, vel_max=15.0, omega_max=2 * np.pi):
+        box = np.array(box)
         pos = np.random.uniform(low=-box, high=box, size=(3,))
 
         vel = np.random.uniform(low=-vel_max, high=vel_max, size=(3,))
@@ -686,7 +687,7 @@ class QuadrotorSingle:
                  dynamics_randomize_every=None, dyn_sampler_1=None, dyn_sampler_2=None,
                  raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200.,
                  sim_steps=2,
-                 obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_size=10, init_random_state=False,
+                 obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_length=10, room_width=10, room_height=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs=False, num_agents=1,quads_settle=False,
                  quads_settle_range_meters=1.0, quads_vel_reward_out_range=0.8,
@@ -722,7 +723,10 @@ class QuadrotorSingle:
         """
         ## ARGS
         self.init_random_state = init_random_state
-        self.room_size = room_size
+        self.room_length = room_length
+        self.room_width = room_width
+        self.room_height = room_height
+        self.room_size = room_length * room_width * room_height
         self.obs_repr = obs_repr
         self.sim_steps = sim_steps
         self.dim_mode = dim_mode
@@ -759,7 +763,7 @@ class QuadrotorSingle:
         # self.yaw_max = np.pi   #rad
 
         self.room_box = np.array(
-            [[-self.room_size, -self.room_size, 0], [self.room_size, self.room_size, self.room_size]])
+            [[-self.room_length, -self.room_width, 0], [self.room_length, self.room_width, self.room_height]]) # diagonal coordinates of box (?)
         self.state_vector = self.state_vector = getattr(get_state, "state_" + self.obs_repr)
 
         ## WARN: If you
@@ -863,6 +867,13 @@ class QuadrotorSingle:
             walk_dict(self.dynamics_params_converted, numpy_convert)
             yaml_file.write(yaml.dump(self.dynamics_params_converted, default_flow_style=False))
 
+    def update_env(self, room_length, room_width, room_height):
+        self.room_length, self.room_width, self.room_height = room_length, room_width, room_height
+        self.room_box = np.array(
+            [[-self.room_length, -self.room_width, 0],
+             [self.room_length, self.room_width, self.room_height]])  # diagonal coordinates of box (?)
+        self.dynamics.room_box = self.room_box
+
     def update_sense_noise(self, sense_noise):
         if isinstance(sense_noise, dict):
             self.sense_noise = SensorNoise(**sense_noise)
@@ -896,6 +907,7 @@ class QuadrotorSingle:
         ################################################################################
         ## SCENE
         if self.obstacles_num > 0:
+            #TODO: Fix unresolved reference error here???
             self.obstacles = _random_obstacles(None, obstacles_num, self.room_size, self.dynamics.arm)
         else:
             self.obstacles = None
@@ -1120,7 +1132,7 @@ class QuadrotorSingle:
             else:
                 # It already sets the state internally
                 _, vel, rotation, omega = self.dynamics.random_state(
-                    box=self.room_size, vel_max=self.max_init_vel, omega_max=self.max_init_omega
+                    box=(self.room_length, self.room_width, self.room_height), vel_max=self.max_init_vel, omega_max=self.max_init_omega
                 )
         else:
             ## INIT HORIZONTALLY WITH 0 VEL and OMEGA
