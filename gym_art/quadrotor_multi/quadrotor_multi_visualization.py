@@ -14,7 +14,7 @@ class Quadrotor3DSceneMulti:
     def __init__(
             self, w, h,
             quad_arm=None, models=None, obstacles=None, visible=True, resizable=True, goal_diameter=None,
-            viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles'
+            viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10)
     ):
         if obs_hw is None:
             obs_hw = [64, 64]
@@ -24,11 +24,13 @@ class Quadrotor3DSceneMulti:
         self.resizable = resizable
         self.viepoint = viewpoint
         self.obs_hw = copy.deepcopy(obs_hw)
+        self.visible = visible
 
         self.quad_arm = quad_arm
         self.obstacles = obstacles
         self.obstacle_mode = obstacle_mode
         self.models = models
+        self.room_dims = room_dims
 
         self.quad_transforms, self.shadow_transforms, self.goal_transforms = [], [], []
 
@@ -65,6 +67,9 @@ class Quadrotor3DSceneMulti:
         else:
             self.goal_diameter = self.diameter
 
+    def update_env(self, room_dims):
+        self.room_dims = room_dims
+
     def _make_scene(self):
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
@@ -87,8 +92,7 @@ class Quadrotor3DSceneMulti:
 
         # TODO make floor size or walls to indicate world_box
         floor = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25),
-                                      r3d.rect((1000, 1000), (0, 100), (0, 100)))
-
+                                      r3d.rect((self.room_dims[0], self.room_dims[1]), (0, 100), (0, 100)))
         self.update_goal_diameter()
         self.chase_cam.view_dist = self.diameter * 15
 
@@ -97,6 +101,10 @@ class Quadrotor3DSceneMulti:
         bodies = [r3d.BackToFront([floor, st]) for st in self.shadow_transforms]
         bodies.extend(self.goal_transforms)
         bodies.extend(self.quad_transforms)
+        # visualize walls of the room if True
+        if self.visible:
+            room = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25), r3d.envBox(*self.room_dims))
+            bodies.append(room)
 
         if self.obstacle_mode != 'no_obstacles':
             self.create_obstacles()

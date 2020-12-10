@@ -8,6 +8,7 @@ import time
 from collections import deque
 
 import gym
+import bezier
 
 from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix,\
     perform_collision_between_drones, perform_collision_with_obstacle
@@ -24,7 +25,7 @@ class QuadrotorEnvMulti(gym.Env):
                  dynamics_params='DefaultQuad', dynamics_change=None,
                  dynamics_randomize_every=None, dyn_sampler_1=None, dyn_sampler_2=None,
                  raw_control=True, raw_control_zero_middle=True, dim_mode='3D', tf_control=False, sim_freq=200.,
-                 sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_size=10,
+                 sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_length=10, room_width=10, room_height=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_dist_between_goals=0.0, quads_mode='static_goal', swarm_obs=False, quads_use_numba=False, quads_settle=False,
@@ -38,14 +39,16 @@ class QuadrotorEnvMulti(gym.Env):
         # Set to True means that sample_factory will treat it as a multi-agent vectorized environment even with
         # num_agents=1. More info, please look at sample-factory: envs/quadrotors/wrappers/reward_shaping.py
         self.is_multiagent = True
+        self.room_dims = (room_length, room_width, room_height)
 
         self.envs = []
+        self.adaptive_env = adaptive_env
 
         for i in range(self.num_agents):
             e = QuadrotorSingle(
                 dynamics_params, dynamics_change, dynamics_randomize_every, dyn_sampler_1, dyn_sampler_2,
                 raw_control, raw_control_zero_middle, dim_mode, tf_control, sim_freq, sim_steps,
-                obs_repr, ep_time, obstacles_num, room_size, init_random_state,
+                obs_repr, ep_time, obstacles_num, room_length, room_width, room_height, init_random_state,
                 rew_coeff, sense_noise, verbose, gravity, t2w_std, t2t_std, excite, dynamics_simplification,
                 quads_use_numba, self.swarm_obs, self.num_agents, quads_settle, quads_settle_range_meters, quads_vel_reward_out_range, quads_view_mode,
                 quads_obstacle_mode, quads_obstacle_num
@@ -173,20 +176,29 @@ class QuadrotorEnvMulti(gym.Env):
 
         models = tuple(e.dynamics.model for e in self.envs)
 
+        if self.adaptive_env:
+            # TODO: introduce logic to choose the new room dims i.e. based on statistics from last N episodes, etc
+            # e.g. self.room_dims = ....
+            pass
+
         # TODO: don't create scene object if we're just training and no need to visualize?
         if self.scene is None:
             self.scene = Quadrotor3DSceneMulti(
                 models=models,
                 w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.envs[0].viewpoint,
-                obstacle_mode=self.obstacle_mode
+                obstacle_mode=self.obstacle_mode, room_dims=self.room_dims
             )
         else:
             self.scene.update_models(models)
+            if self.adaptive_env:
+                self.scene.update_env(self.room_dims)
 
         for i, e in enumerate(self.envs):
             self.goal[i] = self.init_goal_pos[i]
             e.goal = self.goal[i]
             e.rew_coeff = self.rew_coeff
+            if self.adaptive_env:
+                e.update_env(*self.room_dims)
 
             observation = e.reset()
             obs.append(observation)
@@ -313,17 +325,48 @@ class QuadrotorEnvMulti(gym.Env):
                     env.goal = self.goal[i]
         elif self.quads_mode == "static_goal":
             pass
-        elif self.quads_mode == "lissajous3D":
+        elif self.quads_mode == "ep_lissajous3D":
             control_freq = self.envs[0].control_freq
             tick = self.envs[0].tick / control_freq
             x, y, z = self.lissajous3D(tick)
             goal_x, goal_y, goal_z = self.goal[0][0], self.goal[0][1], self.goal[0][2]
-            x_new, y_new, z_new = x + goal_x, y + goal_y,  z+ goal_z
+            x_new, y_new, z_new = x + goal_x, y + goal_y,  z + goal_z
             self.goal = [[x_new, y_new, z_new] for i in range(self.num_agents)]
             self.goal = np.array(self.goal)
 
             for i, env in enumerate(self.envs):
                 env.goal = self.goal[i]
+        elif self.quads_mode == "ep_rand_bezier":
+            # randomly sample new goal pos in free space and have the goal move there following a bezier curve
+            tick = self.envs[0].tick
+            control_freq = self.envs[0].control_freq
+            num_secs = 5
+            control_steps = int(num_secs * control_freq)
+            t = tick % control_steps
+            # min and max distance the goal can spawn away from its current location. 30 = empirical upper bound on
+            # velocity that the drones can handle. If the room box is smaller than 30 on one dim, we want to use the
+            # smaller dim so that the goal doesn't sample outside the room, which can cause problems even with clipping
+            max_dist = min(30, self.room_dims[0])
+            min_dist = max_dist / 2
+            if tick % control_steps == 0 or tick == 1:
+                low, high = -np.array(self.room_dims), np.array(self.room_dims)
+                new_pos = np.random.uniform(low=low, high=high,
+                                            size=(2, 3)).reshape(3, 2)
+                new_pos = new_pos * np.random.randint(min_dist, max_dist+1) / np.linalg.norm(new_pos) # add some velocity randomization
+                new_pos = self.goal[0].reshape(3, 1) + new_pos
+                nodes = np.concatenate((self.goal[0].reshape(3, 1), new_pos), axis=1)
+                nodes = np.asfortranarray(nodes)
+                pts = np.linspace(0, 1, control_steps)
+                curve = bezier.Curve(nodes, degree=2)
+                self.interp = curve.evaluate_multi(pts)
+                self.interp = np.clip(self.interp, a_min=np.array([0,0,0.2]).reshape(3,1), a_max=high.reshape(3,1)) # want goal clipping to be slightly above the floor
+            if tick % control_steps != 0 and tick > 1:
+                self.goal = [self.interp[:, t] for _ in range(self.num_agents)]
+                self.goal = np.array(self.goal)
+
+                for i, env in enumerate(self.envs):
+                    env.goal = self.goal[i]
+
         else:
             pass
 
