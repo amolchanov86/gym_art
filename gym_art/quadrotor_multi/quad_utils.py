@@ -252,6 +252,10 @@ def perform_collision(dyn1, dyn2):
     dyn1.vel += cons_rand_val + np.random.normal(0, 0.15, 3)
     dyn2.vel += -cons_rand_val + np.random.normal(0, 0.15, 3)
 
+    cons_rand_omega = np.random.normal(0, 0.8, 3)
+    dyn1.omega += cons_rand_omega + np.random.normal(0, 0.15, 3)
+    dyn2.omega += -cons_rand_omega + np.random.normal(0, 0.15, 3)
+
 
 class OUNoise:
     """Ornstein–Uhlenbeck process"""
