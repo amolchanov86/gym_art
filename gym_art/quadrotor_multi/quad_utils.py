@@ -271,14 +271,6 @@ def perform_collision_with_obstacle(obs, drone_dyn):
     drone_dyn.omega += np.random.normal(0, 0.8, 3)
 
 
-def perform_collision_with_ground(drone_dyn):
-    drone_dyn.vel = -drone_dyn.vel
-
-    # Now adding random force components
-    drone_dyn.vel += -np.random.normal(0, 0.2, 3)
-    drone_dyn.omega += -np.random.normal(0, 0.8, 3)
-
-
 class OUNoise:
     """Ornstein–Uhlenbeck process"""
     def __init__(self, action_dimension, mu=0, theta=0.15, sigma=0.3, use_seed=False):

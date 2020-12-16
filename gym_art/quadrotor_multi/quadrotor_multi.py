@@ -10,7 +10,7 @@ from collections import deque
 import gym
 
 from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix,\
-    perform_collision_between_drones, perform_collision_with_obstacle, perform_collision_with_ground
+    perform_collision_between_drones, perform_collision_with_obstacle
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
@@ -258,10 +258,6 @@ class QuadrotorEnvMulti(gym.Env):
                 perform_collision_between_drones(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
             for val in np.argwhere(col_obst_quad > 0.0):
                 perform_collision_with_obstacle(self.obstacles.obstacles[val[0]], self.envs[val[1]].dynamics)
-
-            ground_col_drones = [i for i, x in enumerate(ground_collisions) if x == 1.0]
-            for val in ground_col_drones:
-                perform_collision_with_ground(self.envs[val].dynamics)
 
         for i in range(self.num_agents):
             rewards[i] += rew_collisions[i]
