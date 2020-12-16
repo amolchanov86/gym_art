@@ -10,9 +10,9 @@ before_install:
   - sudo apt-get update
 
 install:
+  - git checkout multi-quad
   - pip install coverage
   - pip install .
-  - git checkout multi-quad
 
 script:
   - coverage run -m unittest gym_art/quadrotor_multi/tests/test_multi_env.py
