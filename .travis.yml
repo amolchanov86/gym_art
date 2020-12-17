@@ -10,7 +10,7 @@ before_install:
   - sudo apt-get update
 
 install:
-  - pip install coverage
+  - pip install coverage bezier numba
   - pip install .
 
 script:
