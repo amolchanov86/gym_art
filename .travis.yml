@@ -10,7 +10,6 @@ before_install:
   - sudo apt-get update
 
 install:
-  - git checkout multi-quad
   - pip install coverage
   - pip install .
 
