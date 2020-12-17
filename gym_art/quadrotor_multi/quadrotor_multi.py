@@ -10,7 +10,8 @@ from collections import deque
 import gym
 import bezier
 
-from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, perform_collision
+from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix,\
+    perform_collision_between_drones, perform_collision_with_obstacle
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
@@ -252,11 +253,6 @@ class QuadrotorEnvMulti(gym.Env):
             rew_collisions_raw[unique_collisions] = -1.0
         rew_collisions = self.rew_coeff["quadcol_bin"] * rew_collisions_raw
 
-        # Applying random forces for all collisions between drones
-        if self.apply_collision_force:
-            for val in self.curr_drone_collisions:
-                perform_collision(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
-
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
         col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos)
         rew_col_obst_quad_raw = - np.sum(col_obst_quad, axis=0)
@@ -267,6 +263,13 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.all_collisions = {'drone': np.sum(drone_col_matrix, axis=1), 'ground': ground_collisions,
                                'obstacle': col_obst_quad.sum(axis=0)}
+
+        # Applying random forces for all collisions between drones and obstacles
+        if self.apply_collision_force:
+            for val in self.curr_drone_collisions:
+                perform_collision_between_drones(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
+            for val in np.argwhere(col_obst_quad > 0.0):
+                perform_collision_with_obstacle(self.obstacles.obstacles[val[0]], self.envs[val[1]].dynamics)
 
         for i in range(self.num_agents):
             rewards[i] += rew_collisions[i]
