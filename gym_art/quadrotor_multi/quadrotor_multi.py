@@ -272,10 +272,13 @@ class QuadrotorEnvMulti(gym.Env):
 
         # compute cost for distance b/w drones
         dists = spatial.distance_matrix(x=self.pos, y=self.pos)
-        costs = 1 / dists**2
+        costs = -(1 / (dists + 1e-7)**2)
         np.fill_diagonal(costs, 0.0)
-        spacing_reward = [-np.sum(row) for row in costs]
-        spacing_reward = np.clip(spacing_reward, -10000, 0)
+        costs = np.clip(costs, -10, 0)
+        spacing_reward = np.array([np.sum(row) for row in costs])
+        control_freq = self.envs[0].control_freq
+        dt = 1.0 / control_freq
+        spacing_reward = spacing_reward * dt
 
 
         for i in range(self.num_agents):
