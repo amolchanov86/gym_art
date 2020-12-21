@@ -270,6 +270,14 @@ class QuadrotorEnvMulti(gym.Env):
         self.all_collisions = {'drone': np.sum(drone_col_matrix, axis=1), 'ground': ground_collisions,
                                'obstacle': col_obst_quad.sum(axis=0)}
 
+        # compute cost for distance b/w drones
+        dists = spatial.distance_matrix(x=self.pos, y=self.pos)
+        costs = 1 / dists**2
+        np.fill_diagonal(costs, 0.0)
+        spacing_reward = [-np.sum(row) for row in costs]
+        spacing_reward = np.clip(spacing_reward, -10000, 0)
+
+
         for i in range(self.num_agents):
             rewards[i] += rew_collisions[i]
             infos[i]["rewards"]["rew_quadcol"] = rew_collisions[i]
@@ -278,6 +286,9 @@ class QuadrotorEnvMulti(gym.Env):
             rewards[i] += rew_col_obst_quad[i]
             infos[i]["rewards"]["rew_quadcol_obstacle"] = rew_col_obst_quad[i]
             infos[i]["rewards"]["rewraw_quadcol_obstacle"] = rew_col_obst_quad_raw[i]
+
+            rewards[i] += spacing_reward
+            infos[i]["rewards"]["rew_quad_spacing"] = spacing_reward[i]
 
         if self.quads_mode == "circular_config":
             for i, e in enumerate(self.envs):
