@@ -92,7 +92,7 @@ class Quadrotor3DSceneMulti:
 
         # TODO make floor size or walls to indicate world_box
         floor = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25),
-                                      r3d.rect((self.room_dims[0], self.room_dims[1]), (0, 100), (0, 100)))
+                                      r3d.rect((100, 100), (0, 100), (0, 100)))
         self.update_goal_diameter()
         self.chase_cam.view_dist = self.diameter * 15
 

@@ -178,7 +178,8 @@ class QuadrotorEnvMulti(gym.Env):
         if self.adaptive_env:
             # TODO: introduce logic to choose the new room dims i.e. based on statistics from last N episodes, etc
             # e.g. self.room_dims = ....
-            new_length, new_width, new_height = np.random.randint(5, 50, 3)
+            # new_length, new_width, new_height = np.random.randint(5, 30, 3)
+            new_length, new_width, new_height = 5, 20, 5
             self.room_dims = (new_length, new_width, new_height)
 
         # TODO: don't create scene object if we're just training and no need to visualize?
@@ -344,15 +345,15 @@ class QuadrotorEnvMulti(gym.Env):
             # min and max distance the goal can spawn away from its current location. 30 = empirical upper bound on
             # velocity that the drones can handle. If the room box is smaller than 30 on one dim, we want to use the
             # smaller dim so that the goal doesn't sample outside the room, which can cause problems even with clipping
-            max_dist = min(30, self.room_dims[0])
-            min_dist = max_dist / 2
+            max_dist = min(30, max(self.room_dims))
+            min_dist = min(self.room_dims)
             if tick % control_steps == 0 or tick == 1:
                 # sample a new goal pos that's within the room boundaries and satisfies the distance constraint
                 new_goal_found = False
                 while not new_goal_found:
-                    low, high = np.array([-self.room_dims[0], -self.room_dims[1], 0]), np.array(self.room_dims)
-                    new_pos = np.random.uniform(low=low, high=high,
-                                                size=(2, 3)).reshape(3, 2)  # need an intermediate point for a deg=2 curve
+                    # low, high = np.array([-self.room_dims[0], -self.room_dims[1], -self.room_dims[2]]) / 2, np.array(self.room_dims) / 2
+                    low, high = np.zeros(3), np.array(self.room_dims)
+                    new_pos = np.random.uniform(low=-high, high=high, size=(2, 3)).reshape(3, 2)  # need an intermediate point for  a deg=2 curve
                     new_pos = new_pos * np.random.randint(min_dist, max_dist+1) / np.linalg.norm(new_pos, axis=0) # add some velocity randomization
                     new_pos = self.goal[0].reshape(3, 1) + new_pos
                     lower_bound = np.expand_dims(low, axis=1)

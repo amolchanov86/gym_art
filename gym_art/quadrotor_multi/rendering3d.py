@@ -611,8 +611,10 @@ def box(x, y, z):
 
 # Box representing the environment. Shortcut way to add walls during visualization
 def envBox(x, y, z):
-    corner1 = np.array([-x, -y, z])
-    corner2 = np.array([x, y, 0])
+    # corner1 = np.array([-x, -y, z])
+    # corner2 = np.array([x, y, 0])
+    corner1 = np.array([x, y, z])
+    corner2 = np.array([0, 0, 0])
     v = room_mesh(x, y, z)
     collider = AxisBoxCollision(corner1, corner2)
     return Mesh(v, collider=collider)
@@ -686,9 +688,9 @@ def box_mesh(x, y, z):
 
 # need a different mesh function for the envBox
 def room_mesh(x, y, z):
-    vtop = np.array([[x, y, z], [x, -y, z], [-x, -y, z], [-x, y, z]])
+    vtop = np.array([[x, y, z], [x, 0, z], [0, 0, z], [0, y, z]])
     vbottom = deepcopy(vtop)
-    vbottom[:, 2] = 0
+    vbottom[:, 2] = -1.0
     v = np.concatenate([vtop, vbottom], axis=0)
     # triangle meshes
     t = np.array(

@@ -113,7 +113,7 @@ class QuadrotorDynamics(object):
         ###############################################################
         ## OTHER PARAMETERS
         if room_box is None:
-            self.room_box = np.array([[-10., -10., 0.], [10., 10., 10.]])
+            self.room_box = np.array([[0., 0., 0.], [10., 10., 10.]])
         else:
             self.room_box = np.array(room_box).copy()
 
@@ -763,7 +763,7 @@ class QuadrotorSingle:
         # self.yaw_max = np.pi   #rad
 
         self.room_box = np.array(
-            [[-self.room_length, -self.room_width, 0], [self.room_length, self.room_width, self.room_height]]) # diagonal coordinates of box (?)
+            [[0, 0, 0], [self.room_length, self.room_width, self.room_height]]) # diagonal coordinates of box (?)
         self.state_vector = self.state_vector = getattr(get_state, "state_" + self.obs_repr)
 
         ## WARN: If you
@@ -870,8 +870,7 @@ class QuadrotorSingle:
     def update_env(self, room_length, room_width, room_height):
         self.room_length, self.room_width, self.room_height = room_length, room_width, room_height
         self.room_box = np.array(
-            [[-self.room_length, -self.room_width, 0],
-             [self.room_length, self.room_width, self.room_height]])  # diagonal coordinates of box (?)
+            [[0, 0, 0], [self.room_length, self.room_width, self.room_height]])  # diagonal coordinates of box (?)
         self.dynamics.room_box = self.room_box
 
     def update_sense_noise(self, sense_noise):
