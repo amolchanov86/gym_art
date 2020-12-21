@@ -1,20 +1,15 @@
 import copy
-import math
 import random
-import numpy as np
-import scipy as scp
-from scipy import spatial
 import time
-from collections import deque
 
-import gym
 import bezier
-
-from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix,\
-    perform_collision_between_drones, perform_collision_with_obstacle
+import gym
+import numpy as np
+from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, \
+    perform_collision_between_drones, perform_collision_with_obstacle, calculate_drone_proximity_penalties
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
-from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
+from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 
 EPS = 1E-6
 
@@ -247,8 +242,12 @@ class QuadrotorEnvMulti(gym.Env):
             obs_ext = self.extend_obs_space(obs)
             obs = obs_ext
 
+        drone_arm = self.envs[0].dynamics.arm
+        control_freq = self.envs[0].control_freq
+        dt = 1.0 / control_freq
+
         # Calculating collisions between drones
-        drone_col_matrix, self.curr_drone_collisions = calculate_collision_matrix(self.pos, self.envs[0].dynamics.arm)
+        drone_col_matrix, self.curr_drone_collisions, distance_matrix = calculate_collision_matrix(self.pos, drone_arm)
 
         unique_collisions = np.setdiff1d(self.curr_drone_collisions, self.prev_drone_collisions)
 
@@ -257,7 +256,7 @@ class QuadrotorEnvMulti(gym.Env):
         self.collisions_per_episode += collisions_curr_tick
 
         if collisions_curr_tick > 0:
-            if self.envs[0].tick >= self.collisions_grace_period_seconds * self.envs[0].control_freq:
+            if self.envs[0].tick >= self.collisions_grace_period_seconds * control_freq:
                 self.collisions_after_settle += collisions_curr_tick
 
         self.prev_drone_collisions = self.curr_drone_collisions
@@ -266,6 +265,9 @@ class QuadrotorEnvMulti(gym.Env):
         if unique_collisions.any():
             rew_collisions_raw[unique_collisions] = -1.0
         rew_collisions = self.rew_coeff["quadcol_bin"] * rew_collisions_raw
+
+        # penalties for being close to other drones
+        rew_proximity = -calculate_drone_proximity_penalties(distance_matrix, drone_arm, dt)
 
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
         col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos)
@@ -293,6 +295,9 @@ class QuadrotorEnvMulti(gym.Env):
             rewards[i] += rew_col_obst_quad[i]
             infos[i]["rewards"]["rew_quadcol_obstacle"] = rew_col_obst_quad[i]
             infos[i]["rewards"]["rewraw_quadcol_obstacle"] = rew_col_obst_quad_raw[i]
+
+            rewards[i] += rew_proximity[i]
+            infos[i]["rewards"]["rew_proximity"] = rew_proximity[i]
 
         if self.quads_mode == "circular_config":
             for i, e in enumerate(self.envs):

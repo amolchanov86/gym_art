@@ -225,7 +225,19 @@ def calculate_collision_matrix(positions, arm):
     for i, val in enumerate(up_w1[0]):
         all_collisions.append((up_w1[0][i], up_w1[1][i]))
 
-    return collision_matrix, all_collisions
+    return collision_matrix, all_collisions, dist
+
+
+def calculate_drone_proximity_penalties(distance_matrix, arm, dt):
+    penalty_fall_off = 3 * arm
+    max_penalty = 3.0  # TODO make these configurable parameters
+
+    penalties = (-max_penalty / penalty_fall_off) * distance_matrix + max_penalty
+    np.fill_diagonal(penalties, 0.0)
+    penalties = np.maximum(penalties, 0.0)
+    penalties = np.sum(penalties, axis=0)
+
+    return dt * penalties  # actual penalties per tick to be added to the overall reward
 
 
 def compute_col_norm_and_new_velocities(dyn1, dyn2):
