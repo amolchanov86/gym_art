@@ -290,7 +290,7 @@ class QuadrotorEnvMulti(gym.Env):
             infos[i]["rewards"]["rew_quadcol_obstacle"] = rew_col_obst_quad[i]
             infos[i]["rewards"]["rewraw_quadcol_obstacle"] = rew_col_obst_quad_raw[i]
 
-            rewards[i] += spacing_reward
+            rewards[i] += spacing_reward[i]
             infos[i]["rewards"]["rew_quad_spacing"] = spacing_reward[i]
 
         if self.quads_mode == "circular_config":
