@@ -229,8 +229,8 @@ def calculate_collision_matrix(positions, arm):
 
 
 def calculate_drone_proximity_penalties(distance_matrix, arm, dt):
-    penalty_fall_off = 3 * arm
-    max_penalty = 3.0  # TODO make these configurable parameters
+    penalty_fall_off = 4 * arm
+    max_penalty = 4.0  # TODO make these configurable parameters
 
     penalties = (-max_penalty / penalty_fall_off) * distance_matrix + max_penalty
     np.fill_diagonal(penalties, 0.0)
