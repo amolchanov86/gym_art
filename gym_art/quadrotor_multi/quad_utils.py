@@ -257,9 +257,14 @@ def perform_collision_between_drones(dyn1, dyn2):
     dyn1.vel += cons_rand_val + np.random.normal(0, 0.15, 3)
     dyn2.vel += -cons_rand_val + np.random.normal(0, 0.15, 3)
 
-    cons_rand_omega = np.random.normal(0, 0.8, 3)
-    dyn1.omega += cons_rand_omega + np.random.normal(0, 0.15, 3)
-    dyn2.omega += -cons_rand_omega + np.random.normal(0, 0.15, 3)
+    # Random forces for omega
+    omega_max = 4 * np.pi
+    new_omega = np.random.uniform(low=-omega_max, high=omega_max, size=(3,))
+    new_omega_magn = np.random.uniform(low=0., high=omega_max)
+    new_omega = new_omega_magn / (np.linalg.norm(new_omega) + 0.00001) * new_omega
+
+    dyn1.omega += new_omega
+    dyn2.omega += new_omega
 
 
 def perform_collision_with_obstacle(obs, drone_dyn):

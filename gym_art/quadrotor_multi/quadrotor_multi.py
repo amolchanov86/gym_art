@@ -30,7 +30,8 @@ class QuadrotorEnvMulti(gym.Env):
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_dist_between_goals=0.0, quads_mode='static_goal', swarm_obs=False, quads_use_numba=False, quads_settle=False,
                  quads_settle_range_meters=1.0, quads_vel_reward_out_range=0.8, quads_goal_dimension='2D', quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
-                 quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True, adaptive_env=False):
+                 quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True, adaptive_env=False,
+                 num_quads_in_vs_mode=None):
 
         super().__init__()
 
@@ -43,7 +44,8 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.envs = []
         self.adaptive_env = adaptive_env
-
+        if num_quads_in_vs_mode:
+            self.num_agents = 2 * num_quads_in_vs_mode
         for i in range(self.num_agents):
             e = QuadrotorSingle(
                 dynamics_params, dynamics_change, dynamics_randomize_every, dyn_sampler_1, dyn_sampler_2,
@@ -380,7 +382,25 @@ class QuadrotorEnvMulti(gym.Env):
 
                 for i, env in enumerate(self.envs):
                     env.goal = self.goal[i]
-
+        elif self.quads_mode == 'swarm_vs_swarm':
+            tick = self.envs[0].tick
+            control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
+            # Switch every 5th second
+            if tick % control_step_for_five_sec == 0 and tick > 0:
+                goal_1 = [0.0, 0.0, 2.0]
+                goal_2 = [1.5, 1.5, 2.0]
+                mid = self.num_agents // 2
+                # Reverse every 10th second
+                if tick % (control_step_for_five_sec * 2) == 0:
+                    for env in self.envs[:mid]:
+                        env.goal = np.array(goal_1)
+                    for env in self.envs[mid:]:
+                        env.goal = np.array(goal_2)
+                else:
+                    for env in self.envs[:mid]:
+                        env.goal = np.array(goal_2)
+                    for env in self.envs[mid:]:
+                        env.goal = np.array(goal_1)
         else:
             pass
 
