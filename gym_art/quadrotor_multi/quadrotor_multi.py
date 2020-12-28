@@ -178,8 +178,7 @@ class QuadrotorEnvMulti(gym.Env):
         if self.adaptive_env:
             # TODO: introduce logic to choose the new room dims i.e. based on statistics from last N episodes, etc
             # e.g. self.room_dims = ....
-            # new_length, new_width, new_height = np.random.randint(5, 30, 3)
-            new_length, new_width, new_height = 30, 30, 30
+            new_length, new_width, new_height = np.random.randint(30, 30, 30)
             self.room_dims = (new_length, new_width, new_height)
 
         # TODO: don't create scene object if we're just training and no need to visualize?
@@ -366,7 +365,7 @@ class QuadrotorEnvMulti(gym.Env):
                     new_pos = self.goal[0].reshape(3, 1) + new_pos
                     lower_bound = np.expand_dims(low, axis=1)
                     upper_bound = np.expand_dims(high, axis=1)
-                    new_goal_found = (new_pos > lower_bound + 0.5).all() and (new_pos < upper_bound - 0.5).all()  # check bounds that are slightly smaller than the room dims 
+                    new_goal_found = (new_pos > lower_bound + 0.5).all() and (new_pos < upper_bound - 0.5).all()  # check bounds that are slightly smaller than the room dims
                 nodes = np.concatenate((self.goal[0].reshape(3, 1), new_pos), axis=1)
                 nodes = np.asfortranarray(nodes)
                 pts = np.linspace(0, 1, control_steps)
