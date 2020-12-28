@@ -10,7 +10,7 @@ from collections import deque
 import gym
 import bezier
 
-from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, perform_collision
+from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, perform_collision, hyperbolic_proximity_penalty
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
@@ -270,16 +270,11 @@ class QuadrotorEnvMulti(gym.Env):
         self.all_collisions = {'drone': np.sum(drone_col_matrix, axis=1), 'ground': ground_collisions,
                                'obstacle': col_obst_quad.sum(axis=0)}
 
-        # compute cost for distance b/w drones
-        coeff = 0.1
+        # compute clipped 1/x^2 cost for distance b/w drones
         dists = spatial.distance_matrix(x=self.pos, y=self.pos)
-        costs = -(1 / (dists + 1e-7)**2)
-        np.fill_diagonal(costs, 0.0)
-        costs = np.clip(costs, -10, 0)
-        spacing_reward = np.array([np.sum(row) for row in costs])
-        control_freq = self.envs[0].control_freq
-        dt = 1.0 / control_freq
-        spacing_reward = coeff * spacing_reward * dt
+        dt = 1.0 / self.envs[0].control_freq
+        spacing_reward = hyperbolic_proximity_penalty(dists, dt)
+
 
 
         for i in range(self.num_agents):
@@ -358,8 +353,7 @@ class QuadrotorEnvMulti(gym.Env):
             control_steps = int(num_secs * control_freq)
             t = tick % control_steps
             # min and max distance the goal can spawn away from its current location. 30 = empirical upper bound on
-            # velocity that the drones can handle. If the room box is smaller than 30 on one dim, we want to use the
-            # smaller dim so that the goal doesn't sample outside the room, which can cause problems even with clipping
+            # velocity that the drones can handle.
             max_dist = min(30, max(self.room_dims))
             min_dist = max_dist / 2
             if tick % control_steps == 0 or tick == 1:

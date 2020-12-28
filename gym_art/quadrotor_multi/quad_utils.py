@@ -228,6 +228,22 @@ def calculate_collision_matrix(positions, arm):
     return collision_matrix, all_collisions
 
 
+def hyperbolic_proximity_penalty(dist_matrix, dt, coeff=2):
+    '''
+    summed 1/(coeff * x^2) clipped distance penalty between drones
+    :param dist_matrix: distance between drones
+    :param dt: single time step
+    :param coeff: reward scaling hyperparam
+    :return: spacing penalty b/w droens
+    '''
+    costs = -1 / (coeff * np.power(dist_matrix + 1e-7, 2))
+    np.fill_diagonal(costs, 0.0)
+    costs = np.clip(costs, -10, 0)
+    spacing_reward = np.array([np.sum(row) for row in costs])
+    spacing_reward = spacing_reward * dt
+    return spacing_reward
+
+
 # This function is to change the velocities after a collision happens between two bodies
 def perform_collision(dyn1, dyn2):
 
