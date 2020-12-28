@@ -362,11 +362,11 @@ class QuadrotorEnvMulti(gym.Env):
                 while not new_goal_found:
                     low, high = np.array([-self.room_dims[0]/2, -self.room_dims[1]/2, 0]), np.array([self.room_dims[0]/2, self.room_dims[1]/2, self.room_dims[2]])
                     new_pos = np.random.uniform(low=-high, high=high, size=(2, 3)).reshape(3, 2)  # need an intermediate point for  a deg=2 curve
-                    new_pos = new_pos * np.random.randint(min_dist, max_dist+1) / np.linalg.norm(new_pos, axis=0) # add some velocity randomization
+                    new_pos = new_pos * np.random.randint(min_dist, max_dist+1) / np.linalg.norm(new_pos, axis=0) # add some velocity randomization = random magnitude * unit direction
                     new_pos = self.goal[0].reshape(3, 1) + new_pos
                     lower_bound = np.expand_dims(low, axis=1)
                     upper_bound = np.expand_dims(high, axis=1)
-                    new_goal_found = (new_pos > lower_bound + 0.5).all() and (new_pos < upper_bound - 0.5).all()
+                    new_goal_found = (new_pos > lower_bound + 0.5).all() and (new_pos < upper_bound - 0.5).all()  # check bounds that are slightly smaller than the room dims 
                 nodes = np.concatenate((self.goal[0].reshape(3, 1), new_pos), axis=1)
                 nodes = np.asfortranarray(nodes)
                 pts = np.linspace(0, 1, control_steps)
