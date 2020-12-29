@@ -30,8 +30,7 @@ class QuadrotorEnvMulti(gym.Env):
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_dist_between_goals=0.0, quads_mode='static_goal', swarm_obs=False, quads_use_numba=False, quads_settle=False,
                  quads_settle_range_meters=1.0, quads_vel_reward_out_range=0.8, quads_goal_dimension='2D', quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
-                 quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True, adaptive_env=False,
-                 num_quads_in_vs_mode=None):
+                 quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True, adaptive_env=False):
 
         super().__init__()
 
@@ -44,8 +43,6 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.envs = []
         self.adaptive_env = adaptive_env
-        if num_quads_in_vs_mode:
-            self.num_agents = 2 * num_quads_in_vs_mode
         for i in range(self.num_agents):
             e = QuadrotorSingle(
                 dynamics_params, dynamics_change, dynamics_randomize_every, dyn_sampler_1, dyn_sampler_2,
