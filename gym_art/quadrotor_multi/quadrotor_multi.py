@@ -43,6 +43,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.envs = []
         self.adaptive_env = adaptive_env
+
         for i in range(self.num_agents):
             e = QuadrotorSingle(
                 dynamics_params, dynamics_change, dynamics_randomize_every, dyn_sampler_1, dyn_sampler_2,
