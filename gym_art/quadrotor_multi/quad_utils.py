@@ -258,11 +258,18 @@ def perform_collision_between_drones(dyn1, dyn2):
     dyn2.vel += -cons_rand_val + np.random.normal(0, 0.15, 3)
 
     # Random forces for omega
-    omega_max = 4 * np.pi
-    new_omega = np.random.uniform(low=omega_max/3, high=omega_max, size=(3,))
-    new_omega_magn = np.random.uniform(low=omega_max/3, high=omega_max)
-    new_omega = new_omega_magn / (np.linalg.norm(new_omega) + 0.00001) * new_omega
+    omega_max = 7 * np.pi  # this will amount to max 3.5 revolutions per second
+    eps = 1e-5
+    new_omega = np.random.uniform(low=-1, high=1, size=(3,))  # random direction in 3D space
+    while all(np.abs(new_omega) < eps):
+        new_omega = np.random.uniform(low=-1, high=1, size=(3,))  # just to make sure we don't get a 0-vector
 
+    new_omega /= np.linalg.norm(new_omega) + eps  # normalize
+
+    new_omega_magn = np.random.uniform(low=omega_max / 2, high=omega_max)  # random magnitude of the force
+    new_omega *= new_omega_magn
+
+    # add the disturbance to drone's angular velocities while preserving angular momentum
     dyn1.omega += new_omega
     dyn2.omega -= new_omega
 
