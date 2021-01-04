@@ -178,7 +178,7 @@ class QuadrotorEnvMulti(gym.Env):
         if self.adaptive_env:
             # TODO: introduce logic to choose the new room dims i.e. based on statistics from last N episodes, etc
             # e.g. self.room_dims = ....
-            new_length, new_width, new_height = np.random.randint(30, 30, 30)
+            new_length, new_width, new_height = np.random.randint(1, 31, 3)
             self.room_dims = (new_length, new_width, new_height)
 
         # TODO: don't create scene object if we're just training and no need to visualize?

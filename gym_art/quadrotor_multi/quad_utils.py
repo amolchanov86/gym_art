@@ -228,7 +228,7 @@ def calculate_collision_matrix(positions, arm):
     return collision_matrix, all_collisions
 
 
-def hyperbolic_proximity_penalty(dist_matrix, dt, coeff=2):
+def hyperbolic_proximity_penalty(dist_matrix, dt, coeff=np.inf):
     '''
     summed 1/(coeff * x^2) clipped distance penalty between drones
     :param dist_matrix: distance between drones
