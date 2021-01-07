@@ -244,9 +244,6 @@ def hyperbolic_proximity_penalty(dist_matrix, dt, coeff=np.inf):
     return spacing_reward
 
 
-# This function is to change the velocities after a collision happens between two bodies
-def perform_collision(dyn1, dyn2):
-
 def compute_col_norm_and_new_velocities(dyn1, dyn2):
     # Ge the collision normal, i.e difference in position
     collision_norm = dyn1.pos - dyn2.pos
