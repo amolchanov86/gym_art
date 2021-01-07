@@ -67,6 +67,6 @@ setup(
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
-        'pytest', 'numpy>1.15', 'matplotlib>3', 'gym>=0.17', 'transforms3d', 'noise', 'tqdm',
+        'pytest', 'numpy>1.15', 'matplotlib>3', 'gym>=0.17', 'transforms3d', 'noise', 'tqdm', 'bezier',
     ],
 )
