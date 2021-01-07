@@ -12,7 +12,7 @@ import bezier
 
 from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix,\
     perform_collision_between_drones, perform_collision_with_obstacle
-from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, perform_collision, hyperbolic_proximity_penalty
+from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, hyperbolic_proximity_penalty
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
@@ -66,7 +66,7 @@ class QuadrotorEnvMulti(gym.Env):
         # reward shaping
         self.rew_coeff = dict(
             pos=1., effort=0.05, action_change=0., crash=1., orient=1., yaw=0., rot=0., attitude=0., spin=0.1, vel=0.,
-            quadcol_bin=0., quadsettle=0., quadcol_bin_obst=0.,
+            quadcol_bin=0., quadsettle=0., quadcol_bin_obst=0., quad_spacing_coeff=0.
         )
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
