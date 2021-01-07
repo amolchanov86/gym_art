@@ -12,6 +12,7 @@ import bezier
 
 from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix,\
     perform_collision_between_drones, perform_collision_with_obstacle
+from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, perform_collision, hyperbolic_proximity_penalty
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
@@ -187,7 +188,8 @@ class QuadrotorEnvMulti(gym.Env):
         if self.adaptive_env:
             # TODO: introduce logic to choose the new room dims i.e. based on statistics from last N episodes, etc
             # e.g. self.room_dims = ....
-            pass
+            new_length, new_width, new_height = np.random.randint(1, 31, 3)
+            self.room_dims = (new_length, new_width, new_height)
 
         # TODO: don't create scene object if we're just training and no need to visualize?
         if self.scene is None:
@@ -285,6 +287,13 @@ class QuadrotorEnvMulti(gym.Env):
             for val in np.argwhere(col_obst_quad > 0.0):
                 perform_collision_with_obstacle(self.obstacles.obstacles[val[0]], self.envs[val[1]].dynamics)
 
+        # compute clipped 1/x^2 cost for distance b/w drones
+        dists = spatial.distance_matrix(x=self.pos, y=self.pos)
+        dt = 1.0 / self.envs[0].control_freq
+        spacing_reward = hyperbolic_proximity_penalty(dists, dt)
+
+
+
         for i in range(self.num_agents):
             rewards[i] += rew_collisions[i]
             infos[i]["rewards"]["rew_quadcol"] = rew_collisions[i]
@@ -293,6 +302,9 @@ class QuadrotorEnvMulti(gym.Env):
             rewards[i] += rew_col_obst_quad[i]
             infos[i]["rewards"]["rew_quadcol_obstacle"] = rew_col_obst_quad[i]
             infos[i]["rewards"]["rewraw_quadcol_obstacle"] = rew_col_obst_quad_raw[i]
+
+            rewards[i] += spacing_reward[i]
+            infos[i]["rewards"]["rew_quad_spacing"] = spacing_reward[i]
 
         if self.quads_mode == "circular_config":
             for i, e in enumerate(self.envs):
@@ -358,22 +370,26 @@ class QuadrotorEnvMulti(gym.Env):
             control_steps = int(num_secs * control_freq)
             t = tick % control_steps
             # min and max distance the goal can spawn away from its current location. 30 = empirical upper bound on
-            # velocity that the drones can handle. If the room box is smaller than 30 on one dim, we want to use the
-            # smaller dim so that the goal doesn't sample outside the room, which can cause problems even with clipping
-            max_dist = min(30, self.room_dims[0])
+            # velocity that the drones can handle.
+            max_dist = min(30, max(self.room_dims))
             min_dist = max_dist / 2
             if tick % control_steps == 0 or tick == 1:
-                low, high = -np.array(self.room_dims), np.array(self.room_dims)
-                new_pos = np.random.uniform(low=low, high=high,
-                                            size=(2, 3)).reshape(3, 2)
-                new_pos = new_pos * np.random.randint(min_dist, max_dist+1) / np.linalg.norm(new_pos) # add some velocity randomization
-                new_pos = self.goal[0].reshape(3, 1) + new_pos
+                # sample a new goal pos that's within the room boundaries and satisfies the distance constraint
+                new_goal_found = False
+                while not new_goal_found:
+                    low, high = np.array([-self.room_dims[0]/2, -self.room_dims[1]/2, 0]), np.array([self.room_dims[0]/2, self.room_dims[1]/2, self.room_dims[2]])
+                    new_pos = np.random.uniform(low=-high, high=high, size=(2, 3)).reshape(3, 2)  # need an intermediate point for  a deg=2 curve
+                    new_pos = new_pos * np.random.randint(min_dist, max_dist+1) / np.linalg.norm(new_pos, axis=0) # add some velocity randomization = random magnitude * unit direction
+                    new_pos = self.goal[0].reshape(3, 1) + new_pos
+                    lower_bound = np.expand_dims(low, axis=1)
+                    upper_bound = np.expand_dims(high, axis=1)
+                    new_goal_found = (new_pos > lower_bound + 0.5).all() and (new_pos < upper_bound - 0.5).all()  # check bounds that are slightly smaller than the room dims
                 nodes = np.concatenate((self.goal[0].reshape(3, 1), new_pos), axis=1)
                 nodes = np.asfortranarray(nodes)
                 pts = np.linspace(0, 1, control_steps)
                 curve = bezier.Curve(nodes, degree=2)
                 self.interp = curve.evaluate_multi(pts)
-                self.interp = np.clip(self.interp, a_min=np.array([0,0,0.2]).reshape(3,1), a_max=high.reshape(3,1)) # want goal clipping to be slightly above the floor
+                # self.interp = np.clip(self.interp, a_min=np.array([0,0,0.2]).reshape(3,1), a_max=high.reshape(3,1)) # want goal clipping to be slightly above the floor
             if tick % control_steps != 0 and tick > 1:
                 self.goal = [self.interp[:, t] for _ in range(self.num_agents)]
                 self.goal = np.array(self.goal)
