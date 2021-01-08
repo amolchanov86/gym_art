@@ -228,15 +228,15 @@ def calculate_collision_matrix(positions, arm):
     return collision_matrix, all_collisions
 
 
-def hyperbolic_proximity_penalty(dist_matrix, dt, coeff=np.inf):
+def hyperbolic_proximity_penalty(dist_matrix, dt, coeff=0.0):
     '''
-    summed 1/(coeff * x^2) clipped distance penalty between drones
+    summed coeff/(x^2 + eps) clipped distance penalty between drones
     :param dist_matrix: distance between drones
     :param dt: single time step
     :param coeff: reward scaling hyperparam
     :return: spacing penalty b/w droens
     '''
-    costs = -1 / (coeff * np.power(dist_matrix + 1e-7, 2))
+    costs = -coeff / (np.power(dist_matrix + 1e-7, 2))
     np.fill_diagonal(costs, 0.0)
     costs = np.clip(costs, -10, 0)
     spacing_reward = np.array([np.sum(row) for row in costs])
@@ -244,18 +244,23 @@ def hyperbolic_proximity_penalty(dist_matrix, dt, coeff=np.inf):
     return spacing_reward
 
 
-# This function is to change the velocities after a collision happens between two bodies
-def perform_collision(dyn1, dyn2):
-
+def compute_col_norm_and_new_velocities(dyn1, dyn2):
     # Ge the collision normal, i.e difference in position
     collision_norm = dyn1.pos - dyn2.pos
     coll_norm_mag = np.linalg.norm(collision_norm)
-    collision_norm = collision_norm/(coll_norm_mag + 0.00001 if coll_norm_mag == 0.0 else coll_norm_mag)
+    collision_norm = collision_norm / (coll_norm_mag + 0.00001 if coll_norm_mag == 0.0 else coll_norm_mag)
 
     # Get the components of the velocity vectors which are parallel to the collision.
     # The perpendicular component remains the same.
     v1new = np.dot(dyn1.vel, collision_norm)
     v2new = np.dot(dyn2.vel, collision_norm)
+
+    return v1new, v2new, collision_norm
+
+
+# This function is to change the velocities after a collision happens between two bodies
+def perform_collision_between_drones(dyn1, dyn2):
+    v1new, v2new, collision_norm = compute_col_norm_and_new_velocities(dyn1, dyn2)
 
     # Solve for the new velocities using the elastic collision equations. It's really simple when the
     dyn1.vel += (v2new - v1new) * collision_norm
@@ -268,9 +273,30 @@ def perform_collision(dyn1, dyn2):
     dyn1.vel += cons_rand_val + np.random.normal(0, 0.15, 3)
     dyn2.vel += -cons_rand_val + np.random.normal(0, 0.15, 3)
 
-    cons_rand_omega = np.random.normal(0, 0.8, 3)
-    dyn1.omega += cons_rand_omega + np.random.normal(0, 0.15, 3)
-    dyn2.omega += -cons_rand_omega + np.random.normal(0, 0.15, 3)
+    # Random forces for omega
+    omega_max = 7 * np.pi  # this will amount to max 3.5 revolutions per second
+    eps = 1e-5
+    new_omega = np.random.uniform(low=-1, high=1, size=(3,))  # random direction in 3D space
+    while all(np.abs(new_omega) < eps):
+        new_omega = np.random.uniform(low=-1, high=1, size=(3,))  # just to make sure we don't get a 0-vector
+
+    new_omega /= np.linalg.norm(new_omega) + eps  # normalize
+
+    new_omega_magn = np.random.uniform(low=omega_max / 2, high=omega_max)  # random magnitude of the force
+    new_omega *= new_omega_magn
+
+    # add the disturbance to drone's angular velocities while preserving angular momentum
+    dyn1.omega += new_omega
+    dyn2.omega -= new_omega
+
+
+def perform_collision_with_obstacle(obs, drone_dyn):
+    v1new, v2new, collision_norm = compute_col_norm_and_new_velocities(obs, drone_dyn)
+    drone_dyn.vel += (v1new - v2new) * collision_norm
+
+    # Now adding random force components
+    drone_dyn.vel += np.random.normal(0, 0.8, 3)
+    drone_dyn.omega += np.random.normal(0, 0.8, 3)
 
 
 class OUNoise:

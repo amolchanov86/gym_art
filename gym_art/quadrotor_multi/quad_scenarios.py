@@ -115,3 +115,23 @@ class QuadrotorScenario():
 
             for i, env in enumerate(self.envs):
                 env.goal = self.goal[i]
+
+    def swarm_vs_swarm(self):
+        tick = self.envs[0].tick
+        control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
+        # Switch every 5th second
+        if tick % control_step_for_five_sec == 0 and tick > 0:
+            goal_1 = np.array([0.0, 0.0, 2.0])
+            goal_2 = np.array([1.5, 1.5, 2.0])
+            mid = self.num_agents // 2
+            # Reverse every 10th second
+            if tick % (control_step_for_five_sec * 2) == 0:
+                for env in self.envs[:mid]:
+                    env.goal = goal_1
+                for env in self.envs[mid:]:
+                    env.goal = goal_2
+            else:
+                for env in self.envs[:mid]:
+                    env.goal = goal_2
+                for env in self.envs[mid:]:
+                    env.goal = goal_1

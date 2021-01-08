@@ -10,7 +10,9 @@ from collections import deque
 import gym
 import bezier
 
-from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, perform_collision, hyperbolic_proximity_penalty
+from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix,\
+    perform_collision_between_drones, perform_collision_with_obstacle
+from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, hyperbolic_proximity_penalty
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
@@ -65,7 +67,7 @@ class QuadrotorEnvMulti(gym.Env):
         # reward shaping
         self.rew_coeff = dict(
             pos=1., effort=0.05, action_change=0., crash=1., orient=1., yaw=0., rot=0., attitude=0., spin=0.1, vel=0.,
-            quadcol_bin=0., quadsettle=0., quadcol_bin_obst=0.,
+            quadcol_bin=0., quadsettle=0., quadcol_bin_obst=0., quad_spacing_coeff=0.
         )
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
@@ -147,7 +149,15 @@ class QuadrotorEnvMulti(gym.Env):
         self.render_every_nth_frame = 1
         self.render_speed = 1.0  # set to below 1 for slowmo, higher than 1 for fast forward (if simulator can keep up)
 
+        # measuring the total number of pairwise collisions per episode
         self.collisions_per_episode = 0
+
+        # some collisions may happen because the quadrotors get initialized on the collision course
+        # if we wait a couple of seconds, then we can eliminate all the collisions that happen due to initialization
+        # this is the actual metric that we want to minimize
+        self.collisions_after_settle = 0
+        self.collisions_grace_period_seconds = 1.5
+
         self.prev_drone_collisions, self.curr_drone_collisions = [], []
         self.all_collisions = {}
         self.apply_collision_force = collision_force
@@ -222,7 +232,7 @@ class QuadrotorEnvMulti(gym.Env):
         self.all_collisions = {val: [0.0 for _ in range(len(self.envs))] for val in ['drone', 'ground', 'obstacle']}
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics(), self.obstacles, self.all_collisions)
 
-        self.collisions_per_episode = 0
+        self.collisions_per_episode = self.collisions_after_settle = 0
         return obs
 
     # noinspection PyTypeChecker
@@ -250,18 +260,19 @@ class QuadrotorEnvMulti(gym.Env):
         unique_collisions = np.setdiff1d(self.curr_drone_collisions, self.prev_drone_collisions)
 
         # collision between 2 drones counts as a single collision
-        self.collisions_per_episode += len(unique_collisions) // 2
+        collisions_curr_tick = len(unique_collisions) // 2
+        self.collisions_per_episode += collisions_curr_tick
+
+        if collisions_curr_tick > 0:
+            if self.envs[0].tick >= self.collisions_grace_period_seconds * self.envs[0].control_freq:
+                self.collisions_after_settle += collisions_curr_tick
+
         self.prev_drone_collisions = self.curr_drone_collisions
 
         rew_collisions_raw = np.zeros(self.num_agents)
         if unique_collisions.any():
             rew_collisions_raw[unique_collisions] = -1.0
         rew_collisions = self.rew_coeff["quadcol_bin"] * rew_collisions_raw
-
-        # Applying random forces for all collisions between drones
-        if self.apply_collision_force:
-            for val in self.curr_drone_collisions:
-                perform_collision(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
 
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
         col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos)
@@ -273,6 +284,13 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.all_collisions = {'drone': np.sum(drone_col_matrix, axis=1), 'ground': ground_collisions,
                                'obstacle': col_obst_quad.sum(axis=0)}
+
+        # Applying random forces for all collisions between drones and obstacles
+        if self.apply_collision_force:
+            for val in self.curr_drone_collisions:
+                perform_collision_between_drones(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
+            for val in np.argwhere(col_obst_quad > 0.0):
+                perform_collision_with_obstacle(self.obstacles.obstacles[val[0]], self.envs[val[1]].dynamics)
 
         # compute clipped 1/x^2 cost for distance b/w drones
         dists = spatial.distance_matrix(x=self.pos, y=self.pos)
@@ -324,7 +342,11 @@ class QuadrotorEnvMulti(gym.Env):
         # DONES
         if any(dones):
             for i in range(len(infos)):
-                infos[i]['episode_extra_stats'] = {'num_collisions': self.collisions_per_episode}
+                infos[i]['episode_extra_stats'] = {
+                    'num_collisions': self.collisions_per_episode,
+                    'num_collisions_after_settle': self.collisions_after_settle,
+                }
+
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
 
