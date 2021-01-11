@@ -50,29 +50,61 @@ class QuadrotorScenario:
         else:
             self.formation_size = self.cfg_quads_formation_size
 
-    def init_goals(self):
-        self.setup_formation()
+    def generate_goals(self, num_agents, formation_center=None):
+        if formation_center is None:
+            formation_center = np.array([0, 0, 2])
 
         pi = np.pi
-
         goals = []
-
         if self.formation == "circle":
             for i in range(self.num_agents):
                 degree = 2 * pi * i / self.num_agents
                 goal_x = self.formation_size * np.cos(degree)
                 goal_y = self.formation_size * np.sin(degree)
-                goal = [goal_x, goal_y, 2.0]
+                goal = formation_center + np.array([goal_x, goal_y, 0])
                 goals.append(goal)
-
             goals = np.array(goals)
+
         elif self.formation == "sphere":
-            goals = self.formation_size * np.array(generate_points(self.num_agents))
-            goals[:, 2] += 2.0
+            goals = self.formation_size * np.array(generate_points(self.num_agents)) + formation_center
+        elif self.formation.startswith("grid"):
+            dim1 = int(np.floor(np.sqrt(num_agents)))
+            while dim1 > 1:
+                if num_agents % dim1 == 0:
+                    break
+                else:
+                    dim1 -= 1
+            dim2 = num_agents // dim1
+
+            delta1 = self.formation_size / (dim1 - 1) if dim1 != 1 else self.formation_size
+            delta2 = self.formation_size / (dim2 - 1) if dim2 != 1 else self.formation_size
+            for i in range(dim1):
+                for j in range(dim2):
+                    if self.formation.endswith("vertical"):
+                        x = j * delta2 - (self.formation_size / 2)
+                        y = 0.0
+                        z = i * delta1 - (self.formation_size / 2)
+                    elif self.formation.endswith("horizontal"):
+                        x = j * delta2 - (self.formation_size / 2)
+                        y = i * delta1 - (self.formation_size / 2)
+                        z = 0.0
+                    else:
+                        raise NotImplementedError()
+
+                    goal = np.array([x, y, z]) + formation_center
+                    goals.append(goal)
+            goals = np.array(goals)
+
+
         else:
             raise NotImplementedError("Unknown formation")
 
-        self.goals = goals
+        return goals
+
+    def init_goals(self):
+        self.setup_formation()
+
+        self.goals = self.generate_goals(self.num_agents)
 
     def step(self, infos, rewards):
         raise NotImplementedError("Implemented in a specific scenario")
@@ -188,16 +220,17 @@ class Scenario_ep_rand_bezier(QuadrotorScenario):
         num_secs = 5
         control_steps = int(num_secs * control_freq)
         t = tick % control_steps
+        room_dims = np.array(self.room_dims) - self.formation_size
         # min and max distance the goal can spawn away from its current location. 30 = empirical upper bound on
         # velocity that the drones can handle.
-        max_dist = min(30, max(self.room_dims))
+        max_dist = min(30, max(room_dims))
         min_dist = max_dist / 2
         if tick % control_steps == 0 or tick == 1:
             # sample a new goal pos that's within the room boundaries and satisfies the distance constraint
             new_goal_found = False
             while not new_goal_found:
-                low, high = np.array([-self.room_dims[0] / 2, -self.room_dims[1] / 2, 0]), np.array(
-                    [self.room_dims[0] / 2, self.room_dims[1] / 2, self.room_dims[2]])
+                low, high = np.array([-room_dims[0] / 2, -room_dims[1] / 2, 0]), np.array(
+                    [room_dims[0] / 2, room_dims[1] / 2, room_dims[2]])
                 new_pos = np.random.uniform(low=-high, high=high, size=(2, 3)).reshape(3,
                                                                                        2)  # need an intermediate point for  a deg=2 curve
                 new_pos = new_pos * np.random.randint(min_dist, max_dist + 1) / np.linalg.norm(new_pos, axis=0)  # add some velocity randomization = random magnitude * unit direction
@@ -213,14 +246,32 @@ class Scenario_ep_rand_bezier(QuadrotorScenario):
             self.interp = curve.evaluate_multi(pts)
             # self.interp = np.clip(self.interp, a_min=np.array([0,0,0.2]).reshape(3,1), a_max=high.reshape(3,1)) # want goal clipping to be slightly above the floor
         if tick % control_steps != 0 and tick > 1:
-            self.goals = [self.interp[:, t] for _ in range(self.num_agents)]
-            self.goals = np.array(self.goals)
+            goal = self.interp[:, t]
+            self.goals = self.generate_goals(self.num_agents, np.array(goal))
 
             for i, env in enumerate(self.envs):
                 env.goal = self.goals[i]
 
 
 class Scenario_swarm_vs_swarm(QuadrotorScenario):
+    def formation_centers(self):
+        goal_1 = np.array([0.0, 0.0, 2.0])
+        goal_2 = np.array([0.0, 1.5, 2.0])
+        return goal_1, goal_2
+
+    def create_grids(self, goal1_center, goal2_center):
+        goals_1 = self.generate_goals(self.num_agents // 2, goal1_center)
+        goals_2 = self.generate_goals(self.num_agents // 2, goal2_center)
+        return goals_1, goals_2
+
+
+    def init_goals(self):
+        goal_1, goal_2 = self.formation_centers()
+        self.setup_formation()
+        goals_1, goals_2 = self.create_grids(goal_1, goal_2)
+        self.goals = np.concatenate([goals_1, goals_2])
+
+
     def get_formation(self):
         return 'grid_vertical'
 
@@ -232,17 +283,17 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario):
         control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
         # Switch every 5th second
         if tick % control_step_for_five_sec == 0 and tick > 0:
-            goal_1 = np.array([0.0, 0.0, 2.0])
-            goal_2 = np.array([1.5, 1.5, 2.0])
+            goal_1, goal_2 = self.formation_centers()
+            goals_1, goals_2 = self.create_grids(goal_1, goal_2)
             mid = self.num_agents // 2
             # Reverse every 10th second
             if tick % (control_step_for_five_sec * 2) == 0:
-                for env in self.envs[:mid]:
-                    env.goal = goal_1
-                for env in self.envs[mid:]:
-                    env.goal = goal_2
+                for i, env in enumerate(self.envs[:mid]):
+                    env.goal = goals_1[i]
+                for i, env in enumerate(self.envs[mid:]):
+                    env.goal = goals_2[i]
             else:
-                for env in self.envs[:mid]:
-                    env.goal = goal_2
-                for env in self.envs[mid:]:
-                    env.goal = goal_1
+                for i, env in enumerate(self.envs[:mid]):
+                    env.goal = goals_2[i]
+                for i, env in enumerate(self.envs[mid:]):
+                    env.goal = goals_1[i]
