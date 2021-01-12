@@ -207,7 +207,7 @@ class Scene(object):
 
 def draw(scene, camera, target):
 
-    target.bind() # sets viewport
+    # target.bind() # sets viewport
 
     r, g, b = scene.bgcolor
     glClearColor(r, g, b, 1.0)
@@ -218,7 +218,7 @@ def draw(scene, camera, target):
     glEnable(GL_NORMALIZE)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-    camera._matrix(target.shape)
+    camera._matrix((target.width, target.height, 3))
     #view = (GLfloat * 16)()
     #glGetFloatv(GL_MODELVIEW_MATRIX, view)
     #view = np.array(view).reshape((4,4)).T
@@ -226,7 +226,7 @@ def draw(scene, camera, target):
     for batch in scene.batches:
         batch.draw()
 
-    target.finish()
+    # target.finish()
 
 
 class SceneNode(object):
