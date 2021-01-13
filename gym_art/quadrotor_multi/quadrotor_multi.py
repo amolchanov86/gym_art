@@ -147,6 +147,8 @@ class QuadrotorEnvMulti(gym.Env):
         ## Set Obstacles
         self.obstacle_max_init_vel = 4.0 * self.envs[0].max_init_vel
         self.obstacle_init_box = 0.5 * self.envs[0].box
+        obstacle_bound_box = 4 * self.obstacle_init_box
+        self.obstacle_room = np.array([[-obstacle_bound_box, -obstacle_bound_box, 0.], [obstacle_bound_box, obstacle_bound_box, 10.0]])
         self.mean_goals_z = np.mean(self.goal[:, 2])
         self.dt = 1.0 / sim_freq
         self.obstacle_mode = quads_obstacle_mode
@@ -386,8 +388,14 @@ class QuadrotorEnvMulti(gym.Env):
                                                    set_obstacles=self.set_obstacles)
 
             for obstacle in self.obstacles.obstacles:
-                bottom_z = obstacle.pos[2] - obstacle.size
-                if bottom_z <= 0.0:
+                if np.array_equal(obstacle.pos, np.array([20., 20., 20.])):
+                    continue
+                tmp_obstacle_pos = copy.deepcopy(obstacle.pos)
+                tmp_obstacle_pos[2] = obstacle.pos[2] - obstacle.size
+                if not np.array_equal(tmp_obstacle_pos,
+                               np.clip(tmp_obstacle_pos,
+                                       a_min=self.obstacle_room[0],
+                                       a_max=self.obstacle_room[1])):
                     self.set_obstacles = False
                     obstacle.reset(set_obstacle=self.set_obstacles)
                     self.obstacle_settle_count = np.zeros(self.num_agents)
