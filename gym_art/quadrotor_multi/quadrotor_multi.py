@@ -16,7 +16,7 @@ from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collis
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
-from gym_art.quadrotor_multi.quad_scenarios import QuadrotorScenario
+from gym_art.quadrotor_multi.quad_scenarios import QuadrotorScenario, create_scenario
 
 EPS = 1E-6
 
@@ -30,8 +30,8 @@ class QuadrotorEnvMulti(gym.Env):
                  sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_length=10, room_width=10, room_height=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
-                 quads_dist_between_goals=0.0, quads_mode='static_goal', swarm_obs=False, quads_use_numba=False, quads_settle=False,
-                 quads_settle_range_meters=1.0, quads_vel_reward_out_range=0.8, quads_goal_dimension='2D', quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
+                 quads_mode='static_goal', quads_formation='default', quads_formation_size=-1.0, swarm_obs=False, quads_use_numba=False, quads_settle=False,
+                 quads_settle_range_meters=1.0, quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
                  quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True, adaptive_env=False):
 
         super().__init__()
@@ -95,39 +95,22 @@ class QuadrotorEnvMulti(gym.Env):
         self.clip_neighbor_space_min_box = self.observation_space.low[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
         self.clip_neighbor_space_max_box = self.observation_space.high[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
 
-	    ## Set Goals
-        self.goal_dimension = quads_goal_dimension
-        delta = quads_dist_between_goals
-        pi = np.pi
-
-        if self.goal_dimension == "2D":
-            self.goal = []
-            self.init_goal_pos = []
-            for i in range(self.num_agents):
-                degree = 2 * pi * i / self.num_agents
-                goal_x = delta * np.cos(degree)
-                goal_y = delta * np.sin(degree)
-                goal = [goal_x, goal_y, 2.0]
-                self.goal.append(goal)
-                self.init_goal_pos.append(goal)
-
-            self.goal = np.array(self.goal)
-        elif self.goal_dimension == "3D":
-            self.goal = delta * np.array(generate_points(self.num_agents))
-            self.goal[:, 2] += 2.0
-            self.init_goal_pos = self.goal
-        else:
-            raise NotImplementedError()
-
-        self.goal_central = np.mean(self.goal, axis=0)
         self.rews_settle = np.zeros(self.num_agents)
         self.rews_settle_raw = np.zeros(self.num_agents)
         self.settle_count = np.zeros(self.num_agents)
 
-        ## Set Obstacles
+        self.scenario = create_scenario(quads_mode, self.envs, self.pos, self.settle_count, self.num_agents,
+                                        self.room_dims, self.rews_settle_raw, self.rews_settle, self.rew_coeff,
+                                        quads_formation, quads_formation_size)
+
+        self.scenario.init_goals()
+
+        self.goal_central = np.mean(self.scenario.goals, axis=0)
+
+        # Set Obstacles
         self.obstacle_max_init_vel = 4.0 * self.envs[0].max_init_vel
         self.obstacle_init_box = 0.5 * self.envs[0].box
-        self.mean_goals_z = np.mean(self.goal[:, 2])
+        self.mean_goals_z = np.mean(self.scenario.goals[:, 2])
         self.dt = 1.0 / sim_freq
         self.obstacle_mode = quads_obstacle_mode
         self.obstacle_num = quads_obstacle_num
@@ -161,10 +144,6 @@ class QuadrotorEnvMulti(gym.Env):
         self.prev_drone_collisions, self.curr_drone_collisions = [], []
         self.all_collisions = {}
         self.apply_collision_force = collision_force
-
-        self.scenario = QuadrotorScenario(self.envs, self.pos, self.goal, self.settle_count, self.num_agents,
-                                          self.room_dims,
-                                          self.rews_settle_raw, self.rews_settle, self.rew_coeff)
 
     def all_dynamics(self):
         return tuple(e.dynamics for e in self.envs)
@@ -208,9 +187,10 @@ class QuadrotorEnvMulti(gym.Env):
             if self.adaptive_env:
                 self.scene.update_env(self.room_dims)
 
+        self.scenario.init_goals()
+
         for i, e in enumerate(self.envs):
-            self.goal[i] = self.init_goal_pos[i]
-            e.goal = self.goal[i]
+            e.goal = self.scenario.goals[i]
             e.rew_coeff = self.rew_coeff
             if self.adaptive_env:
                 e.update_env(*self.room_dims)
@@ -297,8 +277,6 @@ class QuadrotorEnvMulti(gym.Env):
         dt = 1.0 / self.envs[0].control_freq
         spacing_reward = hyperbolic_proximity_penalty(dists, dt)
 
-
-
         for i in range(self.num_agents):
             rewards[i] += rew_collisions[i]
             infos[i]["rewards"]["rew_quadcol"] = rew_collisions[i]
@@ -312,8 +290,7 @@ class QuadrotorEnvMulti(gym.Env):
             infos[i]["rewards"]["rew_quad_spacing"] = spacing_reward[i]
 
         # run the scenario passed to self.quads_mode
-        assert self.quads_mode in dir(self.scenario), "String passed to quads_mode must match a method in the QuadrotorScenario class"
-        getattr(self.scenario, self.quads_mode)()
+        self.scenario.step(infos, rewards)
 
         if self.obstacle_mode == 'dynamic':
             quads_vel = np.array([e.dynamics.vel for e in self.envs])
@@ -351,14 +328,6 @@ class QuadrotorEnvMulti(gym.Env):
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
 
         return obs, rewards, dones, infos
-
-    # Based on https://mathcurve.com/courbes3d.gb/lissajous3d/lissajous3d.shtml
-    @staticmethod
-    def lissajous3D(tick, a=0.03, b=0.01, c=0.01, n=2, m=2, phi=90, psi=90):
-        x = a * np.sin(tick)
-        y = b * np.sin(n * tick + phi)
-        z = c * np.cos(m * tick + psi)
-        return x, y, z
 
     def render(self, mode='human', verbose=False):
         self.frames_since_last_render += 1
