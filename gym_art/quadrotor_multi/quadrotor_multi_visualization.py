@@ -86,6 +86,8 @@ class Quadrotor3DSceneMulti:
         self.dynamics = None
         self.num_agents = num_agents
         self.camera_drone_index = 0
+        self.camera_rot_step_size = np.pi / 18
+        self.camera_zoom_step_size = 0.1
 
     def update_goal_diameter(self):
         if self.quad_arm is not None:
@@ -264,43 +266,60 @@ class Quadrotor3DSceneMulti:
             return np.flipud(self.video_target.read())
 
     def window_on_key_press(self, symbol, modifiers):
-        # LEFT Arrow <- LEFT Rotation :
+        # <- LEFT Rotation :
         if symbol == key.LEFT:
-            print('LEFT')
-            self.chase_cam.phi -= np.pi / 18
-        # Alphabet keys:
+            self.chase_cam.phi -= self.camera_rot_step_size
+        # -> Right Rotation :
         elif symbol == key.RIGHT:
-            print('RIGHT')
-            self.chase_cam.phi += np.pi / 18
+            self.chase_cam.phi += self.camera_rot_step_size
         elif symbol == key.UP:
-            print('UP')
-            self.chase_cam.theta -= np.pi / 18
+            self.chase_cam.theta -= self.camera_rot_step_size
         elif symbol == key.DOWN:
-            print('DOWN')
-            self.chase_cam.theta += np.pi / 18
+            self.chase_cam.theta += self.camera_rot_step_size
         elif symbol == key.Z:
             # Zoom In
-            print('Zoom in')
-            self.chase_cam.radius -= 0.1
+            self.chase_cam.radius -= self.camera_zoom_step_size
         elif symbol == key.X:
             # Zoom Out
-            print('Zoom Out')
-            self.chase_cam.radius += 0.1
+            self.chase_cam.radius += self.camera_zoom_step_size
         elif symbol == key.L:
-            print('Switch to Local Camera')
             self.viepoint = 'local'
             self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
             self.chase_cam.reset(self.goals[0][0:3], self.dynamics[0].pos, self.dynamics[0].vel)
         elif symbol == key.G:
-            print('Switch to Global Camera')
             self.viepoint = 'global'
             self.chase_cam = GlobalCamera(view_dist=self.diameter * 15)
             goal = np.mean(self.goals, axis=0)
             self.chase_cam.reset(view_dist=2.0, center=goal)
         elif key.NUM_0 <= symbol <= key.NUM_9:
-            print('Switch to Local Camera && viewpoint is for drone key.NUM')
             index = min(symbol - key.NUM_0, self.num_agents-1)
             self.camera_drone_index = index
             self.viepoint = 'local'
             self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
             self.chase_cam.reset(self.goals[index][0:3], self.dynamics[index].pos, self.dynamics[index].vel)
+        elif symbol == key.Q :
+            # Decrease the step size of Rotation
+            if self.camera_rot_step_size <= np.pi / 18:
+                print('Current rotation step size for camera is the minimum!')
+            else:
+                self.camera_rot_step_size /= 2
+        elif symbol == key.P:
+            # Increase the step size of Rotation
+            if self.camera_rot_step_size >= np.pi / 2:
+                print('Current rotation step size for camera is the maximum!')
+            else:
+                self.camera_rot_step_size *= 2
+        elif symbol == key.W:
+            # Decrease the step size of Zoom
+            if self.camera_zoom_step_size <= 0.1:
+                print('Current zoom step size for camera is the minimum!')
+            else:
+                self.camera_zoom_step_size -= 0.1
+        elif symbol == key.O:
+            # Increase the step size of Zoom
+            if self.camera_zoom_step_size >= 2.0:
+                print('Current zoom step size for camera is the maximum!')
+            else:
+                self.camera_zoom_step_size += 0.1
+
+
