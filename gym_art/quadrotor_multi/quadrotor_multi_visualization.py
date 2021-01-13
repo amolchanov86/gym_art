@@ -9,8 +9,6 @@ from gym_art.quadrotor_multi.params import quad_color
 from gym_art.quadrotor_multi.quad_utils import *
 from gym_art.quadrotor_multi.quad_utils import calculate_collision_matrix
 from scipy import spatial
-import pyglet
-from pyglet.gl import *
 from pyglet.window import key
 
 # Global Camera
@@ -37,20 +35,6 @@ class GlobalCamera(object):
         return eye, center, up
 
 
-def get_display(spec):
-    """Convert a display specification (such as :0) into an actual Display
-    object.
-
-    pyglet only supports multiple Displays on Linux.
-    """
-    if spec is None:
-        return None
-    elif isinstance(spec, six.string_types):
-        return pyglet.canvas.Display(spec)
-    else:
-        raise error.Error('Invalid display specification: {}. (Must be a string like :0 or None.)'.format(spec))
-
-
 class Quadrotor3DSceneMulti:
     def __init__(
             self, w, h,
@@ -62,7 +46,6 @@ class Quadrotor3DSceneMulti:
 
         self.window_target = None
         self.window_w, self.window_h = w, h
-        self.window = None
         self.resizable = resizable
         self.viepoint = viewpoint
         self.obs_hw = copy.deepcopy(obs_hw)
@@ -263,14 +246,13 @@ class Quadrotor3DSceneMulti:
 
     def render_chase(self, all_dynamics, goals, collisions, mode='human', obstacles=None):
         if mode == 'human':
-            if self.window is None:
-                self.init_window_target(width=self.window_w, height=self.window_h, resizable=self.resizable)
+            if self.window_target is None:
+                self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
+                self.window_target.window.on_key_press = self.window_on_key_press
                 self._make_scene()
             self.update_state(all_dynamics=all_dynamics, goals=goals, obstacles=obstacles, collisions=collisions)
             self.cam3p.look_at(*self.chase_cam.look_at())
-            self.window_bind()
-            r3d.draw(self.scene, self.cam3p, self.window)
-            self.window_finish()
+            r3d.draw(self.scene, self.cam3p, self.window_target)
             return None
         elif mode == 'rgb_array':
             if self.video_target is None:
@@ -280,23 +262,6 @@ class Quadrotor3DSceneMulti:
             self.cam3p.look_at(*self.chase_cam.look_at())
             r3d.draw(self.scene, self.cam3p, self.video_target)
             return np.flipud(self.video_target.read())
-
-    def init_window_target(self, width, height, display=None, resizable=True):
-        config=Config(double_buffer=True, depth_size=16)
-        display = get_display(display)
-        # vsync is set to false to speed up FBO-only renders, we enable before draw
-        self.window = pyglet.window.Window(display=display,
-            width=width, height=height, resizable=resizable,
-            visible=True, vsync=False, config=config
-        )
-
-        self.window.on_close = self.window_close
-        self.window.on_key_press = self.window_on_key_press
-        self.window_shape = (width, height, 3)
-        def on_resize(w, h):
-            self.window_shape = (w, h, 3)
-        if resizable:
-            self.window.on_resize = on_resize
 
     def window_on_key_press(self, symbol, modifiers):
         # LEFT Arrow <- LEFT Rotation :
@@ -339,23 +304,3 @@ class Quadrotor3DSceneMulti:
             self.viepoint = 'local'
             self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
             self.chase_cam.reset(self.goals[index][0:3], self.dynamics[index].pos, self.dynamics[index].vel)
-
-
-    def window_close(self):
-        self.window.close()
-
-    def window_bind(self):
-        self.window.switch_to()
-        # self.window.set_vsync(True)
-        self.window.dispatch_events()
-        # fix for retina displays
-        viewportw, viewporth = self.window.get_viewport_size()
-        if viewportw > self.window.width:
-            glViewport(0, 0, viewportw, viewporth)
-        else:
-            glViewport(0, 0, self.window.width, self.window.height)
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-
-    def window_finish(self):
-        self.window.flip()
-        # self.window.set_vsync(False)
