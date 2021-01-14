@@ -151,9 +151,9 @@ class QuadrotorEnvMulti(gym.Env):
     def extend_obs_space(self, obs):
         obs_neighbors = []
         for i in range(len(self.envs)):
-            observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel, self.envs[i].dynamics.rot.flatten(), self.envs[i].dynamics.omega))
+            observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel))
             obs_neighbor = np.array([list(self.envs[j].dynamics.pos) + list(self.envs[j].dynamics.vel) for j in range(len(self.envs)) if j != i])
-            obs_neighbor_rel = obs_neighbor - observs[:self.neighbor_obs_size]
+            obs_neighbor_rel = obs_neighbor - observs
             obs_neighbors.append(obs_neighbor_rel.reshape(-1))
         obs_neighbors = np.stack(obs_neighbors)
 
