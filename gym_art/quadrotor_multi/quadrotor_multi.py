@@ -1,22 +1,15 @@
 import copy
-import math
-import random
 import numpy as np
-import scipy as scp
 from scipy import spatial
 import time
-from collections import deque
-
 import gym
-import bezier
 
-from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix,\
-    perform_collision_between_drones, perform_collision_with_obstacle
-from gym_art.quadrotor_multi.quad_utils import generate_points, calculate_collision_matrix, hyperbolic_proximity_penalty
+from gym_art.quadrotor_multi.quad_utils import perform_collision_between_drones, perform_collision_with_obstacle, \
+    calculate_collision_matrix, hyperbolic_proximity_penalty
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
-from gym_art.quadrotor_multi.quad_scenarios import QuadrotorScenario, create_scenario
+from gym_art.quadrotor_multi.quad_scenarios import create_scenario
 
 EPS = 1E-6
 
@@ -82,7 +75,7 @@ class QuadrotorEnvMulti(gym.Env):
         # Checking to make sure we didn't provide some false rew_coeffs (for example by misspelling one of the params)
         assert np.all([key in orig_keys for key in self.rew_coeff.keys()])
 
-        ## Aux variables
+        ## Aux variables for observation space of quads
         self.pos = np.zeros([self.num_agents, 3]) #Matrix containing all positions
         self.quads_mode = quads_mode
         if obs_repr == 'xyz_vxyz_R_omega':
@@ -95,16 +88,15 @@ class QuadrotorEnvMulti(gym.Env):
         self.clip_neighbor_space_min_box = self.observation_space.low[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
         self.clip_neighbor_space_max_box = self.observation_space.high[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
 
+        ## Aux variables for rewards
         self.rews_settle = np.zeros(self.num_agents)
         self.rews_settle_raw = np.zeros(self.num_agents)
-        self.settle_count = np.zeros(self.num_agents)
 
-        self.scenario = create_scenario(quads_mode, self.envs, self.pos, self.settle_count, self.num_agents,
-                                        self.room_dims, self.rews_settle_raw, self.rews_settle, self.rew_coeff,
-                                        quads_formation, quads_formation_size)
-
-        self.scenario.init_goals()
-
+        ## Aux variables for scenarios
+        self.scenario = create_scenario(quads_mode=quads_mode, envs=self.envs, num_agents=self.num_agents,
+                                        room_dims=self.room_dims, rew_coeff=self.rew_coeff,
+                                        quads_formation=quads_formation, quads_formation_size=quads_formation_size)
+        self.scenario.reset()
         self.goal_central = np.mean(self.scenario.goals, axis=0)
 
         # Set Obstacles
@@ -187,7 +179,7 @@ class QuadrotorEnvMulti(gym.Env):
             if self.adaptive_env:
                 self.scene.update_env(self.room_dims)
 
-        self.scenario.init_goals()
+        self.scenario.reset()
 
         for i, e in enumerate(self.envs):
             e.goal = self.scenario.goals[i]
@@ -290,7 +282,7 @@ class QuadrotorEnvMulti(gym.Env):
             infos[i]["rewards"]["rew_quad_spacing"] = spacing_reward[i]
 
         # run the scenario passed to self.quads_mode
-        self.scenario.step(infos, rewards)
+        infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=self.pos)
 
         if self.obstacle_mode == 'dynamic':
             quads_vel = np.array([e.dynamics.vel for e in self.envs])
