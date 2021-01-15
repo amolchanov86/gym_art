@@ -196,11 +196,12 @@ class Quadrotor3DSceneMulti:
             self._make_scene()
 
     def reset(self, goals, dynamics, obstacles, collisions):
+        self.goals = goals
+        self.dynamics = dynamics
+
         if self.viepoint == 'global':
             goal = np.mean(goals, axis=0)
             self.chase_cam.reset(view_dist=2.0, center=goal)
-            self.goals = goals
-            self.dynamics = dynamics
         else:
             goal = goals[self.camera_drone_index]  # TODO: make a camera that can look at all drones
             self.chase_cam.reset(goal[0:3], dynamics[self.camera_drone_index].pos, dynamics[self.camera_drone_index].vel)
