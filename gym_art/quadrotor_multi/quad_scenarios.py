@@ -185,6 +185,12 @@ class Scenario_ep_lissajous3D(QuadrotorScenario):
 
         return infos, rewards
 
+    def reset(self):
+        if self.formation_size <= -1.0:
+            self.formation_size = 0.0
+        # Generate goals
+        self.goals = self.generate_goals(self.num_agents)
+
 class Scenario_ep_rand_bezier(QuadrotorScenario):
     def step(self, infos, rewards, pos):
         # randomly sample new goal pos in free space and have the goal move there following a bezier curve
@@ -226,6 +232,12 @@ class Scenario_ep_rand_bezier(QuadrotorScenario):
                 env.goal = self.goals[i]
 
         return infos, rewards
+
+    def reset(self):
+        if self.formation_size <= -1.0:
+            self.formation_size = 0.0
+        # Generate goals
+        self.goals = self.generate_goals(self.num_agents)
 
 class QuadrotorScenario_Swap_Goals(QuadrotorScenario):
     def update_goals(self):
