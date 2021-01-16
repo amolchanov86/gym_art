@@ -342,15 +342,20 @@ class Scenario_mix(QuadrotorScenario):
         quad_arm_size = self.envs[0].dynamics.arm
         self.swarm_lowest_formation_size = self.get_lowest_formation_size()
         self.swarm_highest_formation_size = self.get_highest_formation_size()
+        # key: quads_mode
+        # value: 0. formation, 1: formation_low_size, formation_high_size, 2: episode_time, 3: obstacle_mode
+        str_no_obstacles = "no_obstacles"
+        str_dynamic_obstacles = "dynamic"
+        self.obstacle_number = 1
         self.quads_formation_and_size_dict = {
-            "static_same_goal": [["circle_horizontal"], [0.0, 0.0]],
-            "dynamic_same_goal": [["circle_horizontal"], [0.0, 0.0]],
-            "static_diff_goal": [QUADS_FORMATION_LIST, [0.01, 10 * quad_arm_size]],
-            "dynamic_diff_goal": [QUADS_FORMATION_LIST, [0.01, 10 * quad_arm_size]],
-            "ep_lissajous3D": [["circle_horizontal"], [0.0, 0.0]],
-            "ep_rand_bezier": [["circle_horizontal"], [0.0, 0.0]],
-            "circular_config": [QUADS_FORMATION_LIST, [self.lowest_formation_size, self.highest_formation_size]],
-            "swarm_vs_swarm": [QUADS_FORMATION_LIST, [self.swarm_lowest_formation_size, self.swarm_highest_formation_size]],
+            "static_same_goal": [["circle_horizontal"], [0.0, 0.0], 7.0, str_dynamic_obstacles],
+            "dynamic_same_goal": [["circle_horizontal"], [0.0, 0.0], 16.0, str_no_obstacles],
+            "static_diff_goal": [QUADS_FORMATION_LIST, [0.01, 10 * quad_arm_size], 7.0, str_dynamic_obstacles],
+            "dynamic_diff_goal": [QUADS_FORMATION_LIST, [0.01, 10 * quad_arm_size], 16.0, str_no_obstacles],
+            "ep_lissajous3D": [["circle_horizontal"], [0.0, 0.0], 15.0, str_no_obstacles],
+            "ep_rand_bezier": [["circle_horizontal"], [0.0, 0.0], 15.0, str_no_obstacles],
+            "circular_config": [QUADS_FORMATION_LIST, [self.lowest_formation_size, self.highest_formation_size], 15.0, str_no_obstacles],
+            "swarm_vs_swarm": [QUADS_FORMATION_LIST, [self.swarm_lowest_formation_size, self.swarm_highest_formation_size], 15.0, str_no_obstacles],
         }
 
 
@@ -391,3 +396,9 @@ class Scenario_mix(QuadrotorScenario):
                                         quads_formation=self.formation, quads_formation_size=self.formation_size)
         self.scenario.reset()
         self.goals = self.scenario.goals
+        for env in self.envs:
+            # reset episode time
+            env.reset_ep_len(self.quads_formation_and_size_dict[mode][2])
+            # reset obstacle mode and number
+            obstacle_mode = self.quads_formation_and_size_dict[mode][3]
+            env.reset_obstacle_mode(obstacle_mode=obstacle_mode, obstacle_num=self.obstacle_number)

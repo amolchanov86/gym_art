@@ -15,8 +15,8 @@ class SingleObstacle():
         self.size = size
         self.quad_size = quad_size
         self.dt = dt
-        self.pos = np.zeros(3)
-        self.vel = np.zeros(3)
+        self.pos = None
+        self.vel = None
         self.reset()
 
     def reset(self, set_obstacle=False):
@@ -28,10 +28,16 @@ class SingleObstacle():
             else:
                 pass
         else:
-            self.pos = np.array([20.0, 20.0, 20.0])
-            self.vel = np.array([0., 0., 0.])
+            self.pos = None
+            self.vel = None
 
     def step(self, quads_pos=None, quads_vel=None, set_obstacles=False):
+        if set_obstacles is False:
+            quads_num = len(quads_pos)
+            zero_array = np.array([np.zeros(3) for _ in range(quads_num)])
+            # return rel_pos, rel_vel
+            return zero_array, zero_array
+
         force_pos = 2 * self.goal_central - self.pos
         rel_force_goal = force_pos - self.goal_central
         force_noise = np.random.uniform(low=-0.5 * rel_force_goal, high=0.5 * rel_force_goal)
@@ -45,11 +51,8 @@ class SingleObstacle():
         # Calculate acceleration, F = ma, here, m = 1.0
         acc = force
         # Calculate velocity
-        if set_obstacles:
-            self.vel += self.dt * acc
-        # Calculate pos
-        if set_obstacles:
-            self.pos += self.dt * self.vel
+        self.vel += self.dt * acc
+        self.pos += self.dt * self.vel
 
         # The pos and vel of the obstacle give by the agents
         rel_pos_obstacle_agents = self.pos - quads_pos

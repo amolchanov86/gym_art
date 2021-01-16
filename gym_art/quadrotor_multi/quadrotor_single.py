@@ -857,6 +857,14 @@ class QuadrotorSingle:
         #########################################
         self._seed()
 
+    def reset_ep_len(self, ep_time):
+        self.ep_time = ep_time
+        self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
+
+    def reset_obstacle_mode(self, obstacle_mode, obstacle_num):
+        self.obstacle_mode = obstacle_mode
+        self.obstacle_num = obstacle_num
+
     def save_dyn_params(self, filename):
         import yaml
         with open(filename, 'w') as yaml_file:

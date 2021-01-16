@@ -23,8 +23,9 @@ class QuadrotorEnvMulti(gym.Env):
                  sim_steps=2, obs_repr='xyz_vxyz_R_omega', ep_time=7, obstacles_num=0, room_length=10, room_width=10, room_height=10,
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
-                 quads_mode='static_goal', quads_formation='default', quads_formation_size=-1.0, swarm_obs=False, quads_use_numba=False, quads_settle=False,
-                 quads_settle_range_meters=1.0, quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
+                 quads_mode='static_same_goal', quads_formation='circle_horizontal', quads_formation_size=-1.0,
+                 swarm_obs=False, quads_use_numba=False, quads_settle=False, quads_settle_range_meters=1.0,
+                 quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
                  quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True, adaptive_env=False):
 
         super().__init__()
@@ -110,6 +111,8 @@ class QuadrotorEnvMulti(gym.Env):
         self.obstacle_size = quads_obstacle_size
         self.set_obstacles = False
         self.obstacle_settle_count = np.zeros(self.num_agents)
+        self.obstacle_obs_len = 6 # pos and vel
+        self.metric_dist_quads_settle_with_obstacle = self.get_obst_metric()
 
         self.obstacles = MultiObstacles(
             mode=self.obstacle_mode, num_obstacles=self.obstacle_num,
@@ -140,6 +143,12 @@ class QuadrotorEnvMulti(gym.Env):
     def all_dynamics(self):
         return tuple(e.dynamics for e in self.envs)
 
+    def get_obst_metric(self):
+	# Distance between every two quadrotors is 4 quads_arm_len
+        quad_arm_size = self.envs[0].dynamics.arm
+        metric_dist = 4.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/self.num_agents) / np.sin(2 * np.pi / self.num_agents)
+        return metric_dist
+
     def extend_obs_space(self, obs):
         obs_neighbors = []
         for i in range(len(self.envs)):
@@ -156,8 +165,14 @@ class QuadrotorEnvMulti(gym.Env):
         obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
 
+    def reset_obstacle_mode(self):
+        self.obstacle_mode = self.envs[0].obstacle_mode
+        self.obstacle_num = self.envs[0].obstacle_num
+
     def reset(self):
         obs, rewards, dones, infos = [], [], [], []
+        self.scenario.reset()
+        self.reset_obstacle_mode()
 
         models = tuple(e.dynamics.model for e in self.envs)
 
@@ -178,8 +193,6 @@ class QuadrotorEnvMulti(gym.Env):
             self.scene.update_models(models)
             if self.adaptive_env:
                 self.scene.update_env(self.room_dims)
-
-        self.scenario.reset()
 
         for i, e in enumerate(self.envs):
             e.goal = self.scenario.goals[i]
@@ -247,7 +260,7 @@ class QuadrotorEnvMulti(gym.Env):
         rew_collisions = self.rew_coeff["quadcol_bin"] * rew_collisions_raw
 
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
-        col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos)
+        col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos, set_obstacles=self.set_obstacles)
         rew_col_obst_quad_raw = - np.sum(col_obst_quad, axis=0)
         rew_col_obst_quad = self.rew_coeff["quadcol_bin_obst"] * rew_col_obst_quad_raw
 
@@ -284,6 +297,10 @@ class QuadrotorEnvMulti(gym.Env):
         # run the scenario passed to self.quads_mode
         infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=self.pos)
 
+        if self.quads_mode == "mix" and self.obstacle_mode == "no_obstacles":
+            tmp_zero_arr = np.array([np.zeros(self.obstacle_obs_len) for _ in range(self.num_agents)])
+            obs = np.concatenate((obs, tmp_zero_arr), axis=1)
+
         if self.obstacle_mode == 'dynamic':
             quads_vel = np.array([e.dynamics.vel for e in self.envs])
             tmp_obs = self.obstacles.step(obs=obs, quads_pos=self.pos, quads_vel=quads_vel,
@@ -292,7 +309,7 @@ class QuadrotorEnvMulti(gym.Env):
             if not self.set_obstacles:
                 for i, e in enumerate(self.envs):
                     dis = np.linalg.norm(self.pos[i] - e.goal)
-                    if abs(dis) < 15.0 * self.envs[0].dynamics.arm:
+                    if abs(dis) < self.metric_dist_quads_settle_with_obstacle:
                         self.obstacle_settle_count[i] += 1
                     else:
                         self.obstacle_settle_count = np.zeros(self.num_agents)

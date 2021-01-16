@@ -28,6 +28,12 @@ class MultiObstacles():
             self.obstacles.append(obstacle)
 
     def reset(self, obs=None, quads_pos=None, quads_vel=None, set_obstacles=False):
+        if set_obstacles is False:
+            quads_num = len(quads_pos)
+            zero_array = np.array([np.zeros(3) for _ in range(quads_num)])
+            obs = np.concatenate((obs, zero_array, zero_array), axis=1)
+            return obs
+
         for obstacle in self.obstacles:
             obstacle.reset(set_obstacle=set_obstacles)
 
@@ -49,8 +55,11 @@ class MultiObstacles():
 
         return obs
 
-    def collision_detection(self, pos_quads=None):
+    def collision_detection(self, pos_quads=None, set_obstacles=False):
         collision_arr = np.zeros((len(self.obstacles), len(pos_quads)))
+        if set_obstacles is False:
+            return collision_arr
+
         for i, obstacle in enumerate(self.obstacles):
             col_arr = obstacle.collision_detection(pos_quads=pos_quads)
             collision_arr[i] = col_arr
