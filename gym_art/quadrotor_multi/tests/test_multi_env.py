@@ -1,6 +1,6 @@
 import time
 from unittest import TestCase
-
+import numpy as np
 from gym_art.quadrotor_multi.quadrotor_multi import QuadrotorEnvMulti
 
 
@@ -42,7 +42,11 @@ class TestMultiEnv(TestCase):
 
         for i in range(1000):
             obs, rewards, dones, infos = env.step([env.action_space.sample() for i in range(num_agents)])
-            self.assertIsInstance(obs, list)
+            try:
+                self.assertIsInstance(obs, list)
+            except:
+                self.assertIsInstance(obs, np.ndarray)
+
             self.assertIsInstance(rewards, list)
             self.assertIsInstance(dones, list)
             self.assertIsInstance(infos, list)
