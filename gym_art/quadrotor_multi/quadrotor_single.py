@@ -857,6 +857,14 @@ class QuadrotorSingle:
         #########################################
         self._seed()
 
+    def reset_ep_len(self, ep_time):
+        self.ep_time = ep_time
+        self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
+
+    def reset_obstacle_mode(self, obstacle_mode, obstacle_num):
+        self.obstacle_mode = obstacle_mode
+        self.obstacle_num = obstacle_num
+
     def save_dyn_params(self, filename):
         import yaml
         with open(filename, 'w') as yaml_file:
@@ -961,7 +969,7 @@ class QuadrotorSingle:
         obs_comps = self.obs_repr.split("_")
         if self.swarm_obs and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * (self.num_agents-1)
-        if self.obstacle_mode != 'no_obstacles':
+        if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
             obs_comps = obs_comps + (['roxyz'] + ['rovxyz']) * (self.obstacle_num)
 
         print("Observation components:", obs_comps)
