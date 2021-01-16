@@ -15,8 +15,8 @@ class SingleObstacle():
         self.size = size
         self.quad_size = quad_size
         self.dt = dt
-        self.pos = None
-        self.vel = None
+        self.pos = np.array([100., 100., -100.])
+        self.vel = np.array([0., 0., 0.])
         self.reset()
 
     def reset(self, set_obstacle=False):
