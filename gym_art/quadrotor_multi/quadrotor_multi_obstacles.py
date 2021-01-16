@@ -28,6 +28,9 @@ class MultiObstacles():
             self.obstacles.append(obstacle)
 
     def reset(self, obs=None, quads_pos=None, quads_vel=None, set_obstacles=False):
+        if self.num_obstacles <= 0:
+            return obs
+
         for obstacle in self.obstacles:
             obstacle.reset(set_obstacle=set_obstacles)
 
@@ -42,15 +45,15 @@ class MultiObstacles():
         # Generate force, mimic force between electron, F = k*q1*q2 / r^2,
         # Here, F = r^2, k = 1, q1 = q2 = 1
         for obstacle in self.obstacles:
-            rel_pos_obstacle_agents, rel_vel_obstacle_agents = obstacle.step(quads_pos=quads_pos, quads_vel=quads_vel,
-                                                                             set_obstacles=set_obstacles)
-
-            obs = np.concatenate((obs, rel_pos_obstacle_agents, rel_vel_obstacle_agents), axis=1)
+            obs = obstacle.step(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel, set_obstacles=set_obstacles)
 
         return obs
 
-    def collision_detection(self, pos_quads=None):
+    def collision_detection(self, pos_quads=None, set_obstacles=False):
         collision_arr = np.zeros((len(self.obstacles), len(pos_quads)))
+        if set_obstacles is False:
+            return collision_arr
+
         for i, obstacle in enumerate(self.obstacles):
             col_arr = obstacle.collision_detection(pos_quads=pos_quads)
             collision_arr[i] = col_arr

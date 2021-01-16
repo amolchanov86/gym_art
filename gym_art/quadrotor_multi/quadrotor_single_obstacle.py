@@ -15,8 +15,8 @@ class SingleObstacle():
         self.size = size
         self.quad_size = quad_size
         self.dt = dt
-        self.pos = np.zeros(3)
-        self.vel = np.zeros(3)
+        self.pos = np.array([100., 100., -100.])
+        self.vel = np.array([0., 0., 0.])
         self.reset()
 
     def reset(self, set_obstacle=False):
@@ -28,10 +28,21 @@ class SingleObstacle():
             else:
                 pass
         else:
-            self.pos = np.array([20.0, 20.0, 20.0])
+            self.pos = np.array([100., 100., -100.])
             self.vel = np.array([0., 0., 0.])
 
-    def step(self, quads_pos=None, quads_vel=None, set_obstacles=False):
+    def update_obs(self, obs=None, quads_pos=None, quads_vel=None):
+        # The pos and vel of the obstacle give by the agents
+        rel_pos_obstacle_agents = self.pos - quads_pos
+        rel_vel_obstacle_agents = self.vel - quads_vel
+        obs = np.concatenate((obs, rel_pos_obstacle_agents, rel_vel_obstacle_agents), axis=1)
+        return obs
+
+    def step(self, obs=None, quads_pos=None, quads_vel=None, set_obstacles=False):
+        if not set_obstacles:
+            obs = self.update_obs(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel)
+            return obs
+
         force_pos = 2 * self.goal_central - self.pos
         rel_force_goal = force_pos - self.goal_central
         force_noise = np.random.uniform(low=-0.5 * rel_force_goal, high=0.5 * rel_force_goal)
@@ -44,17 +55,13 @@ class SingleObstacle():
         force = radius * radius * force_direction
         # Calculate acceleration, F = ma, here, m = 1.0
         acc = force
-        # Calculate velocity
-        if set_obstacles:
-            self.vel += self.dt * acc
-        # Calculate pos
-        if set_obstacles:
-            self.pos += self.dt * self.vel
+        # Calculate position and velocity
+        self.vel += self.dt * acc
+        self.pos += self.dt * self.vel
 
-        # The pos and vel of the obstacle give by the agents
-        rel_pos_obstacle_agents = self.pos - quads_pos
-        rel_vel_obstacle_agents = self.vel - quads_vel
-        return rel_pos_obstacle_agents, rel_vel_obstacle_agents
+        obs = self.update_obs(quads_pos=quads_pos, quads_vel=quads_vel)
+
+        return obs
 
     def static_obstacle(self):
         pass
