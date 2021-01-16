@@ -213,7 +213,8 @@ class QuadrotorEnvMulti(gym.Env):
         self.obstacle_settle_count = np.zeros(self.num_agents)
         quads_pos = np.array([e.dynamics.pos for e in self.envs])
         quads_vel = np.array([e.dynamics.vel for e in self.envs])
-        obs = self.obstacles.reset(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel, set_obstacles=self.set_obstacles)
+        if self.obstacle_num > 0:
+            obs = self.obstacles.reset(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel, set_obstacles=self.set_obstacles)
         self.all_collisions = {val: [0.0 for _ in range(len(self.envs))] for val in ['drone', 'ground', 'obstacle']}
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics(), self.obstacles, self.all_collisions)
 
@@ -297,12 +298,12 @@ class QuadrotorEnvMulti(gym.Env):
         # run the scenario passed to self.quads_mode
         infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=self.pos)
 
-        if self.quads_mode == "mix" and self.obstacle_mode == "no_obstacles":
-            tmp_zero_arr = np.array([np.zeros(self.obstacle_obs_len) for _ in range(self.num_agents)])
-            obs = np.concatenate((obs, tmp_zero_arr), axis=1)
+        # For obstacles
+        quads_vel = np.array([e.dynamics.vel for e in self.envs])
+        if self.quads_mode == "mix" and self.obstacle_mode == "no_obstacles" and self.obstacle_num > 0:
+            obs = self.obstacles.step(obs=obs, quads_pos=self.pos, quads_vel=quads_vel, set_obstacles=False)
 
-        if self.obstacle_mode == 'dynamic':
-            quads_vel = np.array([e.dynamics.vel for e in self.envs])
+        if self.obstacle_mode == 'dynamic' and self.obstacle_num > 0:
             tmp_obs = self.obstacles.step(obs=obs, quads_pos=self.pos, quads_vel=quads_vel,
                                           set_obstacles=self.set_obstacles)
 

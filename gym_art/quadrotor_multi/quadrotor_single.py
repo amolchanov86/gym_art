@@ -969,7 +969,7 @@ class QuadrotorSingle:
         obs_comps = self.obs_repr.split("_")
         if self.swarm_obs and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * (self.num_agents-1)
-        if self.obstacle_mode != 'no_obstacles':
+        if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
             obs_comps = obs_comps + (['roxyz'] + ['rovxyz']) * (self.obstacle_num)
 
         print("Observation components:", obs_comps)

@@ -28,15 +28,20 @@ class SingleObstacle():
             else:
                 pass
         else:
-            self.pos = None
-            self.vel = None
+            self.pos = np.array([100., 100., -100.])
+            self.vel = np.array([0., 0., 0.])
 
-    def step(self, quads_pos=None, quads_vel=None, set_obstacles=False):
-        if set_obstacles is False:
-            quads_num = len(quads_pos)
-            zero_array = np.array([np.zeros(3) for _ in range(quads_num)])
-            # return rel_pos, rel_vel
-            return zero_array, zero_array
+    def update_obs(self, obs=None, quads_pos=None, quads_vel=None):
+        # The pos and vel of the obstacle give by the agents
+        rel_pos_obstacle_agents = self.pos - quads_pos
+        rel_vel_obstacle_agents = self.vel - quads_vel
+        obs = np.concatenate((obs, rel_pos_obstacle_agents, rel_vel_obstacle_agents), axis=1)
+        return obs
+
+    def step(self, obs=None, quads_pos=None, quads_vel=None, set_obstacles=False):
+        if not set_obstacles:
+            obs = self.update_obs(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel)
+            return obs
 
         force_pos = 2 * self.goal_central - self.pos
         rel_force_goal = force_pos - self.goal_central
@@ -50,14 +55,13 @@ class SingleObstacle():
         force = radius * radius * force_direction
         # Calculate acceleration, F = ma, here, m = 1.0
         acc = force
-        # Calculate velocity
+        # Calculate position and velocity
         self.vel += self.dt * acc
         self.pos += self.dt * self.vel
 
-        # The pos and vel of the obstacle give by the agents
-        rel_pos_obstacle_agents = self.pos - quads_pos
-        rel_vel_obstacle_agents = self.vel - quads_vel
-        return rel_pos_obstacle_agents, rel_vel_obstacle_agents
+        obs = self.update_obs(quads_pos=quads_pos, quads_vel=quads_vel)
+
+        return obs
 
     def static_obstacle(self):
         pass

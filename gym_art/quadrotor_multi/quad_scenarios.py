@@ -117,6 +117,7 @@ class QuadrotorScenario_Static_Goal(QuadrotorScenario):
     def step(self, infos, rewards, pos):
         return infos, rewards
 
+# Inherent from QuadrotorScenario_Static_Goal
 class Scenario_static_same_goal(QuadrotorScenario_Static_Goal):
     # TODO: Maybe try increasing the difficuly by changing the pos of formation_center
     def future_func(self):
@@ -148,6 +149,7 @@ class QuadrotorScenario_Dynamic_Goal(QuadrotorScenario):
 
         return infos, rewards
 
+# Inherent from QuadrotorScenario_Dynamic_Goal
 class Scenario_dynamic_same_goal(QuadrotorScenario_Dynamic_Goal):
     # TODO: Maybe try increasing the difficuly by changing the pos of formation_center
     def future_func(self):
@@ -210,10 +212,10 @@ class Scenario_ep_rand_bezier(QuadrotorScenario):
             while not new_goal_found:
                 low, high = np.array([-room_dims[0] / 2, -room_dims[1] / 2, 0]), np.array(
                     [room_dims[0] / 2, room_dims[1] / 2, room_dims[2]])
-                new_pos = np.random.uniform(low=-high, high=high, size=(2, 3)).reshape(3,
-                                                                                       2)  # need an intermediate point for  a deg=2 curve
-                new_pos = new_pos * np.random.randint(min_dist, max_dist + 1) / np.linalg.norm(new_pos,
-                                                                                               axis=0)  # add some velocity randomization = random magnitude * unit direction
+                # need an intermediate point for a deg=2 curve
+                new_pos = np.random.uniform(low=-high, high=high, size=(2, 3)).reshape(3, 2)
+                # add some velocity randomization = random magnitude * unit direction
+                new_pos = new_pos * np.random.randint(min_dist, max_dist + 1) / np.linalg.norm(new_pos, axis=0)
                 new_pos = self.goals[0].reshape(3, 1) + new_pos
                 lower_bound = np.expand_dims(low, axis=1)
                 upper_bound = np.expand_dims(high, axis=1)
@@ -274,6 +276,7 @@ class QuadrotorScenario_Swap_Goals(QuadrotorScenario):
 
         return infos, rewards
 
+# Inherent from QuadrotorScenario_Swap_Goals
 class Scenario_circular_config(QuadrotorScenario_Swap_Goals):
     def update_goals(self):
         np.random.shuffle(self.goals)
@@ -315,7 +318,7 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
 
         return goal_center_1, goal_center_2
 
-    def create_grids(self, goal_center_1, goal_center_2):
+    def create_formations(self, goal_center_1, goal_center_2):
         self.goals_1 = self.generate_goals(self.num_agents // 2, goal_center_1)
         self.goals_2 = self.generate_goals(self.num_agents - self.num_agents // 2, goal_center_2)
         self.goals = np.concatenate([self.goals_1, self.goals_2])
@@ -333,20 +336,25 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
     def reset(self):
         # Reset the formation size and the goals of swarms
         goal_center_1, goal_center_2 = self.formation_centers()
-        self.create_grids(goal_center_1, goal_center_2)
+        self.create_formations(goal_center_1, goal_center_2)
 
 
 class Scenario_mix(QuadrotorScenario):
     def __init__(self, envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size):
         super().__init__(envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size)
         quad_arm_size = self.envs[0].dynamics.arm
-        self.swarm_lowest_formation_size = self.get_lowest_formation_size()
-        self.swarm_highest_formation_size = self.get_highest_formation_size()
+        self.swarm_lowest_formation_size = self.get_swarm_lowest_formation_size()
+        self.swarm_highest_formation_size = self.get_swarm_highest_formation_size()
         # key: quads_mode
         # value: 0. formation, 1: formation_low_size, formation_high_size, 2: episode_time, 3: obstacle_mode
         str_no_obstacles = "no_obstacles"
         str_dynamic_obstacles = "dynamic"
-        self.obstacle_number = 1
+        self.obstacle_number = self.envs[0].obstacle_num
+
+        if self.envs[0].obstacle_mode == "no_obstacles":
+            str_dynamic_obstacles = "no_obstacles"
+            self.obstacle_number = 0
+
         self.quads_formation_and_size_dict = {
             "static_same_goal": [["circle_horizontal"], [0.0, 0.0], 7.0, str_dynamic_obstacles],
             "dynamic_same_goal": [["circle_horizontal"], [0.0, 0.0], 16.0, str_no_obstacles],
