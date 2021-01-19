@@ -5,8 +5,9 @@ import copy
 
 from gym_art.quadrotor_multi.quad_utils import generate_points
 
-QUADS_MODE_LIST = ['static_same_goal', 'static_diff_goal', 'dynamic_same_goal', 'dynamic_diff_goal',
-                             'circular_config', 'ep_lissajous3D', 'ep_rand_bezier', 'swarm_vs_swarm']
+# QUADS_MODE_LIST = ['static_same_goal', 'static_diff_goal', 'dynamic_same_goal', 'dynamic_diff_goal',
+#                              'circular_config', 'ep_lissajous3D', 'ep_rand_bezier', 'swarm_vs_swarm']
+QUADS_MODE_LIST = ['circular_config']
 QUADS_FORMATION_LIST = ['circle_xz_vertical', 'circle_yz_vertical', 'circle_horizontal', 'sphere',
                                   'grid_xz_vertical', 'grid_yz_vertical', 'grid_horizontal']
 
@@ -44,14 +45,14 @@ class QuadrotorScenario:
         # The lowest formation size means the formation size that we set, which can control
         # the distance between the goals of any two quadrotors should be large than 3.0 * quads_arm_size
         quad_arm_size = self.envs[0].dynamics.arm # arm length: 4.6 centimeters
-        lowest_formation_size = 3.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/self.num_agents) / np.sin(2 * np.pi / self.num_agents)
+        lowest_formation_size = 4.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/self.num_agents) / np.sin(2 * np.pi / self.num_agents)
         return lowest_formation_size
 
     def get_highest_formation_size(self):
         # The highest formation size means the formation size that we set, which can control
         # the distance between the goals of any two quadrotors should be large than 9.0 * quads_arm_size
         quad_arm_size = self.envs[0].dynamics.arm # arm length: 4.6 centimeters
-        highest_formation_size = 9.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/self.num_agents) / np.sin(2 * np.pi / self.num_agents)
+        highest_formation_size = 12.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/self.num_agents) / np.sin(2 * np.pi / self.num_agents)
         return highest_formation_size
 
     def generate_goals(self, num_agents, formation_center=None):
