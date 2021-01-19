@@ -87,21 +87,6 @@ class SideCamera(object):
         center = self.pos_smooth
         return eye, center, up
 
-# Global Camera
-class GlobalCamera(object):
-    def __init__(self, view_dist=4):
-        self.view_dist = view_dist
-        self.degree = 180
-    def reset(self, goal, pos, vel):
-        self.pos_smooth = pos
-
-    def step(self, pos, vel):
-        self.pos_smooth = [-2.5, 0.0, 2.5] # camera position
-    def look_at(self):
-        up = npa(0, 0, 1)
-        eye = self.pos_smooth
-        center = [0.0, 0.0, 2.0] # pattern center
-        return eye, center, up
 
 def quadrotor_3dmodel(model, quad_id=0):
     # params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
@@ -218,8 +203,6 @@ class Quadrotor3DScene(object):
             self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
         elif self.viepoint == 'side':
             self.chase_cam = SideCamera(view_dist=self.diameter * 15)
-        elif self.viepoint == 'global':
-            self.chase_cam = GlobalCamera(view_dist=self.diameter * 15)
 
         self.scene = None
         self.window_target = None

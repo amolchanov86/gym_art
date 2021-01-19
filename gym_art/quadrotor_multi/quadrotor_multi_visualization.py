@@ -3,18 +3,43 @@ import numpy as np
 
 import gym_art.quadrotor_multi.rendering3d as r3d
 
-from gym_art.quadrotor_multi.quadrotor_visualization import ChaseCamera, SideCamera, GlobalCamera, quadrotor_simple_3dmodel, \
+from gym_art.quadrotor_multi.quadrotor_visualization import ChaseCamera, SideCamera, quadrotor_simple_3dmodel, \
     quadrotor_3dmodel
 from gym_art.quadrotor_multi.params import quad_color
+from gym_art.quadrotor_multi.quad_utils import *
 from gym_art.quadrotor_multi.quad_utils import calculate_collision_matrix
 from scipy import spatial
+from pyglet.window import key
+
+# Global Camera
+class GlobalCamera(object):
+    def __init__(self, view_dist=2.0):
+        self.radius = view_dist
+        self.theta = np.pi / 2
+        self.phi = 0.0
+        self.center = np.array([0., 0., 2.])
+
+    def reset(self, view_dist=2.0, center=np.array([0., 0., 2.])):
+        self.radius = view_dist
+        self.theta = np.pi / 2
+        self.phi = 0.0
+        self.center = center
+
+    def step(self, center=np.array([0., 0., 2.])):
+        self.center = center
+
+    def look_at(self):
+        up = npa(0, 0, 1)
+        center = self.center  # pattern center
+        eye = center + self.radius * np.array([np.sin(self.theta) * np.cos(self.phi), np.sin(self.theta) * np.sin(self.phi), np.cos(self.theta)])
+        return eye, center, up
 
 
 class Quadrotor3DSceneMulti:
     def __init__(
             self, w, h,
             quad_arm=None, models=None, obstacles=None, visible=True, resizable=True, goal_diameter=None,
-            viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10)
+            viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8
     ):
         if obs_hw is None:
             obs_hw = [64, 64]
@@ -55,6 +80,14 @@ class Quadrotor3DSceneMulti:
         self.window_target = None
         self.obs_target = None
         self.video_target = None
+
+        # Save parameters to help transfer from global camera to local camera
+        self.goals = None
+        self.dynamics = None
+        self.num_agents = num_agents
+        self.camera_drone_index = 0
+        self.camera_rot_step_size = np.pi / 18
+        self.camera_zoom_step_size = 0.1
 
     def update_goal_diameter(self):
         if self.quad_arm is not None:
@@ -126,7 +159,7 @@ class Quadrotor3DSceneMulti:
 
     def create_obstacles(self):
         for item in self.obstacles.obstacles:
-            color = quad_color[0]
+            color = quad_color[14]
             if item.type == 'cube':
                 obstacle_transform = r3d.transform_and_color(np.eye(4), color, r3d.box(item.size, item.size, item.size))
             elif item.type == 'sphere':
@@ -163,14 +196,27 @@ class Quadrotor3DSceneMulti:
             self._make_scene()
 
     def reset(self, goals, dynamics, obstacles, collisions):
-        first_goal = goals[0]  # TODO: make a camera that can look at all drones
-        self.chase_cam.reset(first_goal[0:3], dynamics[0].pos, dynamics[0].vel)
+        self.goals = goals
+        self.dynamics = dynamics
+
+        if self.viepoint == 'global':
+            goal = np.mean(goals, axis=0)
+            self.chase_cam.reset(view_dist=2.0, center=goal)
+        else:
+            goal = goals[self.camera_drone_index]  # TODO: make a camera that can look at all drones
+            self.chase_cam.reset(goal[0:3], dynamics[self.camera_drone_index].pos, dynamics[self.camera_drone_index].vel)
+
+
         self.update_state(dynamics, goals, obstacles, collisions)
 
     def update_state(self, all_dynamics, goals, obstacles, collisions):
         if self.scene:
-            self.chase_cam.step(all_dynamics[0].pos, all_dynamics[0].vel)
-            self.fpv_lookat = all_dynamics[0].look_at()
+            if self.viepoint == 'global':
+                goal = np.mean(goals, axis=0)
+                self.chase_cam.step(center=goal)
+            else:
+                self.chase_cam.step(all_dynamics[self.camera_drone_index].pos, all_dynamics[self.camera_drone_index].vel)
+                self.fpv_lookat = all_dynamics[self.camera_drone_index].look_at()
             # use this to get trails on the goals and visualize the paths they follow
             # bodies = []
             # bodies.extend(self.goal_transforms)
@@ -205,6 +251,7 @@ class Quadrotor3DSceneMulti:
         if mode == 'human':
             if self.window_target is None:
                 self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
+                self.window_target.window.on_key_press = self.window_on_key_press
                 self._make_scene()
             self.update_state(all_dynamics=all_dynamics, goals=goals, obstacles=obstacles, collisions=collisions)
             self.cam3p.look_at(*self.chase_cam.look_at())
@@ -218,3 +265,62 @@ class Quadrotor3DSceneMulti:
             self.cam3p.look_at(*self.chase_cam.look_at())
             r3d.draw(self.scene, self.cam3p, self.video_target)
             return np.flipud(self.video_target.read())
+
+    def window_on_key_press(self, symbol, modifiers):
+        # <- LEFT Rotation :
+        if symbol == key.LEFT:
+            self.chase_cam.phi -= self.camera_rot_step_size
+        # -> Right Rotation :
+        elif symbol == key.RIGHT:
+            self.chase_cam.phi += self.camera_rot_step_size
+        elif symbol == key.UP:
+            self.chase_cam.theta -= self.camera_rot_step_size
+        elif symbol == key.DOWN:
+            self.chase_cam.theta += self.camera_rot_step_size
+        elif symbol == key.Z:
+            # Zoom In
+            self.chase_cam.radius -= self.camera_zoom_step_size
+        elif symbol == key.X:
+            # Zoom Out
+            self.chase_cam.radius += self.camera_zoom_step_size
+        elif symbol == key.L:
+            self.viepoint = 'local'
+            self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
+            self.chase_cam.reset(self.goals[0][0:3], self.dynamics[0].pos, self.dynamics[0].vel)
+        elif symbol == key.G:
+            self.viepoint = 'global'
+            self.chase_cam = GlobalCamera(view_dist=self.diameter * 15)
+            goal = np.mean(self.goals, axis=0)
+            self.chase_cam.reset(view_dist=2.0, center=goal)
+        elif key.NUM_0 <= symbol <= key.NUM_9:
+            index = min(symbol - key.NUM_0, self.num_agents-1)
+            self.camera_drone_index = index
+            self.viepoint = 'local'
+            self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
+            self.chase_cam.reset(self.goals[index][0:3], self.dynamics[index].pos, self.dynamics[index].vel)
+        elif symbol == key.Q :
+            # Decrease the step size of Rotation
+            if self.camera_rot_step_size <= np.pi / 18:
+                print('Current rotation step size for camera is the minimum!')
+            else:
+                self.camera_rot_step_size /= 2
+        elif symbol == key.P:
+            # Increase the step size of Rotation
+            if self.camera_rot_step_size >= np.pi / 2:
+                print('Current rotation step size for camera is the maximum!')
+            else:
+                self.camera_rot_step_size *= 2
+        elif symbol == key.W:
+            # Decrease the step size of Zoom
+            if self.camera_zoom_step_size <= 0.1:
+                print('Current zoom step size for camera is the minimum!')
+            else:
+                self.camera_zoom_step_size -= 0.1
+        elif symbol == key.O:
+            # Increase the step size of Zoom
+            if self.camera_zoom_step_size >= 2.0:
+                print('Current zoom step size for camera is the maximum!')
+            else:
+                self.camera_zoom_step_size += 0.1
+
+

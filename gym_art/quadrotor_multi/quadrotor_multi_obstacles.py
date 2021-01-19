@@ -5,26 +5,17 @@ from gym_art.quadrotor_multi.quadrotor_single_obstacle import SingleObstacle
 EPS = 1e-6
 
 
-class MultiObstacles():
-    def __init__(self, mode='no_obstacles', num_obstacles=0, max_init_vel=1., init_box=2.0, mean_goals=2.0,
-                 goal_central=np.array([0., 0., 2.0]), dt=0.005, quad_size=0.04, type='sphere', size=0.0):
-        self.max_init_vel = max_init_vel
-        self.init_box = init_box
-        self.mode = mode
+class MultiObstacles:
+    def __init__(self, mode='no_obstacles', num_obstacles=0, max_init_vel=1., init_box=2.0,
+                 goal_central=np.array([0., 0., 2.0]), dt=0.005, quad_size=0.046, type='sphere', size=0.0,
+                 traj='gravity', formation_size=0.0):
         self.num_obstacles = num_obstacles
-        self.mean_goals = mean_goals
-        self.goal_central = goal_central
-        self.dt = dt
-        self.size = size
-        self.quad_size = quad_size
-        self.type = type
         self.obstacles = []
         for i in range(num_obstacles):
-            obstacle = SingleObstacle(max_init_vel=self.max_init_vel, init_box=self.init_box,
-                                       mean_goals=self.mean_goals, goal_central=self.goal_central,
-                                       mode=self.mode, type=self.type, size=self.size, quad_size=self.quad_size,
-                                       dt=self.dt
-                                       )
+            obstacle = SingleObstacle(max_init_vel=max_init_vel, init_box=init_box, goal_central=goal_central,
+                                      mode=mode, type=type, size=size, quad_size=quad_size, dt=dt, traj=traj,
+                                      formation_size=formation_size
+                                      )
             self.obstacles.append(obstacle)
 
     def reset(self, obs=None, quads_pos=None, quads_vel=None, set_obstacles=False):
@@ -37,13 +28,11 @@ class MultiObstacles():
             # Add rel_pos and rel_vel to obs
             rel_pos = obstacle.pos - quads_pos
             rel_vel = obstacle.vel - quads_vel
-            obs = np.concatenate((obs, rel_pos, rel_vel), axis=1)  # TODO: Improve, same as extend_obs function
+            obs = np.concatenate((obs, rel_pos, rel_vel), axis=1)
 
         return obs
 
     def step(self, obs=None, quads_pos=None, quads_vel=None, set_obstacles=False):
-        # Generate force, mimic force between electron, F = k*q1*q2 / r^2,
-        # Here, F = r^2, k = 1, q1 = q2 = 1
         for obstacle in self.obstacles:
             obs = obstacle.step(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel, set_obstacles=set_obstacles)
 
