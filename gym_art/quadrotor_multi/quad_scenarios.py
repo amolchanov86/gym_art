@@ -358,8 +358,8 @@ class Scenario_mix(QuadrotorScenario):
         self.quads_formation_and_size_dict = {
             "static_same_goal": [["circle_horizontal"], [0.0, 0.0], 7.0, str_dynamic_obstacles],
             "dynamic_same_goal": [["circle_horizontal"], [0.0, 0.0], 16.0, str_no_obstacles],
-            "static_diff_goal": [QUADS_FORMATION_LIST, [3 * quad_arm_size, 10 * quad_arm_size], 7.0, str_dynamic_obstacles], # [13.8, 46] centimeters
-            "dynamic_diff_goal": [QUADS_FORMATION_LIST, [3 * quad_arm_size, 10 * quad_arm_size], 16.0, str_no_obstacles], # [13.8, 46] centimeters
+            "static_diff_goal": [QUADS_FORMATION_LIST, [5 * quad_arm_size, 10 * quad_arm_size], 7.0, str_dynamic_obstacles], # [13.8, 46] centimeters
+            "dynamic_diff_goal": [QUADS_FORMATION_LIST, [5 * quad_arm_size, 10 * quad_arm_size], 16.0, str_no_obstacles], # [13.8, 46] centimeters
             "ep_lissajous3D": [["circle_horizontal"], [0.0, 0.0], 15.0, str_no_obstacles],
             "ep_rand_bezier": [["circle_horizontal"], [0.0, 0.0], 15.0, str_no_obstacles],
             "circular_config": [QUADS_FORMATION_LIST, [self.lowest_formation_size, self.highest_formation_size], 15.0, str_no_obstacles],
@@ -372,7 +372,7 @@ class Scenario_mix(QuadrotorScenario):
         # the distance between the goals of any two quadrotors should be large than 3.0 * quads_arm_size
         num_agents = self.num_agents // 2
         quad_arm_size = self.envs[0].dynamics.arm # 4.6 centimeters
-        lowest_swarm_formation_size = 3.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/num_agents) / np.sin(2 * np.pi / num_agents)
+        lowest_swarm_formation_size = 6.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/num_agents) / np.sin(2 * np.pi / num_agents)
         return lowest_swarm_formation_size
 
     def get_swarm_highest_formation_size(self):
@@ -380,7 +380,7 @@ class Scenario_mix(QuadrotorScenario):
         # the distance between the goals of any two quadrotors should be large than 9.0 * quads_arm_size
         num_agents = self.num_agents // 2
         quad_arm_size = self.envs[0].dynamics.arm # 4.6 centimeters
-        highest_swarm_formation_size = 9.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/num_agents) / np.sin(2 * np.pi / num_agents)
+        highest_swarm_formation_size = 12.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/num_agents) / np.sin(2 * np.pi / num_agents)
         return highest_swarm_formation_size
 
 
