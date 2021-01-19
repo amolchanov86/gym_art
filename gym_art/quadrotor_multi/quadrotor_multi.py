@@ -24,7 +24,7 @@ class QuadrotorEnvMulti(gym.Env):
                  init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_mode='static_same_goal', quads_formation='circle_horizontal', quads_formation_size=-1.0,
-                 swarm_obs=False, quads_use_numba=False, quads_settle=False, quads_settle_range_meters=1.0,
+                 swarm_obs='default', quads_use_numba=False, quads_settle=False, quads_settle_range_meters=1.0,
                  quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local', quads_obstacle_num=0,
                  quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True, adaptive_env=False):
 
@@ -84,7 +84,8 @@ class QuadrotorEnvMulti(gym.Env):
         else:
             raise NotImplementedError(f'{obs_repr} not supported!')
 
-        self.neighbor_obs_size = 9
+        if self.swarm_obs == 'extend': self.neighbor_obs_size = 6
+        else: self.neighbor_obs_size = 9
         self.clip_neighbor_space_length = (num_agents-1) * self.neighbor_obs_size
         self.clip_neighbor_space_min_box = self.observation_space.low[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
         self.clip_neighbor_space_max_box = self.observation_space.high[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
@@ -150,13 +151,21 @@ class QuadrotorEnvMulti(gym.Env):
         return metric_dist
 
     def extend_obs_space(self, obs):
+        assert self.swarm_obs == 'extend' or self.swarm_obs == 'extend+', f'Invalid parameter {self.swarm_obs} passed in --obs_space'
         obs_neighbors = []
         for i in range(len(self.envs)):
-            observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel, self.envs[i].goal))
-            obs_neighbor = np.array([list(self.envs[j].dynamics.pos) + list(self.envs[j].dynamics.vel) for j in range(len(self.envs)) if j != i])
-            obs_neighbor_rel = obs_neighbor - observs[:6]  # b/c observs also contains goals as last 3 entries
-            goals = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i])
-            obs_neighbor_rel = np.concatenate((obs_neighbor_rel, goals), axis=1)
+            if self.swarm_obs == 'extend':  # only include relative pos/vel data
+                observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel))
+                obs_neighbor = np.array(
+                    [list(self.envs[j].dynamics.pos) + list(self.envs[j].dynamics.vel) for j in range(len(self.envs)) if
+                     j != i])
+                obs_neighbor_rel = obs_neighbor - observs
+            else:  # include relative pos/vel + goal pos
+                observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel, self.envs[i].goal))
+                obs_neighbor = np.array([list(self.envs[j].dynamics.pos) + list(self.envs[j].dynamics.vel) for j in range(len(self.envs)) if j != i])
+                obs_neighbor_rel = obs_neighbor - observs[:6]  # b/c observs also contains goals as last 3 entries
+                goals = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i])
+                obs_neighbor_rel = np.concatenate((obs_neighbor_rel, goals), axis=1)
             obs_neighbors.append(obs_neighbor_rel.reshape(-1))
         obs_neighbors = np.stack(obs_neighbors)
 
@@ -206,7 +215,7 @@ class QuadrotorEnvMulti(gym.Env):
             obs.append(observation)
 
         # extend obs to see neighbors
-        if self.swarm_obs and self.num_agents > 1:
+        if self.swarm_obs != 'default' and self.num_agents > 1:
             obs_ext = self.extend_obs_space(obs)
             obs = obs_ext
 
@@ -238,7 +247,7 @@ class QuadrotorEnvMulti(gym.Env):
 
             self.pos[i, :] = self.envs[i].dynamics.pos
 
-        if self.swarm_obs and self.num_agents > 1:
+        if self.swarm_obs != 'default' and self.num_agents > 1:
             obs_ext = self.extend_obs_space(obs)
             obs = obs_ext
 

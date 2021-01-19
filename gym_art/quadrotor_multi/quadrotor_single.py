@@ -689,7 +689,7 @@ class QuadrotorSingle:
                  sim_steps=2,
                  obs_repr="xyz_vxyz_R_omega", ep_time=7, obstacles_num=0, room_length=10, room_width=10, room_height=10, init_random_state=False,
                  rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
-                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs=False, num_agents=1,quads_settle=False,
+                 t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False, use_numba=False, swarm_obs='default', num_agents=1,quads_settle=False,
                  quads_settle_range_meters=1.0, quads_vel_reward_out_range=0.8,
                  view_mode='local', obstacle_mode='no_obstacles', obstacle_num=0):
         np.seterr(under='ignore')
@@ -967,7 +967,9 @@ class QuadrotorSingle:
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
 
         obs_comps = self.obs_repr.split("_")
-        if self.swarm_obs and self.num_agents > 1:
+        if self.swarm_obs == 'extend' and self.num_agents > 1:
+            obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * (self.num_agents-1)
+        elif self.swarm_obs == 'extend+' and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz'] + ['goal']) * (self.num_agents-1)
         if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
             obs_comps = obs_comps + (['roxyz'] + ['rovxyz']) * (self.obstacle_num)
