@@ -84,7 +84,7 @@ class QuadrotorEnvMulti(gym.Env):
         else:
             raise NotImplementedError(f'{obs_repr} not supported!')
 
-        self.neighbor_obs_size = 6
+        self.neighbor_obs_size = 9
         self.clip_neighbor_space_length = (num_agents-1) * self.neighbor_obs_size
         self.clip_neighbor_space_min_box = self.observation_space.low[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
         self.clip_neighbor_space_max_box = self.observation_space.high[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
@@ -152,9 +152,11 @@ class QuadrotorEnvMulti(gym.Env):
     def extend_obs_space(self, obs):
         obs_neighbors = []
         for i in range(len(self.envs)):
-            observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel))
+            observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel, self.envs[i].goal))
             obs_neighbor = np.array([list(self.envs[j].dynamics.pos) + list(self.envs[j].dynamics.vel) for j in range(len(self.envs)) if j != i])
-            obs_neighbor_rel = obs_neighbor - observs
+            obs_neighbor_rel = obs_neighbor - observs[:6]  # b/c observs also contains goals as last 3 entries
+            goals = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i])
+            obs_neighbor_rel = np.concatenate((obs_neighbor_rel, goals), axis=1)
             obs_neighbors.append(obs_neighbor_rel.reshape(-1))
         obs_neighbors = np.stack(obs_neighbors)
 

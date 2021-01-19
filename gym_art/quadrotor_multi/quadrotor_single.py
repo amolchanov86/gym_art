@@ -961,14 +961,14 @@ class QuadrotorSingle:
             "rvxyz": [-2.0 * self.dynamics.vxyz_max * np.ones(3), 2.0 * self.dynamics.vxyz_max * np.ones(3)], # rvxyz stands for relative velocity between quadrotors
             "roxyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]], # roxyz stands for relative pos between quadrotor and obstacle
             "rovxyz": [-20.0 * np.ones(3), 20.0 * np.ones(3)], # rovxyz stands for relative velocity between quadrotor and obstacle
-
+            "goal": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]],
         }
         self.obs_comp_names = list(self.obs_space_low_high.keys())
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
 
         obs_comps = self.obs_repr.split("_")
         if self.swarm_obs and self.num_agents > 1:
-            obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * (self.num_agents-1)
+            obs_comps = obs_comps + (['rxyz'] + ['rvxyz'] + ['goal']) * (self.num_agents-1)
         if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
             obs_comps = obs_comps + (['roxyz'] + ['rovxyz']) * (self.obstacle_num)
 
@@ -1047,6 +1047,7 @@ class QuadrotorSingle:
             "act_filtered": [self.dynamics.thrust_cmds_damp],
             "act_torque": [self.dynamics.prop_ccw * self.dynamics.thrust_cmds_damp],
             "torque": [self.dynamics.torque],
+            "goal": [self.goal]
         }
 
         dyn_params = {
