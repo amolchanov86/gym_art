@@ -191,7 +191,8 @@ class Scenario_ep_lissajous3D(QuadrotorScenario):
         if self.formation_size <= -1.0:
             self.formation_size = 0.0
         # Generate goals
-        self.goals = self.generate_goals(self.num_agents)
+        formation_center = np.array([-2.0, 0.0, 2.0])  # prevent drones from crashing into the wall
+        self.goals = self.generate_goals(self.num_agents, formation_center)
 
 class Scenario_ep_rand_bezier(QuadrotorScenario):
     def step(self, infos, rewards, pos):
@@ -324,14 +325,22 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
         self.goals = np.concatenate([self.goals_1, self.goals_2])
 
     def update_goals(self):
-        self.goals = np.concatenate([self.goals_2, self.goals_1])
-
-    def post_process(self):
         # Switch goals
         tmp_goals_1 = copy.deepcopy(self.goals_1)
         tmp_goals_2 = copy.deepcopy(self.goals_2)
         self.goals_1 = tmp_goals_2
         self.goals_2 = tmp_goals_1
+        self.goals = np.concatenate([self.goals_1, self.goals_2])
+        for i, env in enumerate(self.envs):
+            env.goal = self.goals[i]
+
+    def step(self, infos, rewards, pos):
+        tick = self.envs[0].tick
+        control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
+        # Switch every 5th second
+        if tick % control_step_for_five_sec == 0 and tick > 0:
+            self.update_goals()
+        return infos, rewards
 
     def reset(self):
         # Reset the formation size and the goals of swarms
