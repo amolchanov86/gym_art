@@ -5,9 +5,8 @@ import copy
 
 from gym_art.quadrotor_multi.quad_utils import generate_points
 
-# QUADS_MODE_LIST = ['static_same_goal', 'static_diff_goal', 'dynamic_same_goal', 'dynamic_diff_goal',
-#                              'circular_config', 'ep_lissajous3D', 'ep_rand_bezier', 'swarm_vs_swarm']
-QUADS_MODE_LIST = ['circular_config']
+QUADS_MODE_LIST = ['static_same_goal', 'static_diff_goal', 'dynamic_same_goal', 'dynamic_diff_goal',
+                             'circular_config', 'ep_lissajous3D', 'ep_rand_bezier', 'swarm_vs_swarm']
 QUADS_FORMATION_LIST = ['circle_xz_vertical', 'circle_yz_vertical', 'circle_horizontal', 'sphere',
                                   'grid_xz_vertical', 'grid_yz_vertical', 'grid_horizontal']
 
