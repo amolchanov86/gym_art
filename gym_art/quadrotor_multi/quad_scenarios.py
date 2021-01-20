@@ -42,14 +42,14 @@ class QuadrotorScenario:
 
     def get_lowest_formation_size(self):
         # The lowest formation size means the formation size that we set, which can control
-        # the distance between the goals of any two quadrotors should be large than 3.0 * quads_arm_size
+        # the distance between the goals of any two quadrotors should be large than 4.0 * quads_arm_size
         quad_arm_size = self.envs[0].dynamics.arm # arm length: 4.6 centimeters
         lowest_formation_size = 4.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/self.num_agents) / np.sin(2 * np.pi / self.num_agents)
         return lowest_formation_size
 
     def get_highest_formation_size(self):
         # The highest formation size means the formation size that we set, which can control
-        # the distance between the goals of any two quadrotors should be large than 9.0 * quads_arm_size
+        # the distance between the goals of any two quadrotors should be large than 12.0 * quads_arm_size
         quad_arm_size = self.envs[0].dynamics.arm # arm length: 4.6 centimeters
         highest_formation_size = 12.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/self.num_agents) / np.sin(2 * np.pi / self.num_agents)
         return highest_formation_size
@@ -378,7 +378,7 @@ class Scenario_mix(QuadrotorScenario):
 
     def get_swarm_lowest_formation_size(self):
         # The lowest formation size means the formation size that we set, which can control
-        # the distance between the goals of any two quadrotors should be large than 3.0 * quads_arm_size
+        # the distance between the goals of any two quadrotors should be large than 6.0 * quads_arm_size
         num_agents = self.num_agents // 2
         quad_arm_size = self.envs[0].dynamics.arm # 4.6 centimeters
         lowest_swarm_formation_size = 6.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/num_agents) / np.sin(2 * np.pi / num_agents)
@@ -386,7 +386,7 @@ class Scenario_mix(QuadrotorScenario):
 
     def get_swarm_highest_formation_size(self):
         # The highest formation size means the formation size that we set, which can control
-        # the distance between the goals of any two quadrotors should be large than 9.0 * quads_arm_size
+        # the distance between the goals of any two quadrotors should be large than 12.0 * quads_arm_size
         num_agents = self.num_agents // 2
         quad_arm_size = self.envs[0].dynamics.arm # 4.6 centimeters
         highest_swarm_formation_size = 12.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/num_agents) / np.sin(2 * np.pi / num_agents)

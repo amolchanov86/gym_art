@@ -24,19 +24,20 @@ class QuadrotorEnvMulti(gym.Env):
                  room_height=10, init_random_state=False, rew_coeff=None, sense_noise=None, verbose=False, gravity=GRAV,
                  resample_goals=False, t2w_std=0.005, t2t_std=0.0005, excite=False, dynamics_simplification=False,
                  quads_mode='static_same_goal', quads_formation='circle_horizontal', quads_formation_size=-1.0,
-                 swarm_obs='default', quads_use_numba=False, quads_settle=False, quads_settle_range_meters=1.0,
+                 swarm_obs='none', quads_use_numba=False, quads_settle=False, quads_settle_range_meters=1.0,
                  quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local',
                  quads_obstacle_num=0, quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True,
-                 adaptive_env=False, obstacle_traj='gravity', neighbor_info_mode='local', num_use_neighbor_obs=0):
+                 adaptive_env=False, obstacle_traj='gravity', local_obs=-1):
 
         super().__init__()
 
         self.num_agents = num_agents
         self.swarm_obs = swarm_obs
-        if neighbor_info_mode == "global":
+        assert local_obs <= self.num_agents - 1, f'Invalid value ({local_obs}) passed to --local_obs. Should be 0 < n < num_agents - 1, or -1'
+        if local_obs == -1:
             self.num_use_neighbor_obs = self.num_agents - 1
         else:
-            self.num_use_neighbor_obs = num_use_neighbor_obs
+            self.num_use_neighbor_obs = local_obs
         # Set to True means that sample_factory will treat it as a multi-agent vectorized environment even with
         # num_agents=1. More info, please look at sample-factory: envs/quadrotors/wrappers/reward_shaping.py
         self.is_multiagent = True
@@ -90,7 +91,7 @@ class QuadrotorEnvMulti(gym.Env):
         else:
             raise NotImplementedError(f'{obs_repr} not supported!')
 
-        if self.swarm_obs == 'extend': self.neighbor_obs_size = 6
+        if self.swarm_obs == 'pos_vel': self.neighbor_obs_size = 6
         else: self.neighbor_obs_size = 9
         self.clip_neighbor_space_length = self.num_use_neighbor_obs * self.neighbor_obs_size
         self.clip_neighbor_space_min_box = self.observation_space.low[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
@@ -163,24 +164,18 @@ class QuadrotorEnvMulti(gym.Env):
 
     def get_obs_neighbor_rel(self, env_id):
         i = env_id
-        if self.swarm_obs == 'extend':  # only include relative pos/vel data
-            observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel))
-            obs_neighbor = np.array(
-                [list(self.envs[j].dynamics.pos) + list(self.envs[j].dynamics.vel) for j in range(len(self.envs)) if
-                 j != i])
-            obs_neighbor_rel = obs_neighbor - observs
-        else:  # include relative pos/vel + goal pos
-            observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel, self.envs[i].goal))
-            obs_neighbor = np.array(
-                [list(self.envs[j].dynamics.pos) + list(self.envs[j].dynamics.vel) for j in range(len(self.envs)) if
-                 j != i])
-            obs_neighbor_rel = obs_neighbor - observs[:6]  # b/c observs also contains goals as last 3 entries
-            goals = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i])
-            obs_neighbor_rel = np.concatenate((obs_neighbor_rel, goals), axis=1)
+        observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel))
+        obs_neighbor = np.array(
+            [list(self.envs[j].dynamics.pos) + list(self.envs[j].dynamics.vel) for j in range(len(self.envs)) if
+             j != i])
+        obs_neighbor_rel = obs_neighbor - observs
+        if self.swarm_obs == 'pos_vel_goals':  # include relative goal info of neighbors
+            goals_rel = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i]) - observs[:3]
+            obs_neighbor_rel = np.concatenate((obs_neighbor_rel, goals_rel), axis=1)
         return obs_neighbor_rel
 
     def extend_obs_space(self, obs):
-        assert self.swarm_obs == 'extend' or self.swarm_obs == 'extend+', f'Invalid parameter {self.swarm_obs} passed in --obs_space'
+        assert self.swarm_obs == 'pos_vel' or self.swarm_obs == 'pos_vel_goals', f'Invalid parameter {self.swarm_obs} passed in --obs_space'
         obs_neighbors = []
         for i in range(len(self.envs)):
             obs_neighbor_rel = self.get_obs_neighbor_rel(env_id=i)
@@ -251,7 +246,7 @@ class QuadrotorEnvMulti(gym.Env):
             obs.append(observation)
 
         # extend obs to see neighbors
-        if self.swarm_obs != 'default' and self.num_agents > 1:
+        if self.swarm_obs != 'none' and self.num_agents > 1:
             if self.num_use_neighbor_obs == (self.num_agents - 1):
                 obs_ext = self.extend_obs_space(obs)
             else:
@@ -287,7 +282,7 @@ class QuadrotorEnvMulti(gym.Env):
 
             self.pos[i, :] = self.envs[i].dynamics.pos
 
-        if self.swarm_obs != 'default' and self.num_agents > 1:
+        if self.swarm_obs != 'none' and self.num_agents > 1:
             if self.num_use_neighbor_obs == (self.num_agents - 1):
                 obs_ext = self.extend_obs_space(obs)
             else:
