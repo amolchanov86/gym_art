@@ -246,9 +246,6 @@ class QuadrotorScenario_Swap_Goals(QuadrotorScenario):
     def update_goals(self):
         raise NotImplementedError("Implemented in a specific scenario")
 
-    def post_process(self):
-        raise NotImplementedError("Implemented in a specific scenario")
-
     def step(self, infos, rewards, pos):
         for i, e in enumerate(self.envs):
             dist = np.linalg.norm(pos[i] - e.goal)
@@ -273,7 +270,6 @@ class QuadrotorScenario_Swap_Goals(QuadrotorScenario):
                 infos[i]["rewards"]["rewraw_quadsettle"] = rews_settle_raw
 
             self.settle_count = np.zeros(self.num_agents)
-            self.post_process()
 
         return infos, rewards
 
@@ -282,8 +278,6 @@ class Scenario_circular_config(QuadrotorScenario_Swap_Goals):
     def update_goals(self):
         np.random.shuffle(self.goals)
 
-    def post_process(self):
-        pass
 
 class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
     def formation_centers(self):
@@ -367,8 +361,8 @@ class Scenario_mix(QuadrotorScenario):
         self.quads_formation_and_size_dict = {
             "static_same_goal": [["circle_horizontal"], [0.0, 0.0], 7.0, str_dynamic_obstacles],
             "dynamic_same_goal": [["circle_horizontal"], [0.0, 0.0], 16.0, str_no_obstacles],
-            "static_diff_goal": [QUADS_FORMATION_LIST, [5 * quad_arm_size, 10 * quad_arm_size], 7.0, str_dynamic_obstacles], # [13.8, 46] centimeters
-            "dynamic_diff_goal": [QUADS_FORMATION_LIST, [5 * quad_arm_size, 10 * quad_arm_size], 16.0, str_no_obstacles], # [13.8, 46] centimeters
+            "static_diff_goal": [QUADS_FORMATION_LIST, [5 * quad_arm_size, 10 * quad_arm_size], 7.0, str_dynamic_obstacles], # [23, 46] centimeters
+            "dynamic_diff_goal": [QUADS_FORMATION_LIST, [5 * quad_arm_size, 10 * quad_arm_size], 16.0, str_no_obstacles], # [23, 46] centimeters
             "ep_lissajous3D": [["circle_horizontal"], [0.0, 0.0], 15.0, str_no_obstacles],
             "ep_rand_bezier": [["circle_horizontal"], [0.0, 0.0], 15.0, str_no_obstacles],
             "circular_config": [QUADS_FORMATION_LIST, [self.lowest_formation_size, self.highest_formation_size], 15.0, str_no_obstacles],

@@ -170,7 +170,7 @@ class QuadrotorEnvMulti(gym.Env):
              j != i])
         obs_neighbor_rel = obs_neighbor - observs
         if self.swarm_obs == 'pos_vel_goals':  # include relative goal info of neighbors
-            goals_rel = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i]) - observs[:3]
+            goals_rel = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i]) - observs[:3]  # subtract pos of current drone
             obs_neighbor_rel = np.concatenate((obs_neighbor_rel, goals_rel), axis=1)
         return obs_neighbor_rel
 
