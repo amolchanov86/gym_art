@@ -296,6 +296,12 @@ class Scenario_circular_config(QuadrotorScenario_Swap_Goals):
 
 
 class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
+    def update_formation_with_new_size(self, new_formation_size):
+        self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
+        self.reset()
+        for i, env in enumerate(self.envs):
+            env.goal = self.goals[i]
+
     def formation_centers(self):
         if self.formation_center is None:
             self.formation_center = np.array([0., 0., 2.])
@@ -326,7 +332,6 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
         elif self.formation.endswith("yz_vertical"):
             if abs(diff_x) < dist_low_bound:
                 goal_center_2[0] = np.sign(diff_x) * dist_low_bound + goal_center_1[0]
-
         return goal_center_1, goal_center_2
 
     def create_formations(self, goal_center_1, goal_center_2):
@@ -345,6 +350,8 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
             env.goal = self.goals[i]
 
     def step(self, infos, rewards, pos, form_size):
+        if form_size != self.formation_size:
+            self.update_formation_with_new_size(form_size)
         tick = self.envs[0].tick
         control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
         # Switch every 5th second
