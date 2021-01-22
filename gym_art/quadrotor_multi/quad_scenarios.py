@@ -141,7 +141,8 @@ class QuadrotorScenario_Dynamic_Goal(QuadrotorScenario):
             box_size = self.envs[0].box
             x, y = np.random.uniform(low=-box_size, high=box_size, size=(2,)) + self.formation_center[:2]
             z = np.random.uniform(low=-0.5 * box_size, high=0.5 * box_size) + self.formation_center[2]
-            z = max(0.25, z)
+            z_lower_bound = np.ceil(np.sqrt(self.num_agents)) * self.formation_size + 0.25
+            z = max(z_lower_bound, z)
             self.formation_center = np.array([x, y, z])
             self.goals = self.generate_goals(num_agents=self.num_agents, formation_center=self.formation_center)
             for i, env in enumerate(self.envs):
