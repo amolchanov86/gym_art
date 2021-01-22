@@ -105,6 +105,12 @@ class QuadrotorScenario:
 
         return goals
 
+    def update_formation_with_new_size(self, new_formation_size):
+        self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
+        self.goals = self.generate_goals(num_agents=self.num_agents, formation_center=self.formation_center)
+        for i, env in enumerate(self.envs):
+            env.goal = self.goals[i]
+
     def step(self, infos, rewards, pos):
         raise NotImplementedError("Implemented in a specific scenario")
 
@@ -114,7 +120,9 @@ class QuadrotorScenario:
 
 
 class QuadrotorScenario_Static_Goal(QuadrotorScenario):
-    def step(self, infos, rewards, pos):
+    def step(self, infos, rewards, pos, form_size):
+        if form_size != self.formation_size:
+            self.update_formation_with_new_size(form_size)
         return infos, rewards
 
 # Inherent from QuadrotorScenario_Static_Goal
@@ -132,8 +140,14 @@ class Scenario_static_diff_goal(QuadrotorScenario_Static_Goal):
     def future_func(self):
         pass
 
+    def reset(self):
+        self.goals = self.generate_goals(self.num_agents, formation_center=self.formation_center)
+
+
 class QuadrotorScenario_Dynamic_Goal(QuadrotorScenario):
-    def step(self, infos, rewards, pos):
+    def step(self, infos, rewards, pos, form_size):
+        if form_size != self.formation_size:
+            self.update_formation_with_new_size(form_size)
         tick = self.envs[0].tick
         # teleport every 5 secs
         control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
@@ -174,7 +188,7 @@ class Scenario_ep_lissajous3D(QuadrotorScenario):
         z = c * np.cos(m * tick + psi)
         return x, y, z
 
-    def step(self, infos, rewards, pos):
+    def step(self, infos, rewards, pos, form_size):
         control_freq = self.envs[0].control_freq
         tick = self.envs[0].tick / control_freq
         x, y, z = self.lissajous3D(tick)
@@ -195,7 +209,7 @@ class Scenario_ep_lissajous3D(QuadrotorScenario):
         self.goals = self.generate_goals(self.num_agents, formation_center)
 
 class Scenario_ep_rand_bezier(QuadrotorScenario):
-    def step(self, infos, rewards, pos):
+    def step(self, infos, rewards, pos, form_size):
         # randomly sample new goal pos in free space and have the goal move there following a bezier curve
         tick = self.envs[0].tick
         control_freq = self.envs[0].control_freq
@@ -246,7 +260,9 @@ class QuadrotorScenario_Swap_Goals(QuadrotorScenario):
     def update_goals(self):
         raise NotImplementedError("Implemented in a specific scenario")
 
-    def step(self, infos, rewards, pos):
+    def step(self, infos, rewards, pos, form_size):
+        if form_size != self.formation_size:
+            self.update_formation_with_new_size(form_size)
         for i, e in enumerate(self.envs):
             dist = np.linalg.norm(pos[i] - e.goal)
             if abs(dist) < self.metric_of_settle:
@@ -328,7 +344,7 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
         for i, env in enumerate(self.envs):
             env.goal = self.goals[i]
 
-    def step(self, infos, rewards, pos):
+    def step(self, infos, rewards, pos, form_size):
         tick = self.envs[0].tick
         control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
         # Switch every 5th second
@@ -382,13 +398,13 @@ class Scenario_mix(QuadrotorScenario):
         # The highest formation size means the formation size that we set, which can control
         # the distance between the goals of any two quadrotors should be large than 12.0 * quads_arm_size
         num_agents = self.num_agents // 2
-        quad_arm_size = self.envs[0].dynamics.arm # 4.6 centimeters
-        highest_swarm_formation_size = 12.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/num_agents) / np.sin(2 * np.pi / num_agents)
+        quad_arm_size = self.envs[0].dynamics.arm  # 4.6 centimeters
+        highest_swarm_formation_size = 12.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi / num_agents) / np.sin(
+            2 * np.pi / num_agents)
         return highest_swarm_formation_size
 
-
-    def step(self, infos, rewards, pos):
-        infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=pos)
+    def step(self, infos, rewards, pos, form_size):
+        infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=pos, form_size=form_size)
         return infos, rewards
 
     def reset(self):

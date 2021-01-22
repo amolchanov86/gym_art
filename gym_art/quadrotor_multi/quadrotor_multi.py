@@ -106,6 +106,7 @@ class QuadrotorEnvMulti(gym.Env):
         # Aux variables for rewards
         self.rews_settle = np.zeros(self.num_agents)
         self.rews_settle_raw = np.zeros(self.num_agents)
+        self.quads_formation_size = quads_formation_size
 
         # Aux variables for scenarios
         self.scenario = create_scenario(quads_mode=quads_mode, envs=self.envs, num_agents=self.num_agents,
@@ -235,10 +236,12 @@ class QuadrotorEnvMulti(gym.Env):
             self.scene = Quadrotor3DSceneMulti(
                 models=models,
                 w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.envs[0].viewpoint,
-                obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents
+                obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
+                formation_size=self.quads_formation_size
             )
         else:
             self.scene.update_models(models)
+            self.scene.formation_size = self.quads_formation_size
             if self.adaptive_env:
                 self.scene.update_env(self.room_dims)
 
@@ -351,7 +354,7 @@ class QuadrotorEnvMulti(gym.Env):
             infos[i]["rewards"]["rew_quad_spacing"] = spacing_reward[i]
 
         # run the scenario passed to self.quads_mode
-        infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=self.pos)
+        infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=self.pos, form_size=self.scene.formation_size)
 
         # For obstacles
         quads_vel = np.array([e.dynamics.vel for e in self.envs])

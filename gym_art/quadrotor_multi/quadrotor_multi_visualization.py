@@ -39,7 +39,8 @@ class Quadrotor3DSceneMulti:
     def __init__(
             self, w, h,
             quad_arm=None, models=None, obstacles=None, visible=True, resizable=True, goal_diameter=None,
-            viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8
+            viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8,
+            formation_size=-1.0
     ):
         if obs_hw is None:
             obs_hw = [64, 64]
@@ -88,6 +89,7 @@ class Quadrotor3DSceneMulti:
         self.camera_drone_index = 0
         self.camera_rot_step_size = np.pi / 18
         self.camera_zoom_step_size = 0.1
+        self.formation_size = formation_size
 
     def update_goal_diameter(self):
         if self.quad_arm is not None:
@@ -322,5 +324,10 @@ class Quadrotor3DSceneMulti:
                 print('Current zoom step size for camera is the maximum!')
             else:
                 self.camera_zoom_step_size += 0.1
+
+        elif symbol == key.NUM_ADD:
+            self.formation_size += 0.1
+        elif symbol == key.NUM_SUBTRACT:
+            self.formation_size -= 0.1
 
 
