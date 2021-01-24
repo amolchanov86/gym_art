@@ -105,7 +105,7 @@ class QuadrotorScenario:
 
         return goals
 
-    def update_formation_with_new_size(self, new_formation_size):
+    def update_formation_size(self, new_formation_size):
         self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
         self.goals = self.generate_goals(num_agents=self.num_agents, formation_center=self.formation_center)
         for i, env in enumerate(self.envs):
@@ -122,7 +122,7 @@ class QuadrotorScenario:
 class QuadrotorScenario_Static_Goal(QuadrotorScenario):
     def step(self, infos, rewards, pos, form_size):
         if form_size != self.formation_size:
-            self.update_formation_with_new_size(form_size)
+            self.update_formation_size(form_size)
         return infos, rewards
 
 # Inherent from QuadrotorScenario_Static_Goal
@@ -147,7 +147,7 @@ class Scenario_static_diff_goal(QuadrotorScenario_Static_Goal):
 class QuadrotorScenario_Dynamic_Goal(QuadrotorScenario):
     def step(self, infos, rewards, pos, form_size):
         if form_size != self.formation_size:
-            self.update_formation_with_new_size(form_size)
+            self.update_formation_size(form_size)
         tick = self.envs[0].tick
         # teleport every 5 secs
         control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
@@ -262,7 +262,7 @@ class QuadrotorScenario_Swap_Goals(QuadrotorScenario):
 
     def step(self, infos, rewards, pos, form_size):
         if form_size != self.formation_size:
-            self.update_formation_with_new_size(form_size)
+            self.update_formation_size(form_size)
         for i, e in enumerate(self.envs):
             dist = np.linalg.norm(pos[i] - e.goal)
             if abs(dist) < self.metric_of_settle:
@@ -296,7 +296,7 @@ class Scenario_circular_config(QuadrotorScenario_Swap_Goals):
 
 
 class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
-    def update_formation_with_new_size(self, new_formation_size):
+    def update_formation_size(self, new_formation_size):
         self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
         self.reset()
         for i, env in enumerate(self.envs):
@@ -351,7 +351,7 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
 
     def step(self, infos, rewards, pos, form_size):
         if form_size != self.formation_size:
-            self.update_formation_with_new_size(form_size)
+            self.update_formation_size(form_size)
         tick = self.envs[0].tick
         control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
         # Switch every 5th second
