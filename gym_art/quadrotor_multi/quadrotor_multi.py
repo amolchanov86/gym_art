@@ -95,6 +95,8 @@ class QuadrotorEnvMulti(gym.Env):
             self.neighbor_obs_size = 6
         elif self.swarm_obs == 'pos_vel_goals':
             self.neighbor_obs_size = 9
+        elif self.swarm_obs == 'none':
+            self.neighbor_obs_size = 0
         else:
             raise NotImplementedError(f'Unknown value {self.swarm_obs} passed to --neighbor_obs_type')
         self.clip_neighbor_space_length = self.num_use_neighbor_obs * self.neighbor_obs_size
