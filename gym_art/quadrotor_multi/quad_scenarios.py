@@ -405,9 +405,8 @@ class Scenario_mix(QuadrotorScenario):
         # The highest formation size means the formation size that we set, which can control
         # the distance between the goals of any two quadrotors should be large than 12.0 * quads_arm_size
         num_agents = self.num_agents // 2
-        quad_arm_size = self.envs[0].dynamics.arm  # 4.6 centimeters
-        highest_swarm_formation_size = 12.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi / num_agents) / np.sin(
-            2 * np.pi / num_agents)
+        quad_arm_size = self.envs[0].dynamics.arm # 4.6 centimeters
+        highest_swarm_formation_size = 12.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/num_agents) / np.sin(2 * np.pi / num_agents)
         return highest_swarm_formation_size
 
     def step(self, infos, rewards, pos, form_size):

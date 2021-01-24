@@ -106,13 +106,13 @@ class QuadrotorEnvMulti(gym.Env):
         # Aux variables for rewards
         self.rews_settle = np.zeros(self.num_agents)
         self.rews_settle_raw = np.zeros(self.num_agents)
-        self.quads_formation_size = quads_formation_size
 
         # Aux variables for scenarios
         self.scenario = create_scenario(quads_mode=quads_mode, envs=self.envs, num_agents=self.num_agents,
                                         room_dims=self.room_dims, rew_coeff=self.rew_coeff,
                                         quads_formation=quads_formation, quads_formation_size=quads_formation_size)
         self.scenario.reset()
+        self.quads_formation_size = self.scenario.formation_size
         self.goal_central = np.mean(self.scenario.goals, axis=0)
 
         # Set Obstacles
