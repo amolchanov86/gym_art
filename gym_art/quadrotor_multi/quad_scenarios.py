@@ -134,6 +134,13 @@ class QuadrotorScenario:
 
         return goals
 
+    def update_formation_size(self, new_formation_size):
+        if new_formation_size != self.formation_size:
+            self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
+            self.goals = self.generate_goals(num_agents=self.num_agents, formation_center=self.formation_center)
+            for i, env in enumerate(self.envs):
+                env.goal = self.goals[i]
+
     def step(self, infos, rewards, pos):
         raise NotImplementedError("Implemented in a specific scenario")
 
@@ -152,6 +159,10 @@ class Scenario_static_same_goal(QuadrotorScenario_Static_Goal):
     # TODO: Maybe try increasing the difficuly by changing the pos of formation_center
     def future_func(self):
         pass
+
+    def update_formation_size(self, new_formation_size):
+        pass
+
     def reset(self):
         self.formation_size = 0.0
         # Generate goals
@@ -188,6 +199,9 @@ class Scenario_dynamic_same_goal(QuadrotorScenario_Dynamic_Goal):
     def future_func(self):
         pass
 
+    def update_formation_size(self, new_formation_size):
+        pass
+
     def reset(self):
         self.formation_size = 0.0
         # Generate goals
@@ -221,6 +235,9 @@ class Scenario_ep_lissajous3D(QuadrotorScenario):
             env.goal = self.goals[i]
 
         return infos, rewards
+
+    def update_formation_size(self, new_formation_size):
+        pass
 
     def reset(self):
         if self.formation_size <= -1.0:
@@ -271,6 +288,9 @@ class Scenario_ep_rand_bezier(QuadrotorScenario):
                 env.goal = self.goals[i]
 
         return infos, rewards
+
+    def update_formation_size(self, new_formation_size):
+        pass
 
     def reset(self):
         if self.formation_size <= -1.0:
@@ -342,6 +362,13 @@ class Scenario_dynamic_formations(QuadrotorScenario):
 
 
 class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
+    def update_formation_size(self, new_formation_size):
+        if new_formation_size != self.formation_size:
+            self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
+            self.reset()
+            for i, env in enumerate(self.envs):
+                env.goal = self.goals[i]
+
     def formation_centers(self):
         if self.formation_center is None:
             self.formation_center = np.array([0., 0., 2.])
