@@ -33,7 +33,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.num_agents = num_agents
         self.swarm_obs = swarm_obs
-        assert local_obs <= self.num_agents - 1, f'Invalid value ({local_obs}) passed to --local_obs. Should be 0 < n < num_agents - 1, or -1'
+        assert local_obs <= self.num_agents - 1 or local_obs == -1, f'Invalid value ({local_obs}) passed to --local_obs. Should be 0 < n < num_agents - 1, or -1'
         if local_obs == -1:
             self.num_use_neighbor_obs = self.num_agents - 1
         else:
@@ -91,8 +91,14 @@ class QuadrotorEnvMulti(gym.Env):
         else:
             raise NotImplementedError(f'{obs_repr} not supported!')
 
-        if self.swarm_obs == 'pos_vel': self.neighbor_obs_size = 6
-        else: self.neighbor_obs_size = 9
+        if self.swarm_obs == 'pos_vel':
+            self.neighbor_obs_size = 6
+        elif self.swarm_obs == 'pos_vel_goals':
+            self.neighbor_obs_size = 9
+        elif self.swarm_obs == 'none':
+            self.neighbor_obs_size = 0
+        else:
+            raise NotImplementedError(f'Unknown value {self.swarm_obs} passed to --neighbor_obs_type')
         self.clip_neighbor_space_length = self.num_use_neighbor_obs * self.neighbor_obs_size
         self.clip_neighbor_space_min_box = self.observation_space.low[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
         self.clip_neighbor_space_max_box = self.observation_space.high[obs_self_size:obs_self_size+self.clip_neighbor_space_length]
@@ -164,13 +170,13 @@ class QuadrotorEnvMulti(gym.Env):
 
     def get_obs_neighbor_rel(self, env_id):
         i = env_id
-        observs = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel))
-        obs_neighbor = np.array(
-            [list(self.envs[j].dynamics.pos) + list(self.envs[j].dynamics.vel) for j in range(len(self.envs)) if
-             j != i])
-        obs_neighbor_rel = obs_neighbor - observs
+        pos_vel = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel))
+        pos_neighbor = np.stack([self.envs[j].dynamics.pos for j in range(len(self.envs)) if j != i])
+        vel_neighbor = np.stack([self.envs[j].dynamics.vel for j in range(len(self.envs)) if j != i])
+        pos_vel_neighbor = np.concatenate((pos_neighbor, vel_neighbor), axis=1)
+        obs_neighbor_rel = pos_vel_neighbor - pos_vel
         if self.swarm_obs == 'pos_vel_goals':  # include relative goal info of neighbors
-            goals_rel = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i]) - observs[:3]  # subtract pos of current drone
+            goals_rel = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i]) - pos_vel[:3]  # subtract pos of current drone
             obs_neighbor_rel = np.concatenate((obs_neighbor_rel, goals_rel), axis=1)
         return obs_neighbor_rel
 
