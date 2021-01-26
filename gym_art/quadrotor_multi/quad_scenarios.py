@@ -143,7 +143,6 @@ class Scenario_static_diff_goal(QuadrotorScenario_Static_Goal):
     def future_func(self):
         pass
 
-
 class QuadrotorScenario_Dynamic_Goal(QuadrotorScenario):
     def step(self, infos, rewards, pos):
         tick = self.envs[0].tick
