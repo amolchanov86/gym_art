@@ -354,7 +354,8 @@ class QuadrotorEnvMulti(gym.Env):
             infos[i]["rewards"]["rew_quad_spacing"] = spacing_reward[i]
 
         # run the scenario passed to self.quads_mode
-        infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=self.pos, form_size=self.scene.formation_size)
+        infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=self.pos)
+        self.scenario.update_formation_size(self.scene.formation_size)
 
         # For obstacles
         quads_vel = np.array([e.dynamics.vel for e in self.envs])

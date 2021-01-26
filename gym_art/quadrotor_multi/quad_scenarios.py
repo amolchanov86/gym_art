@@ -106,10 +106,11 @@ class QuadrotorScenario:
         return goals
 
     def update_formation_size(self, new_formation_size):
-        self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
-        self.goals = self.generate_goals(num_agents=self.num_agents, formation_center=self.formation_center)
-        for i, env in enumerate(self.envs):
-            env.goal = self.goals[i]
+        if new_formation_size != self.formation_size:
+            self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
+            self.goals = self.generate_goals(num_agents=self.num_agents, formation_center=self.formation_center)
+            for i, env in enumerate(self.envs):
+                env.goal = self.goals[i]
 
     def step(self, infos, rewards, pos):
         raise NotImplementedError("Implemented in a specific scenario")
@@ -120,9 +121,7 @@ class QuadrotorScenario:
 
 
 class QuadrotorScenario_Static_Goal(QuadrotorScenario):
-    def step(self, infos, rewards, pos, form_size):
-        if form_size != self.formation_size:
-            self.update_formation_size(form_size)
+    def step(self, infos, rewards, pos):
         return infos, rewards
 
 # Inherent from QuadrotorScenario_Static_Goal
@@ -130,6 +129,10 @@ class Scenario_static_same_goal(QuadrotorScenario_Static_Goal):
     # TODO: Maybe try increasing the difficuly by changing the pos of formation_center
     def future_func(self):
         pass
+
+    def update_formation_size(self, new_formation_size):
+        pass
+
     def reset(self):
         self.formation_size = 0.0
         # Generate goals
@@ -145,9 +148,7 @@ class Scenario_static_diff_goal(QuadrotorScenario_Static_Goal):
 
 
 class QuadrotorScenario_Dynamic_Goal(QuadrotorScenario):
-    def step(self, infos, rewards, pos, form_size):
-        if form_size != self.formation_size:
-            self.update_formation_size(form_size)
+    def step(self, infos, rewards, pos):
         tick = self.envs[0].tick
         # teleport every 5 secs
         control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
@@ -169,6 +170,9 @@ class Scenario_dynamic_same_goal(QuadrotorScenario_Dynamic_Goal):
     def future_func(self):
         pass
 
+    def update_formation_size(self, new_formation_size):
+        pass
+
     def reset(self):
         self.formation_size = 0.0
         # Generate goals
@@ -188,7 +192,7 @@ class Scenario_ep_lissajous3D(QuadrotorScenario):
         z = c * np.cos(m * tick + psi)
         return x, y, z
 
-    def step(self, infos, rewards, pos, form_size):
+    def step(self, infos, rewards, pos):
         control_freq = self.envs[0].control_freq
         tick = self.envs[0].tick / control_freq
         x, y, z = self.lissajous3D(tick)
@@ -201,6 +205,9 @@ class Scenario_ep_lissajous3D(QuadrotorScenario):
 
         return infos, rewards
 
+    def update_formation_size(self, new_formation_size):
+        pass
+
     def reset(self):
         if self.formation_size <= -1.0:
             self.formation_size = 0.0
@@ -209,7 +216,7 @@ class Scenario_ep_lissajous3D(QuadrotorScenario):
         self.goals = self.generate_goals(self.num_agents, formation_center)
 
 class Scenario_ep_rand_bezier(QuadrotorScenario):
-    def step(self, infos, rewards, pos, form_size):
+    def step(self, infos, rewards, pos):
         # randomly sample new goal pos in free space and have the goal move there following a bezier curve
         tick = self.envs[0].tick
         control_freq = self.envs[0].control_freq
@@ -250,6 +257,9 @@ class Scenario_ep_rand_bezier(QuadrotorScenario):
 
         return infos, rewards
 
+    def update_formation_size(self, new_formation_size):
+        pass
+
     def reset(self):
         if self.formation_size <= -1.0:
             self.formation_size = 0.0
@@ -260,9 +270,7 @@ class QuadrotorScenario_Swap_Goals(QuadrotorScenario):
     def update_goals(self):
         raise NotImplementedError("Implemented in a specific scenario")
 
-    def step(self, infos, rewards, pos, form_size):
-        if form_size != self.formation_size:
-            self.update_formation_size(form_size)
+    def step(self, infos, rewards, pos):
         for i, e in enumerate(self.envs):
             dist = np.linalg.norm(pos[i] - e.goal)
             if abs(dist) < self.metric_of_settle:
@@ -297,10 +305,11 @@ class Scenario_circular_config(QuadrotorScenario_Swap_Goals):
 
 class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
     def update_formation_size(self, new_formation_size):
-        self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
-        self.reset()
-        for i, env in enumerate(self.envs):
-            env.goal = self.goals[i]
+        if new_formation_size != self.formation_size:
+            self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
+            self.reset()
+            for i, env in enumerate(self.envs):
+                env.goal = self.goals[i]
 
     def formation_centers(self):
         if self.formation_center is None:
@@ -349,9 +358,7 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
         for i, env in enumerate(self.envs):
             env.goal = self.goals[i]
 
-    def step(self, infos, rewards, pos, form_size):
-        if form_size != self.formation_size:
-            self.update_formation_size(form_size)
+    def step(self, infos, rewards, pos):
         tick = self.envs[0].tick
         control_step_for_five_sec = int(5.0 * self.envs[0].control_freq)
         # Switch every 5th second
@@ -409,8 +416,8 @@ class Scenario_mix(QuadrotorScenario):
         highest_swarm_formation_size = 12.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/num_agents) / np.sin(2 * np.pi / num_agents)
         return highest_swarm_formation_size
 
-    def step(self, infos, rewards, pos, form_size):
-        infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=pos, form_size=form_size)
+    def step(self, infos, rewards, pos):
+        infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=pos)
         return infos, rewards
 
     def reset(self):
