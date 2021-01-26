@@ -338,6 +338,7 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario_Swap_Goals):
         elif self.formation.endswith("yz_vertical"):
             if abs(diff_x) < dist_low_bound:
                 goal_center_2[0] = np.sign(diff_x) * dist_low_bound + goal_center_1[0]
+
         return goal_center_1, goal_center_2
 
     def create_formations(self, goal_center_1, goal_center_2):
@@ -412,6 +413,7 @@ class Scenario_mix(QuadrotorScenario):
         quad_arm_size = self.envs[0].dynamics.arm # 4.6 centimeters
         highest_swarm_formation_size = 12.0 * quad_arm_size * np.sin(np.pi / 2 - np.pi/num_agents) / np.sin(2 * np.pi / num_agents)
         return highest_swarm_formation_size
+
 
     def step(self, infos, rewards, pos):
         infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=pos)
