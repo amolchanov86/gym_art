@@ -229,7 +229,8 @@ class QuadrotorEnvMulti(gym.Env):
             self.scene = Quadrotor3DSceneMulti(
                 models=models,
                 w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.envs[0].viewpoint,
-                obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents
+                obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
+                render_speed=self.render_speed
             )
         else:
             self.scene.update_models(models)
