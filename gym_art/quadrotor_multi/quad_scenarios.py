@@ -143,9 +143,6 @@ class Scenario_static_diff_goal(QuadrotorScenario_Static_Goal):
     def future_func(self):
         pass
 
-    def reset(self):
-        self.goals = self.generate_goals(self.num_agents, formation_center=self.formation_center)
-
 
 class QuadrotorScenario_Dynamic_Goal(QuadrotorScenario):
     def step(self, infos, rewards, pos):
