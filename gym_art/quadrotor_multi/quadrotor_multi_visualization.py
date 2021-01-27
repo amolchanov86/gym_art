@@ -37,7 +37,7 @@ class Quadrotor3DSceneMulti:
             self, w, h,
             quad_arm=None, models=None, obstacles=None, visible=True, resizable=True, goal_diameter=None,
             viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8,
-            render_speed=1.0
+            render_speed=1.0, formation_size=-1.0,
     ):
         if obs_hw is None:
             obs_hw = [64, 64]
@@ -91,6 +91,7 @@ class Quadrotor3DSceneMulti:
         self.camera_rot_step_size = np.pi / 45 * speed_ratio
         self.camera_zoom_step_size = 0.1 * speed_ratio
         self.camera_mov_step_size = 0.1 * speed_ratio
+        self.formation_size = formation_size
 
     def update_goal_diameter(self):
         if self.quad_arm is not None:
@@ -352,6 +353,11 @@ class Quadrotor3DSceneMulti:
             angle = self.chase_cam.phi + np.pi / 2
             move_step = np.array([np.cos(angle), np.sin(angle), 0]) * self.camera_mov_step_size
             self.chase_cam.center += move_step
+
+        if self.keys[key.NUM_ADD]:
+            self.formation_size += 0.1
+        elif self.keys[key.NUM_SUBTRACT]:
+            self.formation_size -= 0.1
 
 
     def window_on_key_release(self, symbol, modifiers):

@@ -274,7 +274,7 @@ def perform_collision_between_drones(dyn1, dyn2):
     dyn2.vel += -cons_rand_val + np.random.normal(0, 0.15, 3)
 
     # Random forces for omega
-    omega_max = 7 * np.pi  # this will amount to max 3.5 revolutions per second
+    omega_max = 20 * np.pi  # this will amount to max 3.5 revolutions per second
     eps = 1e-5
     new_omega = np.random.uniform(low=-1, high=1, size=(3,))  # random direction in 3D space
     while all(np.abs(new_omega) < eps):
