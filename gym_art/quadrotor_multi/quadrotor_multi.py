@@ -144,10 +144,7 @@ class QuadrotorEnvMulti(gym.Env):
         self.simulation_start_time = 0
         self.frames_since_last_render = self.render_skip_frames = 0
         self.render_every_nth_frame = 1
-        self.render_speed = 1.0  # set to below 1 
-        
-        
-  slowmo, higher than 1 for fast forward (if simulator can keep up)
+        self.render_speed = 1.0  # set to below 1 slowmo, higher than 1 for fast forward (if simulator can keep up)
 
         # measuring the total number of pairwise collisions per episode
         self.collisions_per_episode = 0
