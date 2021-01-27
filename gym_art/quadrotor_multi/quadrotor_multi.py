@@ -93,6 +93,8 @@ class QuadrotorEnvMulti(gym.Env):
 
         if self.swarm_obs == 'pos_vel':
             self.neighbor_obs_size = 6
+        elif self.swarm_obs == 'attn':
+            self.neighbor_obs_size = 8
         elif self.swarm_obs == 'pos_vel_goals':
             self.neighbor_obs_size = 9
         elif self.swarm_obs == 'none':
@@ -168,6 +170,19 @@ class QuadrotorEnvMulti(gym.Env):
             2 * np.pi / self.num_agents)
         return metric_dist
 
+    def get_obs_neighbor_attn(self, env_id):
+        i = env_id
+        pos_neighbors = np.stack([self.envs[j].dynamics.pos for j in range(len(self.envs)) if j != i])
+        pos_neighbors_rel = pos_neighbors - self.envs[i].dynamics.pos
+        dist_to_neighbors = np.linalg.norm(pos_neighbors_rel, axis=1).reshape(-1, 1)
+        vel_neighbors = np.stack([self.envs[j].dynamics.vel for j in range(len(self.envs)) if j != i])
+        vel_neighbors_rel = vel_neighbors - self.envs[i].dynamics.vel
+        neighbor_goals_rel = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i]) - self.envs[i].dynamics.pos
+        dist_to_neighbor_goals = np.linalg.norm(neighbor_goals_rel, axis=1).reshape(-1, 1)
+        obs_neighbor = np.concatenate((pos_neighbors_rel, vel_neighbors_rel, dist_to_neighbors, dist_to_neighbor_goals), axis=1)
+        return obs_neighbor
+
+
     def get_obs_neighbor_rel(self, env_id):
         i = env_id
         pos_vel = np.concatenate((self.envs[i].dynamics.pos, self.envs[i].dynamics.vel))
@@ -180,11 +195,14 @@ class QuadrotorEnvMulti(gym.Env):
             obs_neighbor_rel = np.concatenate((obs_neighbor_rel, goals_rel), axis=1)
         return obs_neighbor_rel
 
-    def extend_obs_space(self, obs):
-        assert self.swarm_obs == 'pos_vel' or self.swarm_obs == 'pos_vel_goals', f'Invalid parameter {self.swarm_obs} passed in --obs_space'
+    def extend_obs_space(self, obs, attn=True):  # TODO: configure attn
+        assert self.swarm_obs == 'pos_vel' or self.swarm_obs == 'pos_vel_goals' or self.swarm_obs == 'attn', f'Invalid parameter {self.swarm_obs} passed in --obs_space'
         obs_neighbors = []
         for i in range(len(self.envs)):
-            obs_neighbor_rel = self.get_obs_neighbor_rel(env_id=i)
+            if attn:
+                obs_neighbor_rel = self.get_obs_neighbor_attn(env_id=i)
+            else:
+                obs_neighbor_rel = self.get_obs_neighbor_rel(env_id=i)
             obs_neighbors.append(obs_neighbor_rel.reshape(-1))
         obs_neighbors = np.stack(obs_neighbors)
 
