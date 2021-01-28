@@ -94,7 +94,7 @@ class QuadrotorEnvMulti(gym.Env):
         if self.swarm_obs == 'pos_vel':
             self.neighbor_obs_size = 6
         elif self.swarm_obs == 'attn':
-            self.neighbor_obs_size = 8
+            self.neighbor_obs_size = 11
         elif self.swarm_obs == 'pos_vel_goals':
             self.neighbor_obs_size = 9
         elif self.swarm_obs == 'none':
@@ -179,7 +179,7 @@ class QuadrotorEnvMulti(gym.Env):
         vel_neighbors_rel = vel_neighbors - self.envs[i].dynamics.vel
         neighbor_goals_rel = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i]) - self.envs[i].dynamics.pos
         dist_to_neighbor_goals = np.linalg.norm(neighbor_goals_rel, axis=1).reshape(-1, 1)
-        obs_neighbor = np.concatenate((pos_neighbors_rel, vel_neighbors_rel, dist_to_neighbors, dist_to_neighbor_goals), axis=1)
+        obs_neighbor = np.concatenate((pos_neighbors_rel, dist_to_neighbors, vel_neighbors_rel, neighbor_goals_rel, dist_to_neighbor_goals), axis=1)
         return obs_neighbor
 
 
@@ -207,9 +207,9 @@ class QuadrotorEnvMulti(gym.Env):
         obs_neighbors = np.stack(obs_neighbors)
 
         # clip observation space of neighborhoods
-        obs_neighbors = np.clip(
-            obs_neighbors, a_min=self.clip_neighbor_space_min_box, a_max=self.clip_neighbor_space_max_box,
-        )
+        # obs_neighbors = np.clip(
+        #     obs_neighbors, a_min=self.clip_neighbor_space_min_box, a_max=self.clip_neighbor_space_max_box,
+        # )
         obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
 
