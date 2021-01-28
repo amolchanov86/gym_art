@@ -20,13 +20,10 @@ class GlobalCamera(object):
         self.center = np.array([0., 0., 2.])
 
     def reset(self, view_dist=2.0, center=np.array([0., 0., 2.])):
-        self.radius = view_dist
-        self.theta = np.pi / 2
-        self.phi = 0.0
         self.center = center
 
     def step(self, center=np.array([0., 0., 2.])):
-        self.center = center
+        pass
 
     def look_at(self):
         up = npa(0, 0, 1)
@@ -39,7 +36,8 @@ class Quadrotor3DSceneMulti:
     def __init__(
             self, w, h,
             quad_arm=None, models=None, obstacles=None, visible=True, resizable=True, goal_diameter=None,
-            viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8
+            viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8,
+            render_speed=1.0, formation_size=-1.0,
     ):
         if obs_hw is None:
             obs_hw = [64, 64]
@@ -47,7 +45,7 @@ class Quadrotor3DSceneMulti:
         self.window_target = None
         self.window_w, self.window_h = w, h
         self.resizable = resizable
-        self.viepoint = viewpoint
+        self.viewpoint = viewpoint
         self.obs_hw = copy.deepcopy(obs_hw)
         self.visible = visible
 
@@ -67,12 +65,12 @@ class Quadrotor3DSceneMulti:
         self.diameter = self.goal_diameter = -1
         self.update_goal_diameter()
 
-        if self.viepoint == 'chase':
+        if self.viewpoint == 'chase':
             self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
-        elif self.viepoint == 'side':
+        elif self.viewpoint == 'side':
             self.chase_cam = SideCamera(view_dist=self.diameter * 15)
-        elif self.viepoint == 'global':
-            self.chase_cam = GlobalCamera(view_dist=self.diameter * 15)
+        elif self.viewpoint == 'global':
+            self.chase_cam = GlobalCamera(view_dist=2.5)
 
         self.fpv_lookat = None
 
@@ -86,8 +84,14 @@ class Quadrotor3DSceneMulti:
         self.dynamics = None
         self.num_agents = num_agents
         self.camera_drone_index = 0
-        self.camera_rot_step_size = np.pi / 18
-        self.camera_zoom_step_size = 0.1
+
+        # Aux camera moving
+        standard_render_speed = 1.0
+        speed_ratio = render_speed / standard_render_speed
+        self.camera_rot_step_size = np.pi / 45 * speed_ratio
+        self.camera_zoom_step_size = 0.1 * speed_ratio
+        self.camera_mov_step_size = 0.1 * speed_ratio
+        self.formation_size = formation_size
 
     def update_goal_diameter(self):
         if self.quad_arm is not None:
@@ -199,9 +203,9 @@ class Quadrotor3DSceneMulti:
         self.goals = goals
         self.dynamics = dynamics
 
-        if self.viepoint == 'global':
+        if self.viewpoint == 'global':
             goal = np.mean(goals, axis=0)
-            self.chase_cam.reset(view_dist=2.0, center=goal)
+            self.chase_cam.reset(view_dist=2.5, center=goal)
         else:
             goal = goals[self.camera_drone_index]  # TODO: make a camera that can look at all drones
             self.chase_cam.reset(goal[0:3], dynamics[self.camera_drone_index].pos, dynamics[self.camera_drone_index].vel)
@@ -211,7 +215,7 @@ class Quadrotor3DSceneMulti:
 
     def update_state(self, all_dynamics, goals, obstacles, collisions):
         if self.scene:
-            if self.viepoint == 'global':
+            if self.viewpoint == 'global':
                 goal = np.mean(goals, axis=0)
                 self.chase_cam.step(center=goal)
             else:
@@ -251,8 +255,12 @@ class Quadrotor3DSceneMulti:
         if mode == 'human':
             if self.window_target is None:
                 self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
-                self.window_target.window.on_key_press = self.window_on_key_press
+                self.keys = key.KeyStateHandler()
+                self.window_target.window.push_handlers(self.keys)
+                self.window_target.window.on_key_release = self.window_on_key_release
                 self._make_scene()
+
+            self.window_smooth_change_view()
             self.update_state(all_dynamics=all_dynamics, goals=goals, obstacles=obstacles, collisions=collisions)
             self.cam3p.look_at(*self.chase_cam.look_at())
             r3d.draw(self.scene, self.cam3p, self.window_target)
@@ -266,61 +274,92 @@ class Quadrotor3DSceneMulti:
             r3d.draw(self.scene, self.cam3p, self.video_target)
             return np.flipud(self.video_target.read())
 
-    def window_on_key_press(self, symbol, modifiers):
-        # <- LEFT Rotation :
-        if symbol == key.LEFT:
-            self.chase_cam.phi -= self.camera_rot_step_size
-        # -> Right Rotation :
-        elif symbol == key.RIGHT:
-            self.chase_cam.phi += self.camera_rot_step_size
-        elif symbol == key.UP:
-            self.chase_cam.theta -= self.camera_rot_step_size
-        elif symbol == key.DOWN:
-            self.chase_cam.theta += self.camera_rot_step_size
-        elif symbol == key.Z:
-            # Zoom In
-            self.chase_cam.radius -= self.camera_zoom_step_size
-        elif symbol == key.X:
-            # Zoom Out
-            self.chase_cam.radius += self.camera_zoom_step_size
-        elif symbol == key.L:
-            self.viepoint = 'local'
-            self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
-            self.chase_cam.reset(self.goals[0][0:3], self.dynamics[0].pos, self.dynamics[0].vel)
-        elif symbol == key.G:
-            self.viepoint = 'global'
-            self.chase_cam = GlobalCamera(view_dist=self.diameter * 15)
-            goal = np.mean(self.goals, axis=0)
-            self.chase_cam.reset(view_dist=2.0, center=goal)
-        elif key.NUM_0 <= symbol <= key.NUM_9:
-            index = min(symbol - key.NUM_0, self.num_agents-1)
+    def window_smooth_change_view(self):
+        if len(self.keys) == 0:
+            return
+
+        symbol = list(self.keys)
+        if key.NUM_0 <= symbol[0] <= key.NUM_9:
+            index = min(symbol[0] - key.NUM_0, self.num_agents-1)
             self.camera_drone_index = index
-            self.viepoint = 'local'
+            self.viewpoint = 'local'
             self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
             self.chase_cam.reset(self.goals[index][0:3], self.dynamics[index].pos, self.dynamics[index].vel)
-        elif symbol == key.Q :
+            return
+
+        if self.keys[key.L]:
+            self.viewpoint = 'local'
+            self.chase_cam = ChaseCamera(view_dist=self.diameter * 15)
+            self.chase_cam.reset(self.goals[0][0:3], self.dynamics[0].pos, self.dynamics[0].vel)
+            return
+        if self.keys[key.G]:
+            self.viewpoint = 'global'
+            self.chase_cam = GlobalCamera(view_dist=2.5)
+            goal = np.mean(self.goals, axis=0)
+            self.chase_cam.reset(view_dist=2.5, center=goal)
+
+        if not isinstance(self.chase_cam, GlobalCamera):
+            return
+
+        if self.keys[key.LEFT]:
+            # <- Left Rotation :
+            self.chase_cam.phi -= self.camera_rot_step_size
+        if self.keys[key.RIGHT]:
+            # -> Right Rotation :
+            self.chase_cam.phi += self.camera_rot_step_size
+        if self.keys[key.UP]:
+            self.chase_cam.theta -= self.camera_rot_step_size
+        if self.keys[key.DOWN]:
+            self.chase_cam.theta += self.camera_rot_step_size
+        if self.keys[key.Z]:
+            # Zoom In
+            self.chase_cam.radius -= self.camera_zoom_step_size
+        if self.keys[key.X]:
+            # Zoom Out
+            self.chase_cam.radius += self.camera_zoom_step_size
+        if self.keys[key.Q]:
             # Decrease the step size of Rotation
             if self.camera_rot_step_size <= np.pi / 18:
                 print('Current rotation step size for camera is the minimum!')
             else:
                 self.camera_rot_step_size /= 2
-        elif symbol == key.P:
+        if self.keys[key.P]:
             # Increase the step size of Rotation
             if self.camera_rot_step_size >= np.pi / 2:
                 print('Current rotation step size for camera is the maximum!')
             else:
                 self.camera_rot_step_size *= 2
-        elif symbol == key.W:
+        if self.keys[key.W]:
             # Decrease the step size of Zoom
             if self.camera_zoom_step_size <= 0.1:
                 print('Current zoom step size for camera is the minimum!')
             else:
                 self.camera_zoom_step_size -= 0.1
-        elif symbol == key.O:
+        if self.keys[key.O]:
             # Increase the step size of Zoom
             if self.camera_zoom_step_size >= 2.0:
                 print('Current zoom step size for camera is the maximum!')
             else:
                 self.camera_zoom_step_size += 0.1
+        if self.keys[key.J]:
+            self.chase_cam.center += np.array([0., 0., self.camera_mov_step_size])
+        if self.keys[key.N]:
+            self.chase_cam.center += np.array([0., 0., -self.camera_mov_step_size])
+        if self.keys[key.B]:
+            angle = self.chase_cam.phi + np.pi / 2
+            move_step = np.array([np.cos(angle), np.sin(angle), 0]) * self.camera_mov_step_size
+            self.chase_cam.center -= move_step
+        if self.keys[key.M]:
+            angle = self.chase_cam.phi + np.pi / 2
+            move_step = np.array([np.cos(angle), np.sin(angle), 0]) * self.camera_mov_step_size
+            self.chase_cam.center += move_step
+
+        if self.keys[key.NUM_ADD]:
+            self.formation_size += 0.1
+        elif self.keys[key.NUM_SUBTRACT]:
+            self.formation_size -= 0.1
 
 
+    def window_on_key_release(self, symbol, modifiers):
+        self.keys = key.KeyStateHandler()
+        self.window_target.window.push_handlers(self.keys)
