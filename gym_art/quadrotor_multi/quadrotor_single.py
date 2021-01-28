@@ -947,8 +947,8 @@ class QuadrotorSingle:
         self.obs_space_low_high = {
             "xyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]],
             "xyzr": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]],
-            "vxyz": [-self.dynamics.vxyz_max * np.ones(3), self.dynamics.vxyz_max * np.ones(3)],
-            "vxyzr": [-self.dynamics.vxyz_max * np.ones(3), self.dynamics.vxyz_max * np.ones(3)],
+            "vxyz": [-2*self.dynamics.vxyz_max * np.ones(3), 2*self.dynamics.vxyz_max * np.ones(3)],
+            "vxyzr": [-2*self.dynamics.vxyz_max * np.ones(3), 2*self.dynamics.vxyz_max * np.ones(3)],
             "acc": [-self.dynamics.acc_max * np.ones(3), self.dynamics.acc_max * np.ones(3)],
             "R": [-np.ones(9), np.ones(9)],
             "omega": [-self.dynamics.omega_max * np.ones(3), self.dynamics.omega_max * np.ones(3)],
