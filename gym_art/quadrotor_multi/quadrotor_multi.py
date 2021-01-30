@@ -221,6 +221,9 @@ class QuadrotorEnvMulti(gym.Env):
     def reset(self):
         obs, rewards, dones, infos = [], [], [], []
         self.scenario.reset()
+        if self.quads_mode == "mix":
+            self.quads_formation_size = self.scenario.scenario.formation_size
+
         self.reset_obstacle_mode()
 
         models = tuple(e.dynamics.model for e in self.envs)
@@ -355,7 +358,6 @@ class QuadrotorEnvMulti(gym.Env):
 
         # run the scenario passed to self.quads_mode
         infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=self.pos)
-        self.scenario.update_formation_size(self.scene.formation_size)
 
         # For obstacles
         quads_vel = np.array([e.dynamics.vel for e in self.envs])
@@ -411,6 +413,7 @@ class QuadrotorEnvMulti(gym.Env):
         return obs, rewards, dones, infos
 
     def render(self, mode='human', verbose=False):
+        self.scenario.update_formation_size(self.scene.formation_size)
         self.frames_since_last_render += 1
 
         if self.render_skip_frames > 0:
@@ -451,7 +454,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         if self.render_every_nth_frame > 4:
             self.render_every_nth_frame = 4
-            print(f'Rendering cannot keep up! Rendering every {self.render_every_nth_frame} frames')
+            # print(f'Rendering cannot keep up! Rendering every {self.render_every_nth_frame} frames')
 
         self.render_skip_frames = self.render_every_nth_frame - 1
         self.frames_since_last_render = 0
