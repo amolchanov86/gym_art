@@ -176,13 +176,11 @@ class QuadrotorScenario_Dynamic_Goal(QuadrotorScenario):
             box_size = self.envs[0].box
             x, y = np.random.uniform(low=-box_size, high=box_size, size=(2,))
             z = np.random.uniform(low=-0.5 * box_size, high=0.5 * box_size) + 2.0
-            z_lower_bound = 0.0
-            if self.formation == "circle_horizontal" or self.formation == "sphere":
+            z_lower_bound = 0.25
+            if self.formation == "sphere":
                 z_lower_bound = self.formation_size + 0.25
             elif self.formation == "grid_horizontal":
                 z_lower_bound = np.ceil(np.sqrt(self.num_agents)) * self.formation_size + 0.25
-            else:
-                z_lower_bound = 0.25
 
             z = max(z_lower_bound, z)
             self.formation_center = np.array([x, y, z])
