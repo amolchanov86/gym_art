@@ -41,13 +41,6 @@ class QuadrotorScenario:
         # Generate goals
         self.goals = None
 
-        # Aux for dynamic_formations
-        self.change_flag = True
-        self.control_speed = 1.0
-        # Aux for swarm vs swarm
-        self.goal_center_1 = None
-        self.goal_center_2 = None
-
     @property
     def lowest_formation_size(self):
         return self._lowest_formation_size
@@ -352,16 +345,17 @@ class Scenario_dynamic_formations(QuadrotorScenario):
             self.change_flag = False
 
         if self.change_flag:
-            self.formation_size += 0.005 * self.control_speed
+            self.formation_size += 0.001 * self.control_speed
         else:
-            self.formation_size -= 0.005 * self.control_speed
+            self.formation_size -= 0.001 * self.control_speed
 
         self.update_goals()
         return infos, rewards
 
     def reset(self):
         self.formation_size = max(0.0, self.formation_size)
-        self.control_speed = np.random.uniform(low=1.0, high=3.0)
+        self.change_flag = True
+        self.control_speed = np.random.uniform(low=1.0, high=5.0)
         # Generate goals
         self.goals = self.generate_goals(num_agents=self.num_agents, formation_center=self.formation_center)
 
