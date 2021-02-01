@@ -330,6 +330,14 @@ class Scenario_circular_config(QuadrotorScenario):
 
 
 class Scenario_dynamic_formations(QuadrotorScenario):
+    def __init__(self, envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size):
+        super().__init__(envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size)
+        # if increase_formation_size is True, increase the formation size
+        # else, decrease the formation size
+        self.increase_formation_size = True
+        # low = 0.001: change 0.2m/s, high = 0.01: change 2.0m/s
+        self.control_speed = np.random.uniform(low=1.0, high=10.0)
+
     # change formation sizes on the fly
     def update_goals(self):
         self.goals = self.generate_goals(self.num_agents, self.formation_center)
@@ -338,11 +346,13 @@ class Scenario_dynamic_formations(QuadrotorScenario):
 
     def step(self, infos, rewards, pos):
         if self.formation_size <= self.lowest_formation_size:
-            self.change_flag = True  # increase the formation size
+            self.increase_formation_size = True
+            self.control_speed = np.random.uniform(low=1.0, high=10.0)
         elif self.formation_size >= self.highest_formation_size:
-            self.change_flag = False
+            self.increase_formation_size = False
+            self.control_speed = np.random.uniform(low=1.0, high=10.0)
 
-        if self.change_flag:
+        if self.increase_formation_size:
             self.formation_size += 0.001 * self.control_speed
         else:
             self.formation_size -= 0.001 * self.control_speed
@@ -351,9 +361,9 @@ class Scenario_dynamic_formations(QuadrotorScenario):
         return infos, rewards
 
     def reset(self):
-        self.formation_size = max(0.0, self.formation_size)
-        self.change_flag = True
-        self.control_speed = np.random.uniform(low=1.0, high=5.0)
+        self.formation_size = np.random.uniform(low=self.lowest_formation_size, high=self.highest_formation_size)
+        self.increase_formation_size = True if np.random.uniform(low=0.0, high=1.0) < 0.5 else False
+        self.control_speed = np.random.uniform(low=1.0, high=10.0)
         # Generate goals
         self.goals = self.generate_goals(num_agents=self.num_agents, formation_center=self.formation_center)
 
