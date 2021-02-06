@@ -9,7 +9,7 @@ from gym_art.quadrotor_multi.quad_utils import perform_collision_between_drones,
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
-from gym_art.quadrotor_multi.quad_scenarios import create_scenario
+from gym_art.quadrotor_multi.quad_scenarios import create_scenario, QUADS_MODE_LIST
 
 EPS = 1E-6
 
@@ -27,7 +27,7 @@ class QuadrotorEnvMulti(gym.Env):
                  swarm_obs='none', quads_use_numba=False, quads_settle=False, quads_settle_range_meters=1.0,
                  quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local',
                  quads_obstacle_num=0, quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True,
-                 adaptive_env=False, obstacle_traj='gravity', local_obs=-1):
+                 adaptive_env=False, obstacle_traj='gravity', local_obs=-1, curriculum_mode='none', epsilon=0.2):
 
         super().__init__()
 
@@ -113,6 +113,20 @@ class QuadrotorEnvMulti(gym.Env):
                                         quads_formation=quads_formation, quads_formation_size=quads_formation_size)
         self.quads_formation_size = quads_formation_size
         self.goal_central = np.array([0., 0., 2.])
+        self.curriculum_mode = curriculum_mode
+        self.scenarios_num = len(QUADS_MODE_LIST)
+        if self.curriculum_mode != "none":
+            assert self.quads_mode == "mix"
+            self.curriculum_start_count = False  # Only count after all drones learn to fly or the collision number after settle of any scenario that > 0
+            self.curriculum_counts = [0] * self.scenarios_num
+            # curriculum_eps (float): the probability to explore at each time step.
+            self.curriculum_eps = epsilon
+            self.curriculum_estimates = [0.0] * self.scenarios_num
+            self.crash_for_one_episode = 0.0
+            self.crash_list = []
+            self.crash_counter = 0
+        if self.curriculum_mode == "UCB1":
+            self.curriculum_episode_num = 0
 
         # Set Obstacles
         self.obstacle_max_init_vel = 4.0 * self.envs[0].max_init_vel
@@ -216,9 +230,58 @@ class QuadrotorEnvMulti(gym.Env):
         self.obstacle_mode = self.envs[0].obstacle_mode
         self.obstacle_num = self.envs[0].obstacle_num
 
+    def get_mode_id(self):
+        if self.curriculum_mode == "epsilon_greedy":
+            if np.random.random() < self.curriculum_eps or (self.curriculum_estimates == 0).all():  # exploration
+                mode_id = np.random.randint(0, self.scenarios_num)
+            else:  # exploit
+                mode_id = max(range(self.scenarios_num), key=lambda x: self.curriculum_estimates[x])
+        elif self.curriculum_mode == "UCB1":
+            mode_id = max(range(self.scenarios_num), key=lambda x: self.curriculum_estimates[x] + np.sqrt(
+                2 * np.log(self.curriculum_episode_num) / (1 + self.curriculum_counts[x])))
+        else:
+            raise NotImplementedError(f'{self.curriculum_mode} not supported!')
+
+        return mode_id
+
+    def try_activate_curriculum(self):
+        self.crash_list.append(self.crash_for_one_episode)
+        self.crash_counter += 1
+        self.crash_for_one_episode = 0.0
+        if self.crash_counter % 100 == 0 and self.crash_counter > 1:
+            assert len(self.crash_list) == 100
+            avg_rew_crash = np.mean(self.crash_list)
+            if avg_rew_crash < 1.0:
+                self.curriculum_start_count = True
+            self.crash_counter = 0
+            self.crash_list = []
+
+    def reset_scenario(self):
+        if self.curriculum_mode != "none":
+            assert self.quads_mode == "mix"
+            if self.curriculum_start_count is False:
+                self.try_activate_curriculum()
+
+            if self.curriculum_start_count:
+                if self.curriculum_mode == "UCB1":
+                    self.curriculum_episode_num += 1
+
+                pre_mode_id = self.scenario.mode_id
+                self.curriculum_estimates[pre_mode_id] += 1. / (self.curriculum_counts[pre_mode_id] + 1)\
+                                                          * (self.collisions_after_settle - self.curriculum_estimates[pre_mode_id])
+
+                self.curriculum_counts[pre_mode_id] += 1
+                mode_id = self.get_mode_id()
+            else:
+                mode_id = np.random.randint(0, self.scenarios_num)
+
+            self.scenario.reset(mode_id=mode_id)
+        else:
+            self.scenario.reset()
+
     def reset(self):
         obs, rewards, dones, infos = [], [], [], []
-        self.scenario.reset()
+        self.reset_scenario()
         self.quads_formation_size = self.scenario.formation_size
         self.goal_central = np.mean(self.scenario.goals, axis=0)
 
@@ -291,6 +354,10 @@ class QuadrotorEnvMulti(gym.Env):
             infos.append(info)
 
             self.pos[i, :] = self.envs[i].dynamics.pos
+
+        # Aux for curriculum
+        if self.curriculum_mode != "none" and self.curriculum_start_count is False:
+            self.crash_for_one_episode += infos[0]["rewards"]["rew_crash"]
 
         if self.swarm_obs != 'none' and self.num_agents > 1:
             if self.num_use_neighbor_obs == (self.num_agents - 1):
@@ -404,6 +471,13 @@ class QuadrotorEnvMulti(gym.Env):
                     'num_collisions': self.collisions_per_episode,
                     'num_collisions_after_settle': self.collisions_after_settle,
                 }
+
+            if self.curriculum_mode != "none" and self.curriculum_start_count:
+                curriculum_counts_dict = {}
+                for mode_id, mode in enumerate(QUADS_MODE_LIST):
+                    curriculum_counts_dict[mode] = self.curriculum_counts[mode_id]
+                for i in range(len(infos)):
+                    infos[i]['episode_extra_stats_curriculum'] = curriculum_counts_dict
 
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"

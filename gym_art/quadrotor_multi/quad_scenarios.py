@@ -447,6 +447,10 @@ class Scenario_mix(QuadrotorScenario):
         super().__init__(envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size)
         quad_arm_size = self.envs[0].dynamics.arm # 4.6 centimeters
         self.swarm_lowest_formation_size, self.swarm_highest_formation_size = self.init_formation_sizes(split=True)
+
+        # Aux curriculum
+        self.mode_id = -1
+
         str_no_obstacles = "no_obstacles"
         str_dynamic_obstacles = "dynamic"
         self.obstacle_number = self.envs[0].obstacle_num
@@ -473,10 +477,14 @@ class Scenario_mix(QuadrotorScenario):
         infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=pos)
         return infos, rewards
 
-    def reset(self):
+    def reset(self, mode_id=None):
         # reset mode
-        mode_index = round(np.random.uniform(low=0, high=len(QUADS_MODE_LIST)-1))
-        mode = QUADS_MODE_LIST[mode_index]
+        if mode_id is None:
+            mode_index = round(np.random.uniform(low=0, high=len(QUADS_MODE_LIST)-1))
+            mode = QUADS_MODE_LIST[mode_index]
+        else:  # Use Curriculum
+            mode = QUADS_MODE_LIST[mode_id]
+            self.mode_id = mode_id
 
         # reset formation
         formation_index = round(np.random.uniform(low=0, high=len(self.quads_formation_and_size_dict[mode][0])-1))
