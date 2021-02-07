@@ -118,10 +118,10 @@ class QuadrotorEnvMulti(gym.Env):
         if self.curriculum_mode != "none":
             assert self.quads_mode == "mix"
             self.curriculum_start_count = False  # Only count after all drones learn to fly or the collision number after settle of any scenario that > 0
-            self.curriculum_counts = [0] * self.scenarios_num
+            self.curriculum_counts = np.zeros(self.scenarios_num)
             # curriculum_eps (float): the probability to explore at each time step.
             self.curriculum_eps = epsilon
-            self.curriculum_estimates = [0.0] * self.scenarios_num
+            self.curriculum_estimates = np.zeros(self.scenarios_num)
             self.crash_for_one_episode = 0.0
             self.crash_list = []
             self.crash_counter = 0
@@ -232,7 +232,7 @@ class QuadrotorEnvMulti(gym.Env):
 
     def get_mode_id(self):
         if self.curriculum_mode == "epsilon_greedy":
-            if np.random.random() < self.curriculum_eps or self.curriculum_estimates == 0:  # exploration
+            if np.random.random() < self.curriculum_eps or (self.curriculum_estimates == 0).all():  # exploration
                 mode_id = np.random.randint(0, self.scenarios_num)
             else:  # exploit
                 mode_id = max(range(self.scenarios_num), key=lambda x: self.curriculum_estimates[x])
