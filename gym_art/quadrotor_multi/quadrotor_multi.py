@@ -232,7 +232,7 @@ class QuadrotorEnvMulti(gym.Env):
 
     def get_mode_id(self):
         if self.curriculum_mode == "epsilon_greedy":
-            if np.random.random() < self.curriculum_eps or (self.curriculum_estimates == 0).all():  # exploration
+            if np.random.random() < self.curriculum_eps or self.curriculum_estimates == 0:  # exploration
                 mode_id = np.random.randint(0, self.scenarios_num)
             else:  # exploit
                 mode_id = max(range(self.scenarios_num), key=lambda x: self.curriculum_estimates[x])
