@@ -248,10 +248,10 @@ class QuadrotorEnvMulti(gym.Env):
         self.crash_list.append(self.crash_for_one_episode)
         self.crash_counter += 1
         self.crash_for_one_episode = 0.0
-        if self.crash_counter % 100 == 0 and self.crash_counter > 1:
-            assert len(self.crash_list) == 100
+        if self.crash_counter % 20 == 0 and self.crash_counter > 1:
+            assert len(self.crash_list) == 20
             avg_rew_crash = np.mean(self.crash_list)
-            if avg_rew_crash < 1.0:
+            if abs(avg_rew_crash) < 1.0:
                 self.curriculum_start_count = True
             self.crash_counter = 0
             self.crash_list = []
@@ -466,18 +466,19 @@ class QuadrotorEnvMulti(gym.Env):
 
         # DONES
         if any(dones):
+            curriculum_counts_dict = {}
+            if self.curriculum_mode != "none" and self.curriculum_start_count:
+                scenaio_total_num = 0
+                for mode_id, mode in enumerate(QUADS_MODE_LIST):
+                    curriculum_counts_dict["scenario_num_" + mode] = self.curriculum_counts[mode_id]
+                    scenaio_total_num += self.curriculum_counts[mode_id]
+                curriculum_counts_dict["scenario_num_total"] = scenaio_total_num
             for i in range(len(infos)):
                 infos[i]['episode_extra_stats'] = {
                     'num_collisions': self.collisions_per_episode,
                     'num_collisions_after_settle': self.collisions_after_settle,
                 }
-
-            if self.curriculum_mode != "none" and self.curriculum_start_count:
-                curriculum_counts_dict = {}
-                for mode_id, mode in enumerate(QUADS_MODE_LIST):
-                    curriculum_counts_dict[mode] = self.curriculum_counts[mode_id]
-                for i in range(len(infos)):
-                    infos[i]['episode_extra_stats_curriculum'] = curriculum_counts_dict
+                infos[i]['episode_extra_stats'].update(curriculum_counts_dict)
 
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
