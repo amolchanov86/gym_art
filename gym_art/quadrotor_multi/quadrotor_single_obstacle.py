@@ -5,23 +5,24 @@ GRAV = 9.81  # default gravitational constant
 
 
 class SingleObstacle():
-    def __init__(self, max_init_vel=1., init_box=2.0, goal_central=np.array([0., 0., 2.0]), mode='no_obstacles',
-                 type='sphere', size=0.0, quad_size=0.04, dt=0.05, traj='gravity', formation_size=0.0):
+    def __init__(self, max_init_vel=1., init_box=2.0, mode='no_obstacles',
+                 type='sphere', size=0.0, quad_size=0.04, dt=0.05, traj='gravity'):
         self.max_init_vel = max_init_vel
         self.init_box = init_box  # means the size of initial space that the obstacles spawn at
-        self.goal_central = goal_central
         self.mode = mode
         self.type = type
         self.size = size
         self.quad_size = quad_size
         self.dt = dt
         self.traj = traj
-        self.formation_size = formation_size
         self.pos = np.array([100., 100., -100.])
         self.vel = np.array([0., 0., 0.])
-        self.reset()
+        self.formation_size = 0.0
+        self.goal_central = np.array([0., 0., 2.])
 
-    def reset(self, set_obstacle=False):
+    def reset(self, set_obstacle=False, formation_size=0.0, goal_central=np.array([0., 0., 2.])):
+        self.formation_size = formation_size
+        self.goal_central = goal_central
         if set_obstacle:
             if self.mode == 'static':
                 self.static_obstacle()

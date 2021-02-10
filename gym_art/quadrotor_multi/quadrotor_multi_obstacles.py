@@ -7,23 +7,20 @@ EPS = 1e-6
 
 class MultiObstacles:
     def __init__(self, mode='no_obstacles', num_obstacles=0, max_init_vel=1., init_box=2.0,
-                 goal_central=np.array([0., 0., 2.0]), dt=0.005, quad_size=0.046, type='sphere', size=0.0,
-                 traj='gravity', formation_size=0.0):
+                 dt=0.005, quad_size=0.046, type='sphere', size=0.0, traj='gravity'):
         self.num_obstacles = num_obstacles
         self.obstacles = []
-        for i in range(num_obstacles):
-            obstacle = SingleObstacle(max_init_vel=max_init_vel, init_box=init_box, goal_central=goal_central,
-                                      mode=mode, type=type, size=size, quad_size=quad_size, dt=dt, traj=traj,
-                                      formation_size=formation_size
-                                      )
+        for _ in range(num_obstacles):
+            obstacle = SingleObstacle(max_init_vel=max_init_vel, init_box=init_box, mode=mode, type=type, size=size,
+                                      quad_size=quad_size, dt=dt, traj=traj)
             self.obstacles.append(obstacle)
 
-    def reset(self, obs=None, quads_pos=None, quads_vel=None, set_obstacles=False):
+    def reset(self, obs=None, quads_pos=None, quads_vel=None, set_obstacles=False, formation_size=0.0, goal_central=np.array([0., 0., 2.])):
         if self.num_obstacles <= 0:
             return obs
 
         for obstacle in self.obstacles:
-            obstacle.reset(set_obstacle=set_obstacles)
+            obstacle.reset(set_obstacle=set_obstacles, formation_size=formation_size, goal_central=goal_central)
 
             # Add rel_pos and rel_vel to obs
             rel_pos = obstacle.pos - quads_pos
