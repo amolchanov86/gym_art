@@ -247,14 +247,12 @@ class QuadrotorEnvMulti(gym.Env):
         else:
             self.scene.update_models(models)
             self.scene.formation_size = self.quads_formation_size
-            if self.adaptive_env:
-                self.scene.update_env(self.room_dims)
+            self.scene.update_env(self.room_dims)
 
         for i, e in enumerate(self.envs):
             e.goal = self.scenario.goals[i]
             e.rew_coeff = self.rew_coeff
-            if self.adaptive_env:
-                e.update_env(*self.room_dims)
+            e.update_env(*self.room_dims)
 
             observation = e.reset()
             obs.append(observation)

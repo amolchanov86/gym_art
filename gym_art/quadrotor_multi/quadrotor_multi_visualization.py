@@ -106,6 +106,7 @@ class Quadrotor3DSceneMulti:
 
     def update_env(self, room_dims):
         self.room_dims = room_dims
+        self._make_scene()
 
     def _make_scene(self):
         self.cam1p = r3d.Camera(fov=90.0)
