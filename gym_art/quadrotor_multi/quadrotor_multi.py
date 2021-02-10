@@ -109,7 +109,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         # Aux variables for scenarios
         self.scenario = create_scenario(quads_mode=quads_mode, envs=self.envs, num_agents=self.num_agents,
-                                        room_dims=self.room_dims, rew_coeff=self.rew_coeff,
+                                        room_dims=self.room_dims, room_dims_callback=self.set_room_dims, rew_coeff=self.rew_coeff,
                                         quads_formation=quads_formation, quads_formation_size=quads_formation_size)
         self.quads_formation_size = quads_formation_size
         self.goal_central = np.array([0., 0., 2.])
@@ -156,6 +156,10 @@ class QuadrotorEnvMulti(gym.Env):
         self.prev_drone_collisions, self.curr_drone_collisions = [], []
         self.all_collisions = {}
         self.apply_collision_force = collision_force
+
+    def set_room_dims(self, dims):
+        # dims is a (x, y, z) tuple
+        self.room_dims = dims
 
     def all_dynamics(self):
         return tuple(e.dynamics for e in self.envs)
