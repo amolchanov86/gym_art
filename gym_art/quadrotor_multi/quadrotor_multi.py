@@ -5,7 +5,7 @@ import time
 import gym
 
 from gym_art.quadrotor_multi.quad_utils import perform_collision_between_drones, perform_collision_with_obstacle, \
-    calculate_collision_matrix, hyperbolic_proximity_penalty
+    calculate_collision_matrix, hyperbolic_proximity_penalty, calculate_drone_proximity_penalties
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
@@ -27,7 +27,8 @@ class QuadrotorEnvMulti(gym.Env):
                  swarm_obs='none', quads_use_numba=False, quads_settle=False, quads_settle_range_meters=1.0,
                  quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local',
                  quads_obstacle_num=0, quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True,
-                 adaptive_env=False, obstacle_traj='gravity', local_obs=-1):
+                 adaptive_env=False, obstacle_traj='gravity', local_obs=-1, collision_hitbox_radius=2.0,
+                 collision_falloff_radius=3.0, collision_smooth_max_penalty=3.0):
 
         super().__init__()
 
@@ -152,6 +153,9 @@ class QuadrotorEnvMulti(gym.Env):
         # this is the actual metric that we want to minimize
         self.collisions_after_settle = 0
         self.collisions_grace_period_seconds = 1.5
+        self.collision_hitbox_radius = collision_hitbox_radius
+        self.collision_falloff_radius = collision_falloff_radius
+        self.collision_smooth_max_penalty = collision_smooth_max_penalty
 
         self.prev_drone_collisions, self.curr_drone_collisions = [], []
         self.all_collisions = {}
@@ -300,7 +304,10 @@ class QuadrotorEnvMulti(gym.Env):
             obs = obs_ext
 
         # Calculating collisions between drones
-        drone_col_matrix, self.curr_drone_collisions = calculate_collision_matrix(self.pos, self.envs[0].dynamics.arm)
+        drone_arm = self.envs[0].dynamics.arm
+        control_freq = self.envs[0].control_freq
+        dt = 1.0 / control_freq
+        drone_col_matrix, self.curr_drone_collisions, distance_matrix = calculate_collision_matrix(self.pos, drone_arm, self.collision_hitbox_radius)
 
         unique_collisions = np.setdiff1d(self.curr_drone_collisions, self.prev_drone_collisions)
 
@@ -309,7 +316,7 @@ class QuadrotorEnvMulti(gym.Env):
         self.collisions_per_episode += collisions_curr_tick
 
         if collisions_curr_tick > 0:
-            if self.envs[0].tick >= self.collisions_grace_period_seconds * self.envs[0].control_freq:
+            if self.envs[0].tick >= self.collisions_grace_period_seconds * control_freq:
                 self.collisions_after_settle += collisions_curr_tick
 
         self.prev_drone_collisions = self.curr_drone_collisions
@@ -318,6 +325,9 @@ class QuadrotorEnvMulti(gym.Env):
         if unique_collisions.any():
             rew_collisions_raw[unique_collisions] = -1.0
         rew_collisions = self.rew_coeff["quadcol_bin"] * rew_collisions_raw
+
+        # penalties for being close to other drones
+        rew_proximity = -1.0 * calculate_drone_proximity_penalties(distance_matrix, drone_arm, dt, self.collision_falloff_radius, self.collision_smooth_max_penalty)
 
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
         col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos, set_obstacles=self.set_obstacles)
@@ -350,6 +360,9 @@ class QuadrotorEnvMulti(gym.Env):
             rewards[i] += rew_col_obst_quad[i]
             infos[i]["rewards"]["rew_quadcol_obstacle"] = rew_col_obst_quad[i]
             infos[i]["rewards"]["rewraw_quadcol_obstacle"] = rew_col_obst_quad_raw[i]
+
+            rewards[i] += rew_proximity[i]
+            infos[i]["rewards"]["rew_proximity"] = rew_proximity[i]
 
             rewards[i] += spacing_reward[i]
             infos[i]["rewards"]["rew_quad_spacing"] = spacing_reward[i]

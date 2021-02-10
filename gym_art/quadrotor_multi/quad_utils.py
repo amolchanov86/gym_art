@@ -213,9 +213,9 @@ def generate_points(n=3):
     return points_in_sphere(n, 0.1 + 1.2 * n)
 
 
-def calculate_collision_matrix(positions, arm):
+def calculate_collision_matrix(positions, arm, hitbox_radius):
     dist = spatial.distance_matrix(x=positions, y=positions)
-    collision_matrix = (dist < 2 * arm).astype(np.float32)
+    collision_matrix = (dist < hitbox_radius * arm).astype(np.float32)
     np.fill_diagonal(collision_matrix, 0.0)
 
     # get upper triangular matrix and check if they have collisions and append to all collisions
@@ -225,8 +225,15 @@ def calculate_collision_matrix(positions, arm):
     for i, val in enumerate(up_w1[0]):
         all_collisions.append((up_w1[0][i], up_w1[1][i]))
 
-    return collision_matrix, all_collisions
+    return collision_matrix, all_collisions, dist
 
+def calculate_drone_proximity_penalties(distance_matrix, arm, dt, penalty_fall_off, max_penalty):
+    penalties = (-max_penalty / (penalty_fall_off * arm)) * distance_matrix + max_penalty
+    np.fill_diagonal(penalties, 0.0)
+    penalties = np.maximum(penalties, 0.0)
+    penalties = np.sum(penalties, axis=0)
+
+    return dt * penalties  # actual penalties per tick to be added to the overall reward
 
 def hyperbolic_proximity_penalty(dist_matrix, dt, coeff=0.0):
     '''
