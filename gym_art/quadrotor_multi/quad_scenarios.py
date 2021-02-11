@@ -473,8 +473,6 @@ class Scenario_tunnel(QuadrotorScenario):
             formation_center = np.array([-4, 0, 1])
         else:
             self.update_room_dims((2, 10, 2))
-            self.room_dims = (2, 10, 2)
-            self.set_room_dims((2, 10, 2))
             formation_center = np.array([0, -4, 1])
         self.update_goals(formation_center)
 
