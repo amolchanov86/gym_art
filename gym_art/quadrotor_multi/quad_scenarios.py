@@ -6,8 +6,7 @@ import copy
 from gym_art.quadrotor_multi.quad_utils import generate_points
 
 QUADS_MODE_LIST = ['static_same_goal', 'static_diff_goal', 'dynamic_same_goal', 'dynamic_diff_goal',
-                   'circular_config', 'ep_lissajous3D', 'ep_rand_bezier', 'swarm_vs_swarm', 'dynamic_formations'
-                   'tunnel']
+                   'circular_config', 'ep_lissajous3D', 'ep_rand_bezier', 'swarm_vs_swarm', 'dynamic_formations']
 
 QUADS_FORMATION_LIST = ['circle_xz_vertical', 'circle_yz_vertical', 'circle_horizontal', 'sphere',
                         'grid_xz_vertical', 'grid_yz_vertical', 'grid_horizontal']
@@ -338,8 +337,8 @@ class Scenario_circular_config(QuadrotorScenario):
 
 
 class Scenario_dynamic_formations(QuadrotorScenario):
-    def __init__(self, envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size):
-        super().__init__(envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size)
+    def __init__(self, envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size):
+        super().__init__(envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size)
         # if increase_formation_size is True, increase the formation size
         # else, decrease the formation size
         self.increase_formation_size = True
