@@ -227,13 +227,67 @@ def calculate_collision_matrix(positions, arm, hitbox_radius):
 
     return collision_matrix, all_collisions, dist
 
-def calculate_drone_proximity_penalties(distance_matrix, arm, dt, penalty_fall_off, max_penalty):
-    penalties = (-max_penalty / (penalty_fall_off * arm)) * distance_matrix + max_penalty
-    np.fill_diagonal(penalties, 0.0)
-    penalties = np.maximum(penalties, 0.0)
-    penalties = np.sum(penalties, axis=0)
+def calculate_drone_proximity_penalties(distance_matrix, arm, dt, penalty_fall_off, max_penalty, hitbox_radius, max_dist, mode):
+    if mode.startswith('linear'):
+        if mode == 'linear':
+            penalty_radius = penalty_fall_off * arm
+        elif mode == 'linear_hard':
+            penalty_radius = (penalty_fall_off - hitbox_radius) * arm
+        else:
+            raise NotImplementedError(f'{mode} not supported!')
+
+        penalties = (-max_penalty / penalty_radius) * distance_matrix + max_penalty
+        np.fill_diagonal(penalties, 0.0)
+        penalties = np.maximum(penalties, 0.0)
+        penalties = np.sum(penalties, axis=0)
+    elif mode.startswith('inverse'):
+        # Here, max_penalty means penalty_unit
+        if mode == 'inverse_linear':
+            # F = (r-d) / d
+            penalty_denominator = distance_matrix
+        elif mode == 'inverse_linear_hard':
+            # F = (r-d) / (d - hitbox)
+            penalty_denominator = distance_matrix - hitbox_radius * arm
+        elif mode == 'inverse_quadratic':
+            # F = (r-d) / (d ** 2)
+            penalty_denominator = distance_matrix ** 2
+        elif mode == 'inverse_quadratic_hard':
+            # F = (r-d) / ((d - hitbox) ** 2)
+            penalty_denominator = (distance_matrix - hitbox_radius * arm) ** 2
+        else:
+            raise NotImplementedError(f'{mode} not supported!')
+
+        penalty_denominator = np.maximum(penalty_denominator, 1e-2)
+        penalty_radius = penalty_fall_off * arm
+        penalties = max_penalty * (penalty_radius - distance_matrix) / penalty_denominator
+        np.fill_diagonal(penalties, 0.0)
+        penalties = np.maximum(penalties, 0.0)
+        penalties = np.sum(penalties, axis=0)
 
     return dt * penalties  # actual penalties per tick to be added to the overall reward
+
+def calculate_drone_proximity_penalties_vel(rel_pos_stack, rel_vel_stack, max_dist, coeff, mode, dt, penalty_area_radius, max_penalty):
+    rel_dist = np.linalg.norm(rel_pos_stack, axis=2)
+    rel_dist = np.maximum(rel_dist, 1e-2)
+    rel_pos_unit = rel_pos_stack / rel_dist[:, :, None]
+
+    transform_vel = np.sum(rel_pos_unit * rel_vel_stack, axis=2)
+
+    if mode == 'linear':
+        # -coeff * (r-d) * dot(rpos_unit, rvel) / d
+        penalty_denominator = rel_dist
+    elif mode == 'quadratic':
+        # -coeff * (r-d) * dot(rpos_unit, rvel) / (d ** 2)
+        penalty_denominator = rel_dist ** 2
+    else:
+        raise NotImplementedError(f'{mode} not supported!')
+
+    penalty_coeff = np.maximum(0.0, penalty_area_radius - rel_dist)
+    penalties = -coeff * penalty_coeff * transform_vel / penalty_denominator
+    penalties = np.clip(penalties, a_min=0.0, a_max=max_penalty)
+    penalties = np.sum(penalties, axis=1)
+
+    return dt * penalties
 
 def hyperbolic_proximity_penalty(dist_matrix, dt, coeff=0.0):
     '''
