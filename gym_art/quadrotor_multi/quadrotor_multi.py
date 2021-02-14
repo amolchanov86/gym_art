@@ -1,8 +1,11 @@
 import copy
 import numpy as np
 from scipy import spatial
+import random
 import time
 import gym
+
+from copy import deepcopy
 
 from gym_art.quadrotor_multi.quad_utils import perform_collision_between_drones, perform_collision_with_obstacle, \
     calculate_collision_matrix, hyperbolic_proximity_penalty
@@ -10,8 +13,50 @@ from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
 from gym_art.quadrotor_multi.quad_scenarios import create_scenario
+from gym_art.quadrotor_multi.numba_utils import OUNoiseNumba
+from gym_art.quadrotor_multi.quad_utils import OUNoise
 
 EPS = 1E-6
+
+
+class ReplayBuffer(object):
+    def __init__(self, control_frequency, cp_step_size=0.5, buffer_size=1e6):
+        self.control_frequency = control_frequency
+        self.cp_step_size_sec = cp_step_size  # how often (seconds) a checkpoint is saved
+        self.cp_step_size_freq = self.cp_step_size_sec * self.control_frequency
+        self.buffer_size = buffer_size
+        self.buffer_idx = 0
+        self.buffer = []
+        self.checkpoint_history = []
+        self._cp_history_size = int(3.0 * self.control_frequency)  # keep only checkpoints from the last 3 seconds
+
+    def save_checkpoint(self, cp):
+        '''
+        Save a checkpoint every X steps so that we may load it later if a collision was found. This is NOT the same as the buffer
+        Checkpoints are added to the buffer only if we find a collision and want to replay that event later on
+        '''
+        self.checkpoint_history.append(cp)
+        self.checkpoint_history = self.checkpoint_history[:self._cp_history_size]
+
+    def write_cp_to_buffer(self, seconds_ago=2):
+        '''
+        A collision was found and we want to load the corresponding checkpoint from X seconds ago into the buffer to be sampled later on
+        '''
+        steps_ago = int(seconds_ago * self.control_frequency)
+        assert steps_ago <= self._cp_history_size
+        event = self.checkpoint_history[-steps_ago]
+
+        if len(self.buffer) < self.buffer_size:
+            self.buffer.append(event)
+        else:
+            self.buffer[self.buffer_idx] = event  # override existing experience
+        self.buffer_idx = (self.buffer_idx + 1) % self.buffer_size
+
+    def sample_event(self):
+        '''
+        Sample an event to replay
+        '''
+        return random.choice(self.buffer)
 
 
 class QuadrotorEnvMulti(gym.Env):
@@ -27,7 +72,7 @@ class QuadrotorEnvMulti(gym.Env):
                  swarm_obs='none', quads_use_numba=False, quads_settle=False, quads_settle_range_meters=1.0,
                  quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local',
                  quads_obstacle_num=0, quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True,
-                 adaptive_env=False, obstacle_traj='gravity', local_obs=-1):
+                 adaptive_env=False, obstacle_traj='gravity', local_obs=-1, replay_buffer=False):
 
         super().__init__()
 
@@ -45,6 +90,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.envs = []
         self.adaptive_env = adaptive_env
+        self.quads_view_mode= quads_view_mode
 
         for i in range(self.num_agents):
             e = QuadrotorSingle(
@@ -159,6 +205,13 @@ class QuadrotorEnvMulti(gym.Env):
         self.all_collisions = {}
         self.apply_collision_force = collision_force
 
+        self.use_replay_buffer = replay_buffer
+        self.activate_replay_buffer = False  # only start using the buffer after the drones learn how to fly
+        self.saved_in_replay_buffer = False  # just in case the same exact collision happens during replay, we don't want to save it multiple times
+        if self.use_replay_buffer:
+            self.crash_one_episode = 0
+        self.crashes_hundred_eps = []
+
     def set_room_dims(self, dims):
         # dims is a (x, y, z) tuple
         self.room_dims = dims
@@ -227,9 +280,31 @@ class QuadrotorEnvMulti(gym.Env):
         obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
 
+    def can_drones_fly(self):
+        res = abs(np.mean(self.crashes_hundred_eps[:100])) < 1 and len(self.crashes_hundred_eps) >= 1
+        self.crashes_hundred_eps = self.crashes_hundred_eps[:100]  # garbage collect unneeded entries
+        return res
+
     def reset_obstacle_mode(self):
         self.obstacle_mode = self.envs[0].obstacle_mode
         self.obstacle_num = self.envs[0].obstacle_num
+
+    def reset_scene(self):
+        models = tuple(e.dynamics.model for e in self.envs)
+        self.scene = Quadrotor3DSceneMulti(
+            models=models,
+            w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.envs[0].viewpoint,
+            obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
+            render_speed=self.render_speed, formation_size=self.quads_formation_size,
+        )
+
+
+    def reset_thrust_noise(self):
+        for e in self.envs:
+            if e.dynamics.use_numba:
+                e.dynamics.thrust_noise = OUNoiseNumba(4, sigma=0.2 * e.dynamics.thrust_noise_ratio)
+            else:
+                e.dynamics.thrust_noise = OUNoise(4, sigma=0.2 * e.dynamics.thrust_noise_ratio)
 
     def reset(self):
         obs, rewards, dones, infos = [], [], [], []
@@ -240,6 +315,11 @@ class QuadrotorEnvMulti(gym.Env):
         self.reset_obstacle_mode()
 
         models = tuple(e.dynamics.model for e in self.envs)
+
+        # try to activate replay buffer if enabled
+        if self.use_replay_buffer and not self.activate_replay_buffer:
+            self.crashes_hundred_eps.append(self.crash_one_episode)
+            self.activate_replay_buffer = self.can_drones_fly()
 
         if self.adaptive_env:
             # TODO: introduce logic to choose the new room dims i.e. based on statistics from last N episodes, etc
@@ -288,6 +368,7 @@ class QuadrotorEnvMulti(gym.Env):
         self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics(), self.obstacles, self.all_collisions)
 
         self.collisions_per_episode = self.collisions_after_settle = 0
+        self.crash_one_episode = 0
         return obs
 
     # noinspection PyTypeChecker
@@ -305,6 +386,20 @@ class QuadrotorEnvMulti(gym.Env):
 
             self.pos[i, :] = self.envs[i].dynamics.pos
 
+        if self.use_replay_buffer and self.activate_replay_buffer and not self.saved_in_replay_buffer and\
+                self.envs[0].tick % self.unwrapped.reward_shaping_interface.replay_buffer.cp_step_size_freq == 0:
+            #  remove attributes that prevent self from being pickleable
+            for e in self.envs:
+                del e.dynamics.thrust_noise
+            chase_cam_backup = deepcopy(self.scene.chase_cam)
+            del self.scene
+            self.unwrapped.reward_shaping_interface.replay_buffer.save_checkpoint((deepcopy(self), actions))
+
+            #  TODO: Maybe remove these and turn off the replay buffer during evaluation??
+            self.reset_scene()
+            self.scene.chase_cam = chase_cam_backup
+            self.reset_thrust_noise()
+
         if self.swarm_obs != 'none' and self.num_agents > 1:
             if self.num_use_neighbor_obs == (self.num_agents - 1):
                 obs_ext = self.extend_obs_space(obs)
@@ -312,10 +407,17 @@ class QuadrotorEnvMulti(gym.Env):
                 obs_ext = self.extend_obs_space_n_closest(obs)
             obs = obs_ext
 
+        if self.use_replay_buffer and not self.activate_replay_buffer:
+            self.crash_one_episode += infos[0]["rewards"]["rew_crash"]
+
         # Calculating collisions between drones
         drone_col_matrix, self.curr_drone_collisions = calculate_collision_matrix(self.pos, self.envs[0].dynamics.arm)
 
         unique_collisions = np.setdiff1d(self.curr_drone_collisions, self.prev_drone_collisions)
+
+        if unique_collisions.sum() > 0 and self.use_replay_buffer and self.activate_replay_buffer\
+                and self.envs[0].tick >= self.collisions_grace_period_seconds * self.envs[0].control_freq and not self.saved_in_replay_buffer:
+            self.unwrapped.reward_shaping_interface.replay_buffer.write_cp_to_buffer(seconds_ago=1.5)
 
         # collision between 2 drones counts as a single collision
         collisions_curr_tick = len(unique_collisions) // 2
@@ -418,7 +520,7 @@ class QuadrotorEnvMulti(gym.Env):
                     'num_collisions_after_settle': self.collisions_after_settle,
                 }
 
-            obs = self.reset()
+            obs = self.unwrapped.reward_shaping_interface.reset_env()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"
 
         return obs, rewards, dones, infos
