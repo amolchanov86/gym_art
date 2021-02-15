@@ -12,17 +12,18 @@ QUADS_FORMATION_LIST = ['circle_xz_vertical', 'circle_yz_vertical', 'circle_hori
                         'grid_xz_vertical', 'grid_yz_vertical', 'grid_horizontal']
 
 
-def create_scenario(quads_mode, envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size):
+def create_scenario(quads_mode, envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size):
     cls = eval('Scenario_' + quads_mode)
-    scenario = cls(envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size)
+    scenario = cls(envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size)
     return scenario
 
 
 class QuadrotorScenario:
-    def __init__(self, envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size):
+    def __init__(self, envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size):
         self.envs = envs
         self.num_agents = num_agents
         self.room_dims = room_dims
+        self.set_room_dims = room_dims_callback  # usage example: self.set_room_dims((10, 10, 10))
         self.rew_coeff = rew_coeff
 
         self.interp = None
@@ -56,6 +57,12 @@ class QuadrotorScenario:
     @highest_formation_size.setter
     def highest_formation_size(self, hfs):
         self._highest_formation_size = hfs
+
+    def update_room_dims(self, dims):
+        # update local room_dims var
+        self.room_dims = dims
+        # update env room_dims w/ callback
+        self.set_room_dims(dims)
 
     def init_formation_sizes(self, split=False):
         if split:  # divide num agents by 2 for swarm_vs_swarm type scenarios
@@ -330,8 +337,8 @@ class Scenario_circular_config(QuadrotorScenario):
 
 
 class Scenario_dynamic_formations(QuadrotorScenario):
-    def __init__(self, envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size):
-        super().__init__(envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size)
+    def __init__(self, envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size):
+        super().__init__(envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size)
         # if increase_formation_size is True, increase the formation size
         # else, decrease the formation size
         self.increase_formation_size = True
@@ -442,14 +449,43 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario):
                 env.goal = self.goals[i]
 
 
+class Scenario_tunnel(QuadrotorScenario):
+
+    def update_goals(self, formation_center):
+        self.goals = self.generate_goals(self.num_agents, formation_center)
+
+    def step(self, infos, rewards, pos):
+        # hack to make drones and goals be on opposite sides of the tunnel
+        t = self.envs[0].tick
+        if t == 1:
+            for env in self.envs:
+                if abs(env.goal[0]) > abs(env.goal[1]):
+                    env.goal[0] = -env.goal[0]
+                else:
+                    env.goal[1] = -env.goal[1]
+        return infos, rewards
+
+    def reset(self):
+        # tunnel could be in the x or y direction
+        p = np.random.uniform(0, 1)
+        if p <= 0.5:
+            self.update_room_dims((10, 2, 2))
+            formation_center = np.array([-4, 0, 1])
+        else:
+            self.update_room_dims((2, 10, 2))
+            formation_center = np.array([0, -4, 1])
+        self.update_goals(formation_center)
+
+
 class Scenario_mix(QuadrotorScenario):
-    def __init__(self, envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size):
-        super().__init__(envs, num_agents, room_dims, rew_coeff, quads_formation, quads_formation_size)
+    def __init__(self, envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size):
+        super().__init__(envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size)
         quad_arm_size = self.envs[0].dynamics.arm # 4.6 centimeters
         self.swarm_lowest_formation_size, self.swarm_highest_formation_size = self.init_formation_sizes(split=True)
         str_no_obstacles = "no_obstacles"
         str_dynamic_obstacles = "dynamic"
         self.obstacle_number = self.envs[0].obstacle_num
+        self.room_dims_callback = room_dims_callback
 
         if self.envs[0].obstacle_mode == "no_obstacles":
             str_dynamic_obstacles = "no_obstacles"
@@ -487,7 +523,7 @@ class Scenario_mix(QuadrotorScenario):
 
         # init the scenario
         self.scenario = create_scenario(quads_mode=mode, envs=self.envs, num_agents=self.num_agents,
-                                        room_dims=self.room_dims, rew_coeff=self.rew_coeff,
+                                        room_dims=self.room_dims, room_dims_callback=self.room_dims_callback, rew_coeff=self.rew_coeff,
                                         quads_formation=self.formation, quads_formation_size=self.formation_size)
 
         self.scenario.lowest_formation_size = formation_size_low

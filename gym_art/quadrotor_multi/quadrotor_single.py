@@ -963,6 +963,8 @@ class QuadrotorSingle:
             "roxyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]], # roxyz stands for relative pos between quadrotor and obstacle
             "rovxyz": [-20.0 * np.ones(3), 20.0 * np.ones(3)], # rovxyz stands for relative velocity between quadrotor and obstacle
             "goal": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]],
+            "nbr_dist": [np.array([0]), np.array([np.linalg.norm(self.room_box[1] - self.room_box[0])])],
+            "nbr_goal_dist": [np.array([0]), np.array([np.linalg.norm(self.room_box[1] - self.room_box[0])])],
         }
         self.obs_comp_names = list(self.obs_space_low_high.keys())
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
@@ -972,6 +974,8 @@ class QuadrotorSingle:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * self.num_use_neighbor_obs
         elif self.swarm_obs == 'pos_vel_goals' and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz'] + ['goal']) * self.num_use_neighbor_obs
+        elif self.swarm_obs == 'attn' and self.num_agents > 1:
+            obs_comps = obs_comps + (['rxyz'] + ['nbr_dist'] + ['rvxyz'] + ['goal'] + ['nbr_goal_dist']) * self.num_use_neighbor_obs
         if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
             obs_comps = obs_comps + (['roxyz'] + ['rovxyz']) * (self.obstacle_num)
 
