@@ -60,6 +60,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.resample_goals = resample_goals
 
+        # we don't actually create a scene object unless we want to render stuff
         self.scene = None
 
         self.action_space = self.envs[0].action_space
@@ -159,6 +160,9 @@ class QuadrotorEnvMulti(gym.Env):
         self.all_collisions = {}
         self.apply_collision_force = collision_force
 
+        # set to true whenever we need to reset the OpenGL scene in render()
+        self.reset_scene = False
+
     def set_room_dims(self, dims):
         # dims is a (x, y, z) tuple
         self.room_dims = dims
@@ -239,26 +243,11 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.reset_obstacle_mode()
 
-        models = tuple(e.dynamics.model for e in self.envs)
-
         if self.adaptive_env:
             # TODO: introduce logic to choose the new room dims i.e. based on statistics from last N episodes, etc
             # e.g. self.room_dims = ....
             new_length, new_width, new_height = np.random.randint(1, 31, 3)
             self.room_dims = (new_length, new_width, new_height)
-
-        # TODO: don't create scene object if we're just training and no need to visualize?
-        if self.scene is None:
-            self.scene = Quadrotor3DSceneMulti(
-                models=models,
-                w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.envs[0].viewpoint,
-                obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
-                render_speed=self.render_speed, formation_size=self.quads_formation_size,
-            )
-        else:
-            self.scene.update_models(models)
-            self.scene.formation_size = self.quads_formation_size
-            self.scene.update_env(self.room_dims)
 
         for i, e in enumerate(self.envs):
             e.goal = self.scenario.goals[i]
@@ -285,9 +274,11 @@ class QuadrotorEnvMulti(gym.Env):
             obs = self.obstacles.reset(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel,
                                        set_obstacles=self.set_obstacles)
         self.all_collisions = {val: [0.0 for _ in range(len(self.envs))] for val in ['drone', 'ground', 'obstacle']}
-        self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics(), self.obstacles, self.all_collisions)
 
         self.collisions_per_episode = self.collisions_after_settle = 0
+
+        self.reset_scene = True
+
         return obs
 
     # noinspection PyTypeChecker
@@ -424,6 +415,25 @@ class QuadrotorEnvMulti(gym.Env):
         return obs, rewards, dones, infos
 
     def render(self, mode='human', verbose=False):
+        models = tuple(e.dynamics.model for e in self.envs)
+
+        if self.scene is None:
+            self.scene = Quadrotor3DSceneMulti(
+                models=models,
+                w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.envs[0].viewpoint,
+                obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
+                render_speed=self.render_speed, formation_size=self.quads_formation_size,
+            )
+
+        if self.reset_scene:
+            self.scene.update_models(models)
+            self.scene.formation_size = self.quads_formation_size
+            self.scene.update_env(self.room_dims)
+
+            self.scene.reset(tuple(e.goal for e in self.envs), self.all_dynamics(), self.obstacles, self.all_collisions)
+
+            self.reset_scene = False
+
         if self.quads_mode == "mix":
             self.scene.formation_size = self.scenario.scenario.formation_size
         else:
