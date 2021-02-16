@@ -15,7 +15,7 @@ QUADS_MODE_DICT = {
 }
 
 QUADS_FORMATION_LIST = ['circle_vertical_xz', 'circle_vertical_yz', 'circle_horizontal', 'sphere',
-                        'grid_vertical_xz', 'grid_vertical_yz', 'grid_horizontal']
+                        'grid_vertical_xz', 'grid_vertical_yz', 'grid_horizontal', 'cube']
 
 
 def create_scenario(quads_mode, envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size):
@@ -91,11 +91,20 @@ class QuadrotorScenario:
                 goal = self.get_goal_by_formation(pos_0, pos_1)
                 goals.append(goal)
 
-            goals = np.array(goals)
             mean_pos = np.mean(goals, axis=0)
-            goals -= mean_pos
-            goals += formation_center
-            goals = np.array(goals)
+            goals = goals - mean_pos + formation_center
+        elif self.formation.startswith("cube"):
+            dim_size = np.power(num_agents, 1.0 / 3)
+            floor_dim_size = int(dim_size)
+            goals = []
+            for i in range(num_agents):
+                pos_0 = self.formation_size * (int(i / floor_dim_size) % floor_dim_size)
+                pos_1 = self.formation_size * (i % floor_dim_size)
+                goal = np.array([pos_0, pos_1, formation_center[2] + self.formation_size * (i // np.square(floor_dim_size))])
+                goals.append(goal)
+
+            mean_pos = np.mean(goals, axis=0)
+            goals = goals - mean_pos + formation_center
         else:
             raise NotImplementedError("Unknown formation")
 
@@ -540,7 +549,6 @@ class Scenario_mix(QuadrotorScenario):
                 "circular_config": [QUADS_FORMATION_LIST, [5 * quad_arm_size, 10 * quad_arm_size], 16.0, str_no_obstacles],
             }
         }
-        self.id = 0
 
     def get_formation_range(self, mode, low, high):
         if mode == 'swarm_vs_swarm':
@@ -557,6 +565,9 @@ class Scenario_mix(QuadrotorScenario):
         elif self.formation.startswith("sphere"):
             formation_size_low = get_sphere_radius(n, low)
             formation_size_high = get_sphere_radius(n, high)
+        elif self.formation.startswith("cube"):
+            formation_size_low = low
+            formation_size_high = high
         else:
             raise NotImplementedError(f'{self.formation} is not supported!')
 
@@ -568,17 +579,16 @@ class Scenario_mix(QuadrotorScenario):
 
     def reset(self):
         # reset mode
-        # mode_dict_prob = np.random.uniform(low=0, high=1)
-        # if mode_dict_prob <= 0.2:
-        #     mode_dict = QUADS_MODE_DICT["fix_size"]
-        # elif 0.2 < mode_dict_prob <= 0.3:
-        #     mode_dict = QUADS_MODE_DICT["dynamic_size"]
-        # else:
-        #     mode_dict = QUADS_MODE_DICT["swap_goals"]
-        #
-        # mode_index = round(np.random.uniform(low=-0.499, high=len(mode_dict)-0.501))
-        mode = QUADS_MODE_LIST[self.id % len(QUADS_MODE_LIST)]
-        self.id += 1
+        mode_dict_prob = np.random.uniform(low=0, high=1)
+        if mode_dict_prob <= 0.2:
+            mode_dict = QUADS_MODE_DICT["fix_size"]
+        elif 0.2 < mode_dict_prob <= 0.3:
+            mode_dict = QUADS_MODE_DICT["dynamic_size"]
+        else:
+            mode_dict = QUADS_MODE_DICT["swap_goals"]
+
+        mode_index = round(np.random.uniform(low=-0.499, high=len(mode_dict)-0.501))
+        mode = mode_dict[mode_index]
 
         if mode in self.quads_formation_and_size_dict["fix_size"]:
             quads_dict = self.quads_formation_and_size_dict["fix_size"]
