@@ -6,6 +6,7 @@ import gym
 
 from gym_art.quadrotor_multi.quad_utils import perform_collision_between_drones, perform_collision_with_obstacle, \
     calculate_collision_matrix, calculate_drone_proximity_penalties, calculate_drone_proximity_penalties_vel
+
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
@@ -406,7 +407,6 @@ class QuadrotorEnvMulti(gym.Env):
 
             rewards[i] += rew_vel_proximity[i]
             infos[i]["rewards"]["rew_vel_proximity"] = rew_vel_proximity[i]
-
 
         # run the scenario passed to self.quads_mode
         infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=self.pos)
