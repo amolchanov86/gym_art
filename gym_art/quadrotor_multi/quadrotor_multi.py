@@ -89,6 +89,8 @@ class QuadrotorEnvMulti(gym.Env):
         self.quads_mode = quads_mode
         if obs_repr == 'xyz_vxyz_R_omega':
             obs_self_size = 18
+        elif obs_repr == 'xyz_vxyz_R_omega_wall':
+            obs_self_size = 24
         else:
             raise NotImplementedError(f'{obs_repr} not supported!')
 
