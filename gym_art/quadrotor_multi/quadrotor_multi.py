@@ -5,7 +5,7 @@ import time
 import gym
 
 from gym_art.quadrotor_multi.quad_utils import perform_collision_between_drones, perform_collision_with_obstacle, \
-    calculate_collision_matrix, calculate_drone_proximity_penalties
+    calculate_collision_matrix, calculate_drone_proximity_penalties, calculate_drone_proximity_penalties_vel
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
@@ -28,7 +28,8 @@ class QuadrotorEnvMulti(gym.Env):
                  quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local',
                  quads_obstacle_num=0, quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True,
                  adaptive_env=False, obstacle_traj='gravity', local_obs=-1, collision_hitbox_radius=2.0,
-                 collision_falloff_radius=0.0, collision_smooth_max_penalty=10.0):
+                 collision_falloff_radius=0.0, collision_smooth_max_penalty=10.0, collision_vel_penalty_mode='none',
+                 collision_smooth_vel_coeff=0.0, collision_vel_penalty_radius=0.0, collision_smooth_vel_max_penalty=10.0):
 
         super().__init__()
 
@@ -100,7 +101,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         if self.swarm_obs == 'pos_vel':
             self.neighbor_obs_size = 6
-        elif self.swarm_obs == 'pos_ndist_vel_goals_gdist':
+        elif self.swarm_obs == 'pos_vel_goals_ndist_gdist':
             self.neighbor_obs_size = 11
         elif self.swarm_obs == 'pos_vel_goals':
             self.neighbor_obs_size = 9
@@ -167,6 +168,12 @@ class QuadrotorEnvMulti(gym.Env):
         self.collision_falloff_radius = collision_falloff_radius
         self.collision_smooth_max_penalty = collision_smooth_max_penalty
 
+        # collision vel proximity penalties
+        self.collision_vel_penalty_mode = collision_vel_penalty_mode
+        self.collision_smooth_vel_coeff = collision_smooth_vel_coeff
+        self.collision_vel_penalty_radius = collision_vel_penalty_radius
+        self.collision_smooth_vel_max_penalty = collision_smooth_vel_max_penalty
+
         self.prev_drone_collisions, self.curr_drone_collisions = [], []
         self.all_collisions = {}
         self.apply_collision_force = collision_force
@@ -187,13 +194,28 @@ class QuadrotorEnvMulti(gym.Env):
             2 * np.pi / self.num_agents)
         return metric_dist
 
+    def get_rel_pos_vel_item(self, env_id):
+        i = env_id
+        cur_pos = self.envs[i].dynamics.pos
+        cur_vel = self.envs[i].dynamics.vel
+        pos_neighbor = np.stack([self.envs[j].dynamics.pos for j in range(self.num_agents) if j != i])
+        vel_neighbor = np.stack([self.envs[j].dynamics.vel for j in range(self.num_agents) if j != i])
+        pos_rel = pos_neighbor - cur_pos
+        vel_rel = vel_neighbor - cur_vel
+        return pos_rel, vel_rel
+
+    def get_rel_pos_vel_stack(self):
+        rel_pos_stack, rel_vel_stack = [], []
+        for i in range(self.num_agents):
+            pos_rel, vel_rel = self.get_rel_pos_vel_item(env_id=i)
+            rel_pos_stack.append(pos_rel)
+            rel_vel_stack.append(vel_rel)
+        return np.array(rel_pos_stack), np.array(rel_vel_stack)
+
     def get_obs_neighbor_rel(self, env_id):
         i = env_id
-        pos_neighbors = np.stack([self.envs[j].dynamics.pos for j in range(len(self.envs)) if j != i])
-        pos_neighbors_rel = pos_neighbors - self.envs[i].dynamics.pos
+        pos_neighbors_rel, vel_neighbors_rel = self.get_rel_pos_vel_item(env_id=i)
         dist_to_neighbors = np.linalg.norm(pos_neighbors_rel, axis=1).reshape(-1, 1)
-        vel_neighbors = np.stack([self.envs[j].dynamics.vel for j in range(len(self.envs)) if j != i])
-        vel_neighbors_rel = vel_neighbors - self.envs[i].dynamics.vel
         neighbor_goals_rel = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i]) - self.envs[i].dynamics.pos
         dist_to_neighbor_goals = np.linalg.norm(neighbor_goals_rel, axis=1).reshape(-1, 1)
 
@@ -201,15 +223,15 @@ class QuadrotorEnvMulti(gym.Env):
             obs_neighbor_rel = np.concatenate((pos_neighbors_rel, vel_neighbors_rel), axis=1)
         elif self.swarm_obs == 'pos_vel_goals':
             obs_neighbor_rel = np.concatenate((pos_neighbors_rel, vel_neighbors_rel, neighbor_goals_rel), axis=1)
-        elif self.swarm_obs == 'pos_ndist_vel_goals_gdist':
-            obs_neighbor_rel = np.concatenate((pos_neighbors_rel, dist_to_neighbors, vel_neighbors_rel, neighbor_goals_rel, dist_to_neighbor_goals), axis=1)
+        elif self.swarm_obs == 'pos_vel_goals_ndist_gdist':
+            obs_neighbor_rel = np.concatenate((pos_neighbors_rel, vel_neighbors_rel, neighbor_goals_rel, dist_to_neighbors, dist_to_neighbor_goals), axis=1)
         else:
             raise NotImplementedError
 
         return obs_neighbor_rel
 
     def extend_obs_space(self, obs):
-        assert self.swarm_obs == 'pos_vel' or self.swarm_obs == 'pos_vel_goals' or self.swarm_obs == 'pos_ndist_vel_goals_gdist', f'Invalid parameter {self.swarm_obs} passed in --obs_space'
+        assert self.swarm_obs == 'pos_vel' or self.swarm_obs == 'pos_vel_goals' or self.swarm_obs == 'pos_vel_goals_ndist_gdist', f'Invalid parameter {self.swarm_obs} passed in --obs_space'
         obs_neighbors = []
         for i in range(len(self.envs)):
             obs_neighbor_rel = self.get_obs_neighbor_rel(env_id=i)
@@ -338,6 +360,19 @@ class QuadrotorEnvMulti(gym.Env):
             distance_matrix=distance_matrix, arm=self.quad_arm, dt=self.control_dt,
             penalty_fall_off=self.collision_falloff_radius, max_penalty=self.collision_smooth_max_penalty)
 
+        # penalties for having high velocity when drones are close to each other
+        if self.collision_vel_penalty_mode != 'none':
+            # Shape: num_all_drones * num_neighbor_drones * 3
+            rel_pos_stack, rel_vel_stack = self.get_rel_pos_vel_stack()
+            penalty_area_radius = self.collision_vel_penalty_radius * self.quad_arm
+            rew_vel_proximity =  -1.0 * calculate_drone_proximity_penalties_vel(
+                rel_pos_stack=rel_pos_stack, rel_vel_stack=rel_vel_stack,
+                coeff=self.collision_smooth_vel_coeff, mode=self.collision_vel_penalty_mode, dt=self.control_dt,
+                penalty_area_radius=penalty_area_radius, max_penalty=self.collision_smooth_vel_max_penalty)
+        else:
+            rew_vel_proximity = np.zeros(self.num_agents)
+
+
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
         col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos, set_obstacles=self.set_obstacles)
         rew_col_obst_quad_raw = - np.sum(col_obst_quad, axis=0)
@@ -368,6 +403,9 @@ class QuadrotorEnvMulti(gym.Env):
 
             rewards[i] += rew_proximity[i]
             infos[i]["rewards"]["rew_proximity"] = rew_proximity[i]
+
+            rewards[i] += rew_vel_proximity[i]
+            infos[i]["rewards"]["rew_vel_proximity"] = rew_vel_proximity[i]
 
 
         # run the scenario passed to self.quads_mode
