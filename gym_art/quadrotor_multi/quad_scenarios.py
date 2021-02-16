@@ -411,6 +411,7 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario):
             if abs(diff_x) < dist_low_bound:
                 goal_center_2[0] = np.sign(diff_x) * dist_low_bound + goal_center_1[0]
 
+        return np.array([0, 0, 2]), np.array([0, 0, 2.5])
         return goal_center_1, goal_center_2
 
     def create_formations(self, goal_center_1, goal_center_2):
@@ -430,7 +431,7 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario):
 
     def step(self, infos, rewards, pos):
         tick = self.envs[0].tick
-        control_step_for_eight_sec = int(8 * self.envs[0].control_freq)
+        control_step_for_eight_sec = int(3 * self.envs[0].control_freq)
         # Switch every 8th second
         if tick % control_step_for_eight_sec == 0 and tick > 0:
             self.update_goals()
