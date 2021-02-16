@@ -1,4 +1,6 @@
 import copy
+from collections import deque
+
 import numpy as np
 from scipy import spatial
 import random
@@ -32,7 +34,7 @@ class QuadrotorEnvMulti(gym.Env):
                  swarm_obs='none', quads_use_numba=False, quads_settle=False, quads_settle_range_meters=1.0,
                  quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local',
                  quads_obstacle_num=0, quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True,
-                 adaptive_env=False, obstacle_traj='gravity', local_obs=-1, replay_buffer=False):
+                 adaptive_env=False, obstacle_traj='gravity', local_obs=-1, replay_buffer_sample_prob=0.0):
 
         super().__init__()
 
@@ -170,14 +172,13 @@ class QuadrotorEnvMulti(gym.Env):
         self.reset_scene = False
         self.deleted_scene = False
 
-        self.use_replay_buffer = replay_buffer
+        self.use_replay_buffer = replay_buffer_sample_prob > 0
         self.activate_replay_buffer = False  # only start using the buffer after the drones learn how to fly
         self.saved_in_replay_buffer = False  # since the same collisions happen during replay, we don't want to keep resaving the same event
-        self.collision_occurred = False
+        self.last_step_unique_collisions = False
         self.replay_buffer = None
-        if self.use_replay_buffer:
-            self.crash_one_episode = 0
-        self.crashes_hundred_eps = []
+        self.crashes_in_recent_episodes = deque([], maxlen=100)
+        self.crashes_last_episode = 0
 
     def set_room_dims(self, dims):
         # dims is a (x, y, z) tuple
@@ -248,15 +249,20 @@ class QuadrotorEnvMulti(gym.Env):
         return obs_ext
 
     def can_drones_fly(self):
-        res = abs(np.mean(self.crashes_hundred_eps[:100])) < 1 and len(self.crashes_hundred_eps) >= 1
-        self.crashes_hundred_eps = self.crashes_hundred_eps[:100]  # garbage collect unneeded entries
+        """
+        Here we count the average number of collisions with the walls and ground in the last N episodes
+        Returns: True if drones are considered proficient at flying
+        """
+        return True  # TODO: this is for testing only!
+
+        res = abs(np.mean(self.crashes_in_recent_episodes)) < 1 and len(self.crashes_in_recent_episodes) >= 10
         return res
 
     def reset_obstacle_mode(self):
         self.obstacle_mode = self.envs[0].obstacle_mode
         self.obstacle_num = self.envs[0].obstacle_num
 
-    def reset_scene_multi(self):
+    def init_scene_multi(self):
         models = tuple(e.dynamics.model for e in self.envs)
         self.scene = Quadrotor3DSceneMulti(
             models=models,
@@ -280,11 +286,9 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.reset_obstacle_mode()
 
-        models = tuple(e.dynamics.model for e in self.envs)
-
         # try to activate replay buffer if enabled
         if self.use_replay_buffer and not self.activate_replay_buffer:
-            self.crashes_hundred_eps.append(self.crash_one_episode)
+            self.crashes_in_recent_episodes.append(self.crashes_last_episode)
             self.activate_replay_buffer = self.can_drones_fly()
 
         if self.adaptive_env:
@@ -323,7 +327,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.reset_scene = True
 
-        self.crash_one_episode = 0
+        self.crashes_last_episode = 0
         return obs
 
     # noinspection PyTypeChecker
@@ -349,18 +353,15 @@ class QuadrotorEnvMulti(gym.Env):
             obs = obs_ext
 
         if self.use_replay_buffer and not self.activate_replay_buffer:
-            self.crash_one_episode += infos[0]["rewards"]["rew_crash"]
+            self.crashes_last_episode += infos[0]["rewards"]["rew_crash"]
 
         # Calculating collisions between drones
         drone_col_matrix, self.curr_drone_collisions = calculate_collision_matrix(self.pos, self.envs[0].dynamics.arm)
 
-        unique_collisions = np.setdiff1d(self.curr_drone_collisions, self.prev_drone_collisions)
-
-        if unique_collisions.sum() > 0:
-            self.collision_occurred = True
+        self.last_step_unique_collisions = np.setdiff1d(self.curr_drone_collisions, self.prev_drone_collisions)
 
         # collision between 2 drones counts as a single collision
-        collisions_curr_tick = len(unique_collisions) // 2
+        collisions_curr_tick = len(self.last_step_unique_collisions) // 2
         self.collisions_per_episode += collisions_curr_tick
 
         if collisions_curr_tick > 0:
@@ -370,8 +371,8 @@ class QuadrotorEnvMulti(gym.Env):
         self.prev_drone_collisions = self.curr_drone_collisions
 
         rew_collisions_raw = np.zeros(self.num_agents)
-        if unique_collisions.any():
-            rew_collisions_raw[unique_collisions] = -1.0
+        if self.last_step_unique_collisions.any():
+            rew_collisions_raw[self.last_step_unique_collisions] = -1.0
         rew_collisions = self.rew_coeff["quadcol_bin"] * rew_collisions_raw
 
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
@@ -469,12 +470,7 @@ class QuadrotorEnvMulti(gym.Env):
         models = tuple(e.dynamics.model for e in self.envs)
 
         if self.scene is None:
-            self.scene = Quadrotor3DSceneMulti(
-                models=models,
-                w=640, h=480, resizable=True, obstacles=self.obstacles, viewpoint=self.envs[0].viewpoint,
-                obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
-                render_speed=self.render_speed, formation_size=self.quads_formation_size,
-            )
+            self.init_scene_multi()
 
         if self.reset_scene:
             self.scene.update_models(models)
@@ -519,25 +515,44 @@ class QuadrotorEnvMulti(gym.Env):
         time_to_sleep = desired_time_between_frames - simulation_time - render_time
 
         # wait so we don't simulate/render faster than realtime
-        if mode == 'human' and time_to_sleep > 0:
+        if mode == "human" and time_to_sleep > 0:
             time.sleep(time_to_sleep)
 
         if simulation_time + render_time > desired_time_between_frames:
             self.render_every_nth_frame += 1
             if verbose:
-                print(f'Last render + simulation time {render_time + simulation_time:.3f}')
-                print(f'Rendering does not keep up, rendering every {self.render_every_nth_frame} frames')
+                print(f"Last render + simulation time {render_time + simulation_time:.3f}")
+                print(f"Rendering does not keep up, rendering every {self.render_every_nth_frame} frames")
         elif simulation_time + render_time < realtime_control_period * (
                 self.frames_since_last_render - 1) / self.render_speed:
             self.render_every_nth_frame -= 1
             if verbose:
-                print(f'We can increase rendering framerate, rendering every {self.render_every_nth_frame} frames')
+                print(f"We can increase rendering framerate, rendering every {self.render_every_nth_frame} frames")
 
-        if self.render_every_nth_frame > 4:
-            self.render_every_nth_frame = 4
-            print(f'Rendering cannot keep up! Rendering every {self.render_every_nth_frame} frames')
+        if self.render_every_nth_frame > 5:
+            self.render_every_nth_frame = 5
+            print(f"Rendering cannot keep up! Rendering every {self.render_every_nth_frame} frames")
 
         self.render_skip_frames = self.render_every_nth_frame - 1
         self.frames_since_last_render = 0
 
         self.simulation_start_time = time.time()
+
+    def __deepcopy__(self, memo):
+        """OpenGL scene can't be copied naively."""
+
+        cls = self.__class__
+        copied_env = cls.__new__(cls)
+        memo[id(self)] = copied_env
+
+        skip_copying = {"scene"}
+
+        for k, v in self.__dict__.items():
+            if k not in skip_copying:
+                setattr(copied_env, k, deepcopy(v, memo))
+
+        # warning! deep-copied env has its scene uninitialized! We gotta reuse one from the existing env
+        # to avoid creating tons of windows
+        copied_env.scene = None
+
+        return copied_env

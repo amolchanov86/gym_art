@@ -52,7 +52,7 @@ EPS = 1e-6  # small constant to avoid divisions by 0 and log(0)
 # - linearity is set to 1 always, by means of check_quad_param_limits().
 # The def. value of linarity for CF is set to 1 as well (due to firmware nonlinearity compensation)
 
-class QuadrotorDynamics(object):
+class QuadrotorDynamics:
     """
     Simple simulation of quadrotor dynamics.
     mass unit: kilogram
@@ -105,6 +105,7 @@ class QuadrotorDynamics(object):
         self.eye = np.eye(3)
         ###############################################################
         ## Initializing model
+        self.thrust_noise = None
         self.update_model(model_params)
 
         ## Sanity checks
@@ -191,11 +192,7 @@ class QuadrotorDynamics(object):
         self.thrust_sum_mx = np.zeros([3, 4])  # [0,0,F_sum].T
         self.thrust_sum_mx[2, :] = 1  # [0,0,F_sum].T
 
-        # sigma = 0.2 gives roughly max noise of -1 .. 1
-        if self.use_numba:
-            self.thrust_noise = OUNoiseNumba(4, sigma=0.2 * self.thrust_noise_ratio)
-        else:
-            self.thrust_noise = OUNoise(4, sigma=0.2 * self.thrust_noise_ratio)
+        self.init_thrust_noise()
 
         self.arm = np.linalg.norm(self.model.motor_xyz[:2])
 
@@ -206,6 +203,13 @@ class QuadrotorDynamics(object):
         # self.torque_to_inertia = self.torque_to_inertia / np.linalg.norm(self.torque_to_inertia)
 
         self.reset()
+
+    def init_thrust_noise(self):
+        # sigma = 0.2 gives roughly max noise of -1 .. 1
+        if self.use_numba:
+            self.thrust_noise = OUNoiseNumba(4, sigma=0.2 * self.thrust_noise_ratio)
+        else:
+            self.thrust_noise = OUNoise(4, sigma=0.2 * self.thrust_noise_ratio)
 
     # pos, vel, in world coords (meters)
     # rotation is 3x3 matrix (body coords) -> (world coords)dt
@@ -557,10 +561,27 @@ class QuadrotorDynamics(object):
         return np.concatenate([
             self.pos, self.vel, self.rot.flatten(), self.omega])
 
-    def action_space(self):
+    @staticmethod
+    def action_space():
         low = np.zeros(4)
         high = np.ones(4)
         return spaces.Box(low, high, dtype=np.float32)
+
+    def __deepcopy__(self, memo):
+        """Certain numba-optimized instance attributes can't be naively copied."""
+
+        cls = self.__class__
+        copied_dynamics = cls.__new__(cls)
+        memo[id(self)] = copied_dynamics
+
+        skip_copying = {"thrust_noise"}
+
+        for k, v in self.__dict__.items():
+            if k not in skip_copying:
+                setattr(copied_dynamics, k, deepcopy(v, memo))
+
+        copied_dynamics.init_thrust_noise()
+        return copied_dynamics
 
 
 # reasonable reward function for hovering at a goal and not flying too high
