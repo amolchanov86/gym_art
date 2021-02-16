@@ -359,7 +359,7 @@ class QuadrotorEnvMulti(gym.Env):
         # penalties for being too close to other drones
         rew_proximity = -1.0 * calculate_drone_proximity_penalties(
             distance_matrix=distance_matrix, arm=self.quad_arm, dt=self.control_dt,
-            penalty_fall_off=self.collision_falloff_radius, max_penalty=self.collision_smooth_max_penalty)
+            penalty_fall_off=self.collision_falloff_radius, max_penalty=self.collision_smooth_max_penalty, num_agents=self.num_agents)
 
         # penalties for having high velocity when drones are close to each other
         if self.collision_vel_penalty_mode != 'none':
