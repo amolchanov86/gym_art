@@ -944,9 +944,11 @@ class QuadrotorSingle:
 
     def make_observation_space(self):
         self.wall_offset = 0.3
+        room_range = self.room_box[1] - self.room_box[0]
+        room_max_dist = np.linalg.norm(self.room_box[1] - self.room_box[0]) * np.ones(1)
         self.obs_space_low_high = {
-            "xyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]],
-            "xyzr": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]],
+            "xyz": [-room_range, room_range],
+            "xyzr": [-room_range, room_range],
             "vxyz": [-self.dynamics.vxyz_max * np.ones(3), self.dynamics.vxyz_max * np.ones(3)],
             "vxyzr": [-self.dynamics.vxyz_max * np.ones(3), self.dynamics.vxyz_max * np.ones(3)],
             "acc": [-self.dynamics.acc_max * np.ones(3), self.dynamics.acc_max * np.ones(3)],
@@ -958,13 +960,13 @@ class QuadrotorSingle:
             "act": [np.zeros(4), np.ones(4)],
             "quat": [-np.ones(4), np.ones(4)],
             "euler": [-np.pi * np.ones(3), np.pi * np.ones(3)],
-            "rxyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]], # rxyz stands for relative pos between quadrotors
+            "rxyz": [-room_range, room_range], # rxyz stands for relative pos between quadrotors
             "rvxyz": [-2.0 * self.dynamics.vxyz_max * np.ones(3), 2.0 * self.dynamics.vxyz_max * np.ones(3)], # rvxyz stands for relative velocity between quadrotors
-            "roxyz": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]], # roxyz stands for relative pos between quadrotor and obstacle
+            "roxyz": [-room_range, room_range], # roxyz stands for relative pos between quadrotor and obstacle
             "rovxyz": [-20.0 * np.ones(3), 20.0 * np.ones(3)], # rovxyz stands for relative velocity between quadrotor and obstacle
-            "goal": [-(self.room_box[1] - self.room_box[0]), self.room_box[1] - self.room_box[0]],
-            "nbr_dist": [np.array([0]), np.array([np.linalg.norm(self.room_box[1] - self.room_box[0])])],
-            "nbr_goal_dist": [np.array([0]), np.array([np.linalg.norm(self.room_box[1] - self.room_box[0])])],
+            "goal": [-room_range, room_range],
+            "nbr_dist": [np.zeros(1), room_max_dist],
+            "nbr_goal_dist": [np.zeros(1), room_max_dist],
         }
         self.obs_comp_names = list(self.obs_space_low_high.keys())
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
@@ -974,7 +976,7 @@ class QuadrotorSingle:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * self.num_use_neighbor_obs
         elif self.swarm_obs == 'pos_vel_goals' and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz'] + ['goal']) * self.num_use_neighbor_obs
-        elif self.swarm_obs == 'attn' and self.num_agents > 1:
+        elif self.swarm_obs == 'pos_ndist_vel_goals_gdist' and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['nbr_dist'] + ['rvxyz'] + ['goal'] + ['nbr_goal_dist']) * self.num_use_neighbor_obs
         if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
             obs_comps = obs_comps + (['roxyz'] + ['rovxyz']) * (self.obstacle_num)
