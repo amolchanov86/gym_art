@@ -213,6 +213,22 @@ def generate_points(n=3):
     return points_in_sphere(n, 0.1 + 1.2 * n)
 
 
+def get_sphere_radius(num, dist):
+    A = 1.75388487222762
+    B = 0.860487305801679
+    C = 10.3632729642351
+    D = 0.0920858134405214
+    ratio = (A - D) / (1 + (num / C) ** B) + D
+    radius = dist / ratio
+    return radius
+
+
+def get_circle_radius(num, dist):
+    theta = 2 * np.pi / num
+    radius = (0.5 * dist) / np.sin(theta / 2)
+    return radius
+
+
 def calculate_collision_matrix(positions, arm, hitbox_radius):
     dist = spatial.distance_matrix(x=positions, y=positions)
     collision_matrix = (dist < hitbox_radius * arm).astype(np.float32)
