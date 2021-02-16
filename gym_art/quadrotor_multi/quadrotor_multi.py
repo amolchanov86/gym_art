@@ -5,7 +5,7 @@ import time
 import gym
 
 from gym_art.quadrotor_multi.quad_utils import perform_collision_between_drones, perform_collision_with_obstacle, \
-    calculate_collision_matrix, hyperbolic_proximity_penalty
+    calculate_collision_matrix
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
@@ -69,7 +69,7 @@ class QuadrotorEnvMulti(gym.Env):
         # reward shaping
         self.rew_coeff = dict(
             pos=1., effort=0.05, action_change=0., crash=1., orient=1., yaw=0., rot=0., attitude=0., spin=0.1, vel=0.,
-            quadcol_bin=0., quadsettle=0., quadcol_bin_obst=0., quad_spacing_coeff=0.
+            quadcol_bin=0., quadsettle=0., quadcol_bin_obst=0.
         )
         rew_coeff_orig = copy.deepcopy(self.rew_coeff)
 
@@ -341,10 +341,6 @@ class QuadrotorEnvMulti(gym.Env):
             for val in np.argwhere(col_obst_quad > 0.0):
                 perform_collision_with_obstacle(self.obstacles.obstacles[val[0]], self.envs[val[1]].dynamics)
 
-        # compute clipped 1/x^2 cost for distance b/w drones
-        dists = spatial.distance_matrix(x=self.pos, y=self.pos)
-        dt = 1.0 / self.envs[0].control_freq
-        spacing_reward = hyperbolic_proximity_penalty(dists, dt)
 
         for i in range(self.num_agents):
             rewards[i] += rew_collisions[i]
@@ -355,8 +351,6 @@ class QuadrotorEnvMulti(gym.Env):
             infos[i]["rewards"]["rew_quadcol_obstacle"] = rew_col_obst_quad[i]
             infos[i]["rewards"]["rewraw_quadcol_obstacle"] = rew_col_obst_quad_raw[i]
 
-            rewards[i] += spacing_reward[i]
-            infos[i]["rewards"]["rew_quad_spacing"] = spacing_reward[i]
 
         # run the scenario passed to self.quads_mode
         infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=self.pos)
