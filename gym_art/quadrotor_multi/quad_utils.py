@@ -213,9 +213,25 @@ def generate_points(n=3):
     return points_in_sphere(n, 0.1 + 1.2 * n)
 
 
-def calculate_collision_matrix(positions, arm):
+def get_sphere_radius(num, dist):
+    A = 1.75388487222762
+    B = 0.860487305801679
+    C = 10.3632729642351
+    D = 0.0920858134405214
+    ratio = (A - D) / (1 + (num / C) ** B) + D
+    radius = dist / ratio
+    return radius
+
+
+def get_circle_radius(num, dist):
+    theta = 2 * np.pi / num
+    radius = (0.5 * dist) / np.sin(theta / 2)
+    return radius
+
+
+def calculate_collision_matrix(positions, arm, hitbox_radius):
     dist = spatial.distance_matrix(x=positions, y=positions)
-    collision_matrix = (dist < 2 * arm).astype(np.float32)
+    collision_matrix = (dist < hitbox_radius * arm).astype(np.float32)
     np.fill_diagonal(collision_matrix, 0.0)
 
     # get upper triangular matrix and check if they have collisions and append to all collisions
@@ -225,23 +241,40 @@ def calculate_collision_matrix(positions, arm):
     for i, val in enumerate(up_w1[0]):
         all_collisions.append((up_w1[0][i], up_w1[1][i]))
 
-    return collision_matrix, all_collisions
+    return collision_matrix, all_collisions, dist
 
 
-def hyperbolic_proximity_penalty(dist_matrix, dt, coeff=0.0):
-    '''
-    summed coeff/(x^2 + eps) clipped distance penalty between drones
-    :param dist_matrix: distance between drones
-    :param dt: single time step
-    :param coeff: reward scaling hyperparam
-    :return: spacing penalty b/w droens
-    '''
-    costs = -coeff / (np.power(dist_matrix + 1e-7, 2))
-    np.fill_diagonal(costs, 0.0)
-    costs = np.clip(costs, -10, 0)
-    spacing_reward = np.array([np.sum(row) for row in costs])
-    spacing_reward = spacing_reward * dt
-    return spacing_reward
+def calculate_drone_proximity_penalties(distance_matrix, arm, dt, penalty_fall_off, max_penalty):
+    penalties = (-max_penalty / (penalty_fall_off * arm)) * distance_matrix + max_penalty
+    np.fill_diagonal(penalties, 0.0)
+    penalties = np.maximum(penalties, 0.0)
+    penalties = np.sum(penalties, axis=0)
+
+    return dt * penalties  # actual penalties per tick to be added to the overall reward
+
+
+def calculate_drone_proximity_penalties_vel(rel_pos_stack, rel_vel_stack, coeff, mode, dt, penalty_area_radius, max_penalty):
+    rel_dist = np.linalg.norm(rel_pos_stack, axis=2)
+    rel_dist = np.maximum(rel_dist, 1e-2)
+    rel_pos_unit = rel_pos_stack / rel_dist[:, :, None]
+
+    transform_vel = np.sum(rel_pos_unit * rel_vel_stack, axis=2)
+
+    if mode == 'linear':
+        # -coeff * (r-d) * dot(rpos_unit, rvel) / d
+        penalty_denominator = rel_dist
+    elif mode == 'quadratic':
+        # -coeff * (r-d) * dot(rpos_unit, rvel) / (d ** 2)
+        penalty_denominator = rel_dist ** 2
+    else:
+        raise NotImplementedError(f'{mode} not supported!')
+
+    penalty_coeff = np.maximum(0.0, penalty_area_radius - rel_dist)
+    penalties = -coeff * penalty_coeff * transform_vel / penalty_denominator
+    penalties = np.clip(penalties, a_min=0.0, a_max=max_penalty)
+    penalties = np.sum(penalties, axis=1)
+
+    return dt * penalties
 
 
 def compute_col_norm_and_new_velocities(dyn1, dyn2):
