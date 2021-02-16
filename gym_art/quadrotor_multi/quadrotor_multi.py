@@ -94,7 +94,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         if self.swarm_obs == 'pos_vel':
             self.neighbor_obs_size = 6
-        elif self.swarm_obs == 'attn':
+        elif self.swarm_obs == 'pos_ndist_vel_goals_gdist':
             self.neighbor_obs_size = 11
         elif self.swarm_obs == 'pos_vel_goals':
             self.neighbor_obs_size = 9
@@ -191,7 +191,7 @@ class QuadrotorEnvMulti(gym.Env):
             obs_neighbor_rel = np.concatenate((pos_neighbors_rel, vel_neighbors_rel), axis=1)
         elif self.swarm_obs == 'pos_vel_goals':
             obs_neighbor_rel = np.concatenate((pos_neighbors_rel, vel_neighbors_rel, neighbor_goals_rel), axis=1)
-        elif self.swarm_obs == 'attn':
+        elif self.swarm_obs == 'pos_ndist_vel_goals_gdist':
             obs_neighbor_rel = np.concatenate((pos_neighbors_rel, dist_to_neighbors, vel_neighbors_rel, neighbor_goals_rel, dist_to_neighbor_goals), axis=1)
         else:
             raise NotImplementedError
@@ -199,7 +199,7 @@ class QuadrotorEnvMulti(gym.Env):
         return obs_neighbor_rel
 
     def extend_obs_space(self, obs):
-        assert self.swarm_obs == 'pos_vel' or self.swarm_obs == 'pos_vel_goals' or self.swarm_obs == 'attn', f'Invalid parameter {self.swarm_obs} passed in --obs_space'
+        assert self.swarm_obs == 'pos_vel' or self.swarm_obs == 'pos_vel_goals' or self.swarm_obs == 'pos_ndist_vel_goals_gdist', f'Invalid parameter {self.swarm_obs} passed in --obs_space'
         obs_neighbors = []
         for i in range(len(self.envs)):
             obs_neighbor_rel = self.get_obs_neighbor_rel(env_id=i)
