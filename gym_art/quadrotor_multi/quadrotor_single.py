@@ -967,6 +967,7 @@ class QuadrotorSingle:
             "goal": [-room_range, room_range],
             "nbr_dist": [np.zeros(1), room_max_dist],
             "nbr_goal_dist": [np.zeros(1), room_max_dist],
+            "wall": [np.zeros(6), 5.0 * np.ones(6)],
         }
         self.obs_comp_names = list(self.obs_space_low_high.keys())
         self.obs_comp_sizes = [self.obs_space_low_high[name][1].size for name in self.obs_comp_names]
@@ -976,8 +977,8 @@ class QuadrotorSingle:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz']) * self.num_use_neighbor_obs
         elif self.swarm_obs == 'pos_vel_goals' and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz'] + ['goal']) * self.num_use_neighbor_obs
-        elif self.swarm_obs == 'pos_ndist_vel_goals_gdist' and self.num_agents > 1:
-            obs_comps = obs_comps + (['rxyz'] + ['nbr_dist'] + ['rvxyz'] + ['goal'] + ['nbr_goal_dist']) * self.num_use_neighbor_obs
+        elif self.swarm_obs == 'pos_vel_goals_ndist_gdist' and self.num_agents > 1:
+            obs_comps = obs_comps + (['rxyz'] + ['rvxyz'] + ['goal'] + ['nbr_dist'] + ['nbr_goal_dist']) * self.num_use_neighbor_obs
         if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
             obs_comps = obs_comps + (['roxyz'] + ['rovxyz']) * (self.obstacle_num)
 
