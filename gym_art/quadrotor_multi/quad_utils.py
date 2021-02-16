@@ -245,6 +245,9 @@ def calculate_collision_matrix(positions, arm, hitbox_radius):
 
 
 def calculate_drone_proximity_penalties(distance_matrix, arm, dt, penalty_fall_off, max_penalty):
+    if not penalty_fall_off:
+        # smooth penalties is disabled, so noop
+        return np.zeros(8)
     penalties = (-max_penalty / (penalty_fall_off * arm)) * distance_matrix + max_penalty
     np.fill_diagonal(penalties, 0.0)
     penalties = np.maximum(penalties, 0.0)
