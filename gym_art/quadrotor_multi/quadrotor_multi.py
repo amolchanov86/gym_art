@@ -28,7 +28,7 @@ class QuadrotorEnvMulti(gym.Env):
                  quads_vel_reward_out_range=0.8, quads_obstacle_mode='no_obstacles', quads_view_mode='local',
                  quads_obstacle_num=0, quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True,
                  adaptive_env=False, obstacle_traj='gravity', local_obs=-1, collision_hitbox_radius=2.0,
-                 collision_falloff_radius=0.0, collision_smooth_max_penalty=10.0, collision_vel_penalty_mode='none',
+                 collision_falloff_radius=2.0, collision_smooth_max_penalty=10.0, collision_vel_penalty_mode='none',
                  collision_smooth_vel_coeff=0.0, collision_vel_penalty_radius=0.0, collision_smooth_vel_max_penalty=10.0):
 
         super().__init__()
