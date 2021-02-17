@@ -650,6 +650,12 @@ class Scenario_mix(QuadrotorScenario):
             # reset formation
             formation_index = round(np.random.uniform(low=-0.499, high=len(quads_dict[mode][0]) - 0.501))
             self.formation = QUADS_FORMATION_LIST[formation_index]
+            # Aux for scalibility
+            if self.formation.startswith("circle"):
+                self.num_agents_per_layer = 8
+            elif self.formation.startswith("grid"):
+                self.num_agents_per_layer = 50
+
             # reset formation size
             lowest_dist, highest_dist = quads_dict[mode][1]
             formation_size_low, formation_size_high = self.get_formation_range(mode=mode, low=lowest_dist, high=highest_dist)
