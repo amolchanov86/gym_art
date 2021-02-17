@@ -30,7 +30,8 @@ class QuadrotorEnvMulti(gym.Env):
                  quads_obstacle_num=0, quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True,
                  adaptive_env=False, obstacle_traj='gravity', local_obs=-1, collision_hitbox_radius=2.0,
                  collision_falloff_radius=2.0, collision_smooth_max_penalty=10.0, collision_vel_penalty_mode='none',
-                 collision_smooth_vel_coeff=0.0, collision_vel_penalty_radius=0.0, collision_smooth_vel_max_penalty=10.0):
+                 collision_smooth_vel_coeff=0.0, collision_vel_penalty_radius=0.0, collision_smooth_vel_max_penalty=10.0,
+                 local_metric='dist_inverse', local_coeff=0.0):
 
         super().__init__()
 
@@ -41,6 +42,9 @@ class QuadrotorEnvMulti(gym.Env):
             self.num_use_neighbor_obs = self.num_agents - 1
         else:
             self.num_use_neighbor_obs = local_obs
+
+        self.local_metric = local_metric
+        self.local_coeff = local_coeff
         # Set to True means that sample_factory will treat it as a multi-agent vectorized environment even with
         # num_agents=1. More info, please look at sample-factory: envs/quadrotors/wrappers/reward_shaping.py
         self.is_multiagent = True
@@ -251,8 +255,24 @@ class QuadrotorEnvMulti(gym.Env):
         for i in range(len(obs)):
             obs_neighbor_rel = self.get_obs_neighbor_rel(env_id=i)
             # Get n close neighbors
-            rel_pos = np.linalg.norm(obs_neighbor_rel[:, :3], axis=1)
-            rel_pos_index = rel_pos.argsort()
+            rel_pos = obs_neighbor_rel[:, :3]
+            rel_dist = np.linalg.norm(rel_pos, axis=1)
+            rel_dist = np.maximum(rel_dist, 0.01)
+            rel_pos_unit =  rel_pos / rel_dist[:, None]
+
+            rel_vel = obs_neighbor_rel[:, 3:6]
+            # new relative distance is a new metric that combines relative position and relative velocity
+            # F = alpha * distance + (1 - alpha) * dot(normalized_direction_to_other_drone, relative_vel)
+            if self.local_metric == 'dist':
+                # the smaller the new_rel_dist, the closer the drones
+                new_rel_dist = rel_dist + self.local_coeff * np.sum(rel_pos_unit * rel_vel, axis=1)
+            elif self.local_metric == 'dist_inverse':
+                new_rel_dist = 1.0 / rel_dist - self.local_coeff * np.sum(rel_pos_unit * rel_vel, axis=1)
+                new_rel_dist = -1.0 * new_rel_dist
+            else:
+                raise NotImplementedError(f'Unknown local metric {self.local_metric}')
+
+            rel_pos_index = new_rel_dist.argsort()
             obs_neighbor_rel_n_close = np.array(
                 [obs_neighbor_rel[rel_pos_index[i]] for i in range(self.num_use_neighbor_obs)])
             obs_neighbors.append(obs_neighbor_rel_n_close.reshape(-1))
