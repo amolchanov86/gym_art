@@ -7,7 +7,7 @@ import numpy as np
 
 
 class ReplayBuffer:
-    def __init__(self, control_frequency, cp_step_size=0.5, buffer_size=100):  # TODO: what is the right buffer size?
+    def __init__(self, control_frequency, cp_step_size=0.5, buffer_size=20):  # TODO: what is the right buffer size?
         self.control_frequency = control_frequency
         self.cp_step_size_sec = cp_step_size  # how often (seconds) a checkpoint is saved
         self.cp_step_size_freq = self.cp_step_size_sec * self.control_frequency
@@ -53,6 +53,10 @@ class ExperienceReplayWrapper(gym.Wrapper):
         self.save_time_before_collision_sec = 1.5
         self.last_tick_added_to_buffer = -1e9
 
+        # variables for tensorboard
+        self.replayed_events = 0
+        self.episode_counter = 0
+
     def save_checkpoint(self, obs):
         """
         Save a checkpoint every X steps so that we may load it later if a collision was found. This is NOT the same as the buffer
@@ -69,6 +73,12 @@ class ExperienceReplayWrapper(gym.Wrapper):
 
         if any(dones):
             obs = self.new_episode()
+            for i in range(len(infos)):
+                infos[i]['replay_buffer_stats'] = {
+                    'replay_rate': self.replayed_events / self.episode_counter,
+                    'new_episode_rate': (self.episode_counter - self.replayed_events) / self.episode_counter
+                }
+
         else:
             if self.env.use_replay_buffer and self.env.activate_replay_buffer and not self.env.saved_in_replay_buffer \
                     and self.env.envs[0].tick % self.replay_buffer.cp_step_size_freq == 0:
@@ -98,11 +108,13 @@ class ExperienceReplayWrapper(gym.Wrapper):
         Normally this would go into reset(), but MultiQuadEnv is a multi-agent env that automatically resets.
         This means that reset() is never actually called externally and we need to take care of starting our new episode.
         """
+        self.episode_counter += 1
         self.last_tick_added_to_buffer = -1e9
         self.episode_checkpoints = deque([], maxlen=self.max_episode_checkpoints_to_keep)
 
         if np.random.uniform(0, 1) < self.replay_buffer_sample_prob and self.replay_buffer and self.env.activate_replay_buffer \
                 and len(self.replay_buffer) > 0:
+            self.replayed_events += 1
             env, obs = self.replay_buffer.sample_event()
             replayed_env = deepcopy(env)
             replayed_env.scene = self.env.scene

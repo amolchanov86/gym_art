@@ -285,7 +285,7 @@ class QuadrotorEnvMulti(gym.Env):
         Here we count the average number of collisions with the walls and ground in the last N episodes
         Returns: True if drones are considered proficient at flying
         """
-        return True  # TODO: this is for testing only!
+        # return True  # TODO: this is for testing only!
 
         res = abs(np.mean(self.crashes_in_recent_episodes)) < 1 and len(self.crashes_in_recent_episodes) >= 10
         return res
@@ -358,7 +358,6 @@ class QuadrotorEnvMulti(gym.Env):
         self.collisions_per_episode = self.collisions_after_settle = 0
 
         self.reset_scene = True
-
         self.crashes_last_episode = 0
         return obs
 
