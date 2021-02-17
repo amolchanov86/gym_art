@@ -635,7 +635,7 @@ class Scenario_mix(QuadrotorScenario):
         """
         :return: the name of the actual scenario used in this episode
         """
-        return self.__class__.__name__
+        return self.scenario.__class__.__name__
 
     def step(self, infos, rewards, pos):
         infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=pos)
