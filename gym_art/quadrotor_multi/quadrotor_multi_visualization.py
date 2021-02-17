@@ -252,7 +252,7 @@ class Quadrotor3DSceneMulti:
                 self.shadow_transforms[i].set_transform_nocollide(matrix)
 
                 if self.vector_render_type:
-                    if len(self.vector_array[i]) > 5:
+                    if len(self.vector_array[i]) > 10:
                         self.vector_array[i].pop(0)
 
                     if self.vector_render_type == 'acceleration':
