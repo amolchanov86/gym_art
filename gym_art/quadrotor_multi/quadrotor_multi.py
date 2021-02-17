@@ -389,7 +389,7 @@ class QuadrotorEnvMulti(gym.Env):
             penalty_fall_off=self.collision_falloff_radius, max_penalty=self.collision_smooth_max_penalty, num_agents=self.num_agents)
 
         # penalties for having high velocity when drones are close to each other
-        if self.collision_vel_penalty_mode != 'none':
+        if self.collision_vel_penalty_mode != 'none' and self.collision_smooth_vel_coeff != 0.0:
             # Shape: num_all_drones * num_neighbor_drones * 3
             rel_pos_stack, rel_vel_stack = self.get_rel_pos_vel_stack()
             penalty_area_radius = self.collision_vel_penalty_radius * self.quad_arm
@@ -399,7 +399,6 @@ class QuadrotorEnvMulti(gym.Env):
                 penalty_area_radius=penalty_area_radius, max_penalty=self.collision_smooth_vel_max_penalty)
         else:
             rew_vel_proximity = np.zeros(self.num_agents)
-
 
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
         col_obst_quad = self.obstacles.collision_detection(pos_quads=self.pos, set_obstacles=self.set_obstacles)
@@ -418,7 +417,6 @@ class QuadrotorEnvMulti(gym.Env):
                 perform_collision_between_drones(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
             for val in np.argwhere(col_obst_quad > 0.0):
                 perform_collision_with_obstacle(self.obstacles.obstacles[val[0]], self.envs[val[1]].dynamics)
-
 
         for i in range(self.num_agents):
             rewards[i] += rew_collisions[i]
@@ -484,6 +482,7 @@ class QuadrotorEnvMulti(gym.Env):
                 infos[i]['episode_extra_stats'] = {
                     'num_collisions': self.collisions_per_episode,
                     'num_collisions_after_settle': self.collisions_after_settle,
+                    f'num_collisions_{self.scenario.name()}': self.collisions_after_settle,
                 }
 
             obs = self.reset()

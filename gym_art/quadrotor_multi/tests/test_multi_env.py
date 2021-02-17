@@ -59,7 +59,7 @@ class TestMultiEnv(TestCase):
 
     def test_render(self):
         num_agents = 16
-        env = create_env(num_agents, use_numba=True)
+        env = create_env(num_agents, use_numba=True, local_obs=8)
         env.render_speed = 1.0
 
         env.reset()
@@ -89,8 +89,7 @@ class TestMultiEnv(TestCase):
 
         env.reset()
 
-        for i in range(100):
+        for i in range(1000):
             obs, rewards, dones, infos = env.step([env.action_space.sample() for i in range(num_agents)])
 
         env.close()
-
