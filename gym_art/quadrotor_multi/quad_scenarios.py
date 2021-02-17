@@ -38,12 +38,7 @@ class QuadrotorScenario:
         quad_arm = self.envs[0].dynamics.arm
         self.formation = quads_formation
         # Aux for scalibility
-        if self.formation.startswith("circle"):
-            self.num_agents_per_layer = 8
-        elif self.formation.startswith("grid"):
-            self.num_agents_per_layer = 50
-        else:
-            self.num_agents_per_layer = 8
+        self.update_formation()
 
         self.formation_size = quads_formation_size
         lowest_dist, highest_dist = 8 * quad_arm, 16 * quad_arm
@@ -194,8 +189,6 @@ class QuadrotorScenario:
             self.num_agents_per_layer = 8
         elif self.formation.startswith("grid"):
             self.num_agents_per_layer = 50
-        else:
-            self.num_agents_per_layer = 8
 
 class Scenario_static_same_goal(QuadrotorScenario):
     def update_formation_size(self, new_formation_size):
