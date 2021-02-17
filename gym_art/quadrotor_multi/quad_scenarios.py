@@ -181,7 +181,7 @@ class QuadrotorScenario:
         self.goals = self.generate_goals(num_agents=self.num_agents, formation_center=self.formation_center)
 
     def update_formation(self):
-        formation_index = round(np.random.uniform(low=-0.499, high=len(QUADS_FORMATION_LIST) - 0.501))
+        formation_index = np.random.randint(low=0, high=len(QUADS_FORMATION_LIST))
         self.formation = QUADS_FORMATION_LIST[formation_index]
 
         # Aux for scalibility
@@ -632,7 +632,7 @@ class Scenario_mix(QuadrotorScenario):
         else:
             mode_dict = QUADS_MODE_DICT["swap_goals"]
 
-        mode_index = round(np.random.uniform(low=-0.499, high=len(mode_dict)-0.501))
+        mode_index = np.random.randint(low=0, high=len(mode_dict))
         mode = mode_dict[mode_index]
 
         if mode in self.quads_formation_and_size_dict["fix_size"]:
@@ -648,7 +648,7 @@ class Scenario_mix(QuadrotorScenario):
             else:
                 quads_dict = self.quads_formation_and_size_dict["swap_goals"]
             # reset formation
-            formation_index = round(np.random.uniform(low=-0.499, high=len(quads_dict[mode][0]) - 0.501))
+            formation_index = np.random.randint(low=0, high=len(quads_dict[mode][0]))
             self.formation = QUADS_FORMATION_LIST[formation_index]
             # Aux for scalibility
             if self.formation.startswith("circle"):
