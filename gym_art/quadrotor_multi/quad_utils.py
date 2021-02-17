@@ -228,6 +228,20 @@ def get_circle_radius(num, dist):
     radius = (0.5 * dist) / np.sin(theta / 2)
     return radius
 
+def get_grid_dim_number(num):
+    assert num > 0
+    sqrt_goal_num = np.sqrt(num)
+    grid_number = int(np.floor(sqrt_goal_num))
+    dim_1 = grid_number
+    while dim_1 > 1:
+        if num % dim_1 == 0:
+            break
+        else:
+            dim_1 -= 1
+
+    dim_2 = num // dim_1
+    return dim_1, dim_2
+
 
 def calculate_collision_matrix(positions, arm, hitbox_radius):
     dist = spatial.distance_matrix(x=positions, y=positions)
