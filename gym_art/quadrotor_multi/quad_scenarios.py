@@ -472,6 +472,8 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario):
         # teleport every [4.0, 6.0] secs
         duration_time = 5.0
         self.control_step_for_sec = int(duration_time * self.envs[0].control_freq)
+        quad_arm = self.envs[0].dynamics.arm
+        lowest_dist, highest_dist = 8 * quad_arm, 16 * quad_arm
         self.lowest_formation_size, self.highest_formation_size = \
             self.get_formation_range(mode='swarm_vs_swarm', low=lowest_dist, high=highest_dist)
 
