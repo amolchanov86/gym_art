@@ -37,7 +37,7 @@ class Quadrotor3DSceneMulti:
             self, w, h,
             quad_arm=None, models=None, obstacles=None, visible=True, resizable=True, goal_diameter=None,
             viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8,
-            render_speed=1.0, formation_size=-1.0,
+            render_speed=1.0, formation_size=-1.0, vector_render_type='acceleration'
     ):
         if obs_hw is None:
             obs_hw = [64, 64]
@@ -92,6 +92,7 @@ class Quadrotor3DSceneMulti:
         self.camera_zoom_step_size = 0.1 * speed_ratio
         self.camera_mov_step_size = 0.1 * speed_ratio
         self.formation_size = formation_size
+        self.vector_render_type = vector_render_type
         self.vector_array = [[] for _ in range(num_agents)]
 
 
@@ -130,7 +131,7 @@ class Quadrotor3DSceneMulti:
                 r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), r3d.sphere(0.75 * self.diameter, 32))
             )
             self.vec_transforms.append(
-                r3d.transform_and_color(np.eye(4), (1.0, 0.3, 0.9), r3d.arrow(0.002, 0.12, 10))
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.arrow(0.002, 0.12, 10))
             )
 
         # TODO make floor size or walls to indicate world_box
@@ -209,6 +210,7 @@ class Quadrotor3DSceneMulti:
     def reset(self, goals, dynamics, obstacles, collisions):
         self.goals = goals
         self.dynamics = dynamics
+        self.vector_array = [[] for _ in range(self.num_agents)]
 
         if self.viewpoint == 'global':
             goal = np.mean(goals, axis=0)
@@ -249,13 +251,21 @@ class Quadrotor3DSceneMulti:
                 matrix = r3d.translate(shadow_pos)
                 self.shadow_transforms[i].set_transform_nocollide(matrix)
 
-                if len(self.vec_transforms[i]) > 5:
-                    self.vec_transforms[i].pop(0)
-                self.vec_transforms[i].append(dyn.acc)
-                vector_mag_with_dir = np.diag(np.sign(dyn.acc) * np.mean(np.linalg.norm(acc) 
-                                                                         for acc in self.vec_transforms[i]))
-                vel_mat = r3d.trans_and_rot(dyn.pos, vector_mag_with_dir@dyn.rot)
-                self.vec_transforms[i].set_transform_nocollide(vel_mat)
+                if self.vector_render_type:
+                    if len(self.vector_array[i]) > 5:
+                        self.vector_array[i].pop(0)
+
+                    if self.vector_render_type == 'acceleration':
+                        self.vector_array[i].append(dyn.acc)
+                    elif self.vector_render_type == 'velocity':
+                        self.vector_array[i].append(dyn.vel)
+                    else:
+                        raise NotImplementedError
+
+                    avg_of_vecs = np.mean(self.vector_array[i], axis=0)
+                    vector_mag_with_dir = np.diag(np.sign(avg_of_vecs) * np.linalg.norm(avg_of_vecs))
+                    vel_mat = r3d.trans_and_rot(dyn.pos, vector_mag_with_dir@dyn.rot)
+                    self.vec_transforms[i].set_transform_nocollide(vel_mat)
 
                 matrix = r3d.translate(dyn.pos)
                 if collisions['drone'][i] > 0.0 or collisions['obstacle'][i] > 0.0 or collisions['ground'][i] > 0.0:
