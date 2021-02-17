@@ -112,7 +112,7 @@ class Quadrotor3DSceneMulti:
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
 
-        self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms, self.obstacle_transforms = [], [], [], [], []
+        self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms, self.obstacle_transforms, self.vel_transforms = [], [], [], [], [], []
 
         for i, model in enumerate(self.models):
             if model is not None:
@@ -127,6 +127,9 @@ class Quadrotor3DSceneMulti:
             self.collision_transforms.append(
                 r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), r3d.sphere(0.75 * self.diameter, 32))
             )
+            self.vel_transforms.append(
+                r3d.transform_and_color(np.eye(4), (1.0, 0.3, 0.9), r3d.arrow(0.002, 0.12, 10))
+            )
 
         # TODO make floor size or walls to indicate world_box
         floor = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25),
@@ -139,6 +142,7 @@ class Quadrotor3DSceneMulti:
         bodies = [r3d.BackToFront([floor, st]) for st in self.shadow_transforms]
         bodies.extend(self.goal_transforms)
         bodies.extend(self.quad_transforms)
+        bodies.extend(self.vel_transforms)
         # visualize walls of the room if True
         if self.visible:
             room = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25), r3d.envBox(*self.room_dims))
@@ -214,7 +218,7 @@ class Quadrotor3DSceneMulti:
 
         self.update_state(dynamics, goals, obstacles, collisions)
 
-    def update_state(self, all_dynamics, goals, obstacles, collisions):
+    def update_state(self, all_dynamics, goals, obstacles, collisions, plot_vector='acceleration'):
         if self.scene:
             if self.viewpoint == 'global':
                 goal = np.mean(goals, axis=0)
@@ -242,6 +246,16 @@ class Quadrotor3DSceneMulti:
                 shadow_pos[2] = 0.001  # avoid z-fighting
                 matrix = r3d.translate(shadow_pos)
                 self.shadow_transforms[i].set_transform_nocollide(matrix)
+
+                if plot_vector:
+                    if plot_vector == 'velocity':
+                        vector_mag_with_dir = np.diag(np.sign(dyn.vel) * np.linalg.norm(dyn.vel))
+                    elif plot_vector == 'acceleration':
+                        vector_mag_with_dir = np.diag(np.sign(dyn.acc) * np.linalg.norm(dyn.acc))
+                    else:
+                        raise NotImplementedError
+                    vel_mat = r3d.trans_and_rot(dyn.pos, vector_mag_with_dir@dyn.rot)
+                    self.vel_transforms[i].set_transform_nocollide(vel_mat)
 
                 matrix = r3d.translate(dyn.pos)
                 if collisions['drone'][i] > 0.0 or collisions['obstacle'][i] > 0.0 or collisions['ground'][i] > 0.0:
