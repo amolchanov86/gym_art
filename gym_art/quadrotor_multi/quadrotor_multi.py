@@ -31,7 +31,7 @@ class QuadrotorEnvMulti(gym.Env):
                  adaptive_env=False, obstacle_traj='gravity', local_obs=-1, collision_hitbox_radius=2.0,
                  collision_falloff_radius=2.0, collision_smooth_max_penalty=10.0, collision_vel_penalty_mode='none',
                  collision_smooth_vel_coeff=0.0, collision_vel_penalty_radius=0.0, collision_smooth_vel_max_penalty=10.0,
-                 local_metric='dist_inverse', local_coeff=0.0):
+                 local_metric='dist', local_coeff=0.0):
 
         super().__init__()
 
@@ -199,12 +199,17 @@ class QuadrotorEnvMulti(gym.Env):
             2 * np.pi / self.num_agents)
         return metric_dist
 
-    def get_rel_pos_vel_item(self, env_id):
+    def get_rel_pos_vel_item(self, env_id, indices=None):
         i = env_id
+
+        if indices is None:
+            # if not specified explicitly, consider all neighbors
+            indices = [j for j in range(self.num_agents) if j != i]
+
         cur_pos = self.envs[i].dynamics.pos
         cur_vel = self.envs[i].dynamics.vel
-        pos_neighbor = np.stack([self.envs[j].dynamics.pos for j in range(self.num_agents) if j != i])
-        vel_neighbor = np.stack([self.envs[j].dynamics.vel for j in range(self.num_agents) if j != i])
+        pos_neighbor = np.stack([self.envs[j].dynamics.pos for j in indices])
+        vel_neighbor = np.stack([self.envs[j].dynamics.vel for j in indices])
         pos_rel = pos_neighbor - cur_pos
         vel_rel = vel_neighbor - cur_vel
         return pos_rel, vel_rel
@@ -217,11 +222,11 @@ class QuadrotorEnvMulti(gym.Env):
             rel_vel_stack.append(vel_rel)
         return np.array(rel_pos_stack), np.array(rel_vel_stack)
 
-    def get_obs_neighbor_rel(self, env_id):
+    def get_obs_neighbor_rel(self, env_id, closest_drones):
         i = env_id
-        pos_neighbors_rel, vel_neighbors_rel = self.get_rel_pos_vel_item(env_id=i)
+        pos_neighbors_rel, vel_neighbors_rel = self.get_rel_pos_vel_item(env_id=i, indices=closest_drones[i])
         dist_to_neighbors = np.linalg.norm(pos_neighbors_rel, axis=1).reshape(-1, 1)
-        neighbor_goals_rel = np.stack([self.envs[j].goal for j in range(len(self.envs)) if j != i]) - self.envs[i].dynamics.pos
+        neighbor_goals_rel = np.stack([self.envs[j].goal for j in closest_drones[i]]) - self.envs[i].dynamics.pos
         dist_to_neighbor_goals = np.linalg.norm(neighbor_goals_rel, axis=1).reshape(-1, 1)
 
         if self.swarm_obs == 'pos_vel':
@@ -235,11 +240,13 @@ class QuadrotorEnvMulti(gym.Env):
 
         return obs_neighbor_rel
 
-    def extend_obs_space(self, obs):
-        assert self.swarm_obs == 'pos_vel' or self.swarm_obs == 'pos_vel_goals' or self.swarm_obs == 'pos_vel_goals_ndist_gdist', f'Invalid parameter {self.swarm_obs} passed in --obs_space'
+    def extend_obs_space(self, obs, closest_drones):
+        assert self.swarm_obs in ['pos_vel', 'pos_vel_goals', 'pos_vel_goals_ndist_gdist'], \
+            f'Invalid parameter {self.swarm_obs} passed in --obs_space'
+
         obs_neighbors = []
         for i in range(len(self.envs)):
-            obs_neighbor_rel = self.get_obs_neighbor_rel(env_id=i)
+            obs_neighbor_rel = self.get_obs_neighbor_rel(env_id=i, closest_drones=closest_drones)
             obs_neighbors.append(obs_neighbor_rel.reshape(-1))
         obs_neighbors = np.stack(obs_neighbors)
 
@@ -250,39 +257,49 @@ class QuadrotorEnvMulti(gym.Env):
         obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
         return obs_ext
 
-    def extend_obs_space_n_closest(self, obs):
-        obs_neighbors = []
-        for i in range(len(obs)):
-            obs_neighbor_rel = self.get_obs_neighbor_rel(env_id=i)
-            # Get n close neighbors
-            rel_pos = obs_neighbor_rel[:, :3]
-            rel_dist = np.linalg.norm(rel_pos, axis=1)
-            rel_dist = np.maximum(rel_dist, 0.01)
-            rel_pos_unit =  rel_pos / rel_dist[:, None]
+    def neighborhood_indices(self):
+        """Return a list of closest drones for each drone in the swarm."""
+        # indices of all the other drones except us
+        indices = [[j for j in range(self.num_agents) if i != j] for i in range(self.num_agents)]
+        indices = np.array(indices)
 
-            rel_vel = obs_neighbor_rel[:, 3:6]
-            # new relative distance is a new metric that combines relative position and relative velocity
-            # F = alpha * distance + (1 - alpha) * dot(normalized_direction_to_other_drone, relative_vel)
-            if self.local_metric == 'dist':
-                # the smaller the new_rel_dist, the closer the drones
-                new_rel_dist = rel_dist + self.local_coeff * np.sum(rel_pos_unit * rel_vel, axis=1)
-            elif self.local_metric == 'dist_inverse':
-                new_rel_dist = 1.0 / rel_dist - self.local_coeff * np.sum(rel_pos_unit * rel_vel, axis=1)
-                new_rel_dist = -1.0 * new_rel_dist
-            else:
-                raise NotImplementedError(f'Unknown local metric {self.local_metric}')
+        if self.num_use_neighbor_obs == self.num_agents - 1:
+            return indices
+        elif 1 <= self.num_use_neighbor_obs < self.num_agents - 1:
+            close_neighbor_indices = []
 
-            rel_pos_index = new_rel_dist.argsort()
-            obs_neighbor_rel_n_close = np.array(
-                [obs_neighbor_rel[rel_pos_index[i]] for i in range(self.num_use_neighbor_obs)])
-            obs_neighbors.append(obs_neighbor_rel_n_close.reshape(-1))
-        obs_neighbors = np.stack(obs_neighbors)
-        # clip observation space of neighborhoods
-        obs_neighbors = np.clip(
-            obs_neighbors, a_min=self.clip_neighbor_space_min_box, a_max=self.clip_neighbor_space_max_box,
-        )
-        obs_ext = np.concatenate((obs, obs_neighbors), axis=1)
-        return obs_ext
+            for i in range(self.num_agents):
+                rel_pos, rel_vel = self.get_rel_pos_vel_item(env_id=i, indices=indices[i])
+                rel_dist = np.linalg.norm(rel_pos, axis=1)
+                rel_dist = np.maximum(rel_dist, 0.01)
+                rel_pos_unit = rel_pos / rel_dist[:, None]
+
+                # new relative distance is a new metric that combines relative position and relative velocity
+                # F = alpha * distance + (1 - alpha) * dot(normalized_direction_to_other_drone, relative_vel)
+                if self.local_metric == "dist":
+                    # the smaller the new_rel_dist, the closer the drones
+                    new_rel_dist = rel_dist + self.local_coeff * np.sum(rel_pos_unit * rel_vel, axis=1)
+                elif self.local_metric == "dist_inverse":
+                    new_rel_dist = 1.0 / rel_dist - self.local_coeff * np.sum(rel_pos_unit * rel_vel, axis=1)
+                    new_rel_dist = -1.0 * new_rel_dist
+                else:
+                    raise NotImplementedError(f"Unknown local metric {self.local_metric}")
+
+                rel_pos_index = new_rel_dist.argsort()
+                rel_pos_index = rel_pos_index[:self.num_use_neighbor_obs]
+                close_neighbor_indices.append(indices[i][rel_pos_index])
+
+            return close_neighbor_indices
+        else:
+            raise RuntimeError("Incorrect number of neigbors")
+
+    def add_neighborhood_obs(self, obs):
+        if self.swarm_obs != 'none' and self.num_agents > 1:
+            indices = self.neighborhood_indices()
+            obs_ext = self.extend_obs_space(obs, closest_drones=indices)
+            return obs_ext
+        else:
+            return obs
 
     def reset_obstacle_mode(self):
         self.obstacle_mode = self.envs[0].obstacle_mode
@@ -311,12 +328,7 @@ class QuadrotorEnvMulti(gym.Env):
             obs.append(observation)
 
         # extend obs to see neighbors
-        if self.swarm_obs != 'none' and self.num_agents > 1:
-            if self.num_use_neighbor_obs == (self.num_agents - 1):
-                obs_ext = self.extend_obs_space(obs)
-            else:
-                obs_ext = self.extend_obs_space_n_closest(obs)
-            obs = obs_ext
+        obs = self.add_neighborhood_obs(obs)
 
         # Reset Obstacles
         self.set_obstacles = False
@@ -349,12 +361,7 @@ class QuadrotorEnvMulti(gym.Env):
 
             self.pos[i, :] = self.envs[i].dynamics.pos
 
-        if self.swarm_obs != 'none' and self.num_agents > 1:
-            if self.num_use_neighbor_obs == (self.num_agents - 1):
-                obs_ext = self.extend_obs_space(obs)
-            else:
-                obs_ext = self.extend_obs_space_n_closest(obs)
-            obs = obs_ext
+        obs = self.add_neighborhood_obs(obs)
 
         # Calculating collisions between drones
         drone_col_matrix, self.curr_drone_collisions, distance_matrix = calculate_collision_matrix(self.pos, self.quad_arm, self.collision_hitbox_radius)
