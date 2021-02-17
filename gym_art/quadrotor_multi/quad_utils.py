@@ -242,6 +242,7 @@ def get_grid_dim_number(num):
     dim_2 = num // dim_1
     return dim_1, dim_2
 
+
 def calculate_collision_matrix(positions, arm, hitbox_radius):
     dist = spatial.distance_matrix(x=positions, y=positions)
     collision_matrix = (dist < hitbox_radius * arm).astype(np.float32)

@@ -54,6 +54,15 @@ class QuadrotorScenario:
         # Generate goals
         self.goals = None
 
+        # for 3D formations. Specific formations override this
+        self.num_agents_per_layer = 8
+
+    def name(self):
+        """
+        :return: scenario name
+        """
+        return self.__class__.__name__
+
     def get_formation_range(self, mode, low, high):
         if mode == 'swarm_vs_swarm':
             n = self.num_agents // 2
@@ -189,6 +198,7 @@ class QuadrotorScenario:
             self.num_agents_per_layer = 8
         elif self.formation.startswith("grid"):
             self.num_agents_per_layer = 50
+
 
 class Scenario_static_same_goal(QuadrotorScenario):
     def update_formation_size(self, new_formation_size):
@@ -618,6 +628,15 @@ class Scenario_mix(QuadrotorScenario):
             }
         }
 
+        # actual scenario being used
+        self.scenario = None
+
+    def name(self):
+        """
+        :return: the name of the actual scenario used in this episode
+        """
+        return self.scenario.__class__.__name__
+
     def step(self, infos, rewards, pos):
         infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=pos)
         return infos, rewards
@@ -661,8 +680,7 @@ class Scenario_mix(QuadrotorScenario):
             formation_size_low, formation_size_high = self.get_formation_range(mode=mode, low=lowest_dist, high=highest_dist)
             self.formation_size = np.random.uniform(low=formation_size_low, high=formation_size_high)
         else:
-            raise NotImplementedError(f'{self.mode} is not supported!')
-
+            raise NotImplementedError(f'{mode} is not supported!')
 
         # init the scenario
         self.scenario = create_scenario(quads_mode=mode, envs=self.envs, num_agents=self.num_agents,
