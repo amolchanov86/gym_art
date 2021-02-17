@@ -33,7 +33,9 @@ class ReplayBuffer:
         """
         Sample an event to replay
         """
-        return random.choice(self.buffer)
+        idx = random.randint(0, len(self.buffer) - 1)
+        print(f'Replaying event at idx {idx}')
+        return self.buffer[idx]
 
     def __len__(self):
         return len(self.buffer)
@@ -58,33 +60,44 @@ class ExperienceReplayWrapper(gym.Wrapper):
         """
         self.episode_checkpoints.append((deepcopy(self.env), deepcopy(obs)))
 
+    def reset(self):
+        """For reset we just use the default implementation."""
+        return self.env.reset()
+
     def step(self, action):
         obs, rewards, dones, infos = self.env.step(action)
 
-        if self.env.use_replay_buffer and self.env.activate_replay_buffer and not self.env.saved_in_replay_buffer \
-                and self.env.envs[0].tick % self.replay_buffer.cp_step_size_freq == 0:
-            self.save_checkpoint(obs)
+        if any(dones):
+            obs = self.new_episode()
+        else:
+            if self.env.use_replay_buffer and self.env.activate_replay_buffer and not self.env.saved_in_replay_buffer \
+                    and self.env.envs[0].tick % self.replay_buffer.cp_step_size_freq == 0:
+                self.save_checkpoint(obs)
 
-        if self.env.last_step_unique_collisions.any() and self.env.use_replay_buffer and self.env.activate_replay_buffer \
-                and self.env.envs[0].tick > self.env.collisions_grace_period_seconds * self.env.envs[0].control_freq and not self.saved_in_replay_buffer:
+            if self.env.last_step_unique_collisions.any() and self.env.use_replay_buffer and self.env.activate_replay_buffer \
+                    and self.env.envs[0].tick > self.env.collisions_grace_period_seconds * self.env.envs[0].control_freq and not self.saved_in_replay_buffer:
 
-            if self.env.envs[0].tick - self.last_tick_added_to_buffer > 2 * self.env.envs[0].control_freq:
-                # added this check to avoid adding a lot of collisions from the same episode to the buffer
+                if self.env.envs[0].tick - self.last_tick_added_to_buffer > 2 * self.env.envs[0].control_freq:
+                    # added this check to avoid adding a lot of collisions from the same episode to the buffer
 
-                steps_ago = int(self.save_time_before_collision_sec / self.replay_buffer.cp_step_size_sec)
-                if steps_ago > len(self.episode_checkpoints):
-                    print(f"Tried to read past the boundary of checkpoint_history. Steps ago: {steps_ago}, episode checkpoints: {len(self.episode_checkpoints)}, {self.env.envs[0].tick}")
-                    raise IndexError
-                else:
-                    env, obs = self.episode_checkpoints[-steps_ago]
-                    self.replay_buffer.write_cp_to_buffer(env, obs)
-                    self.env.collision_occurred = False  # this allows us to add a copy of this episode to the buffer once again if another collision happens
+                    steps_ago = int(self.save_time_before_collision_sec / self.replay_buffer.cp_step_size_sec)
+                    if steps_ago > len(self.episode_checkpoints):
+                        print(f"Tried to read past the boundary of checkpoint_history. Steps ago: {steps_ago}, episode checkpoints: {len(self.episode_checkpoints)}, {self.env.envs[0].tick}")
+                        raise IndexError
+                    else:
+                        env, obs = self.episode_checkpoints[-steps_ago]
+                        self.replay_buffer.write_cp_to_buffer(env, obs)
+                        self.env.collision_occurred = False  # this allows us to add a copy of this episode to the buffer once again if another collision happens
 
-                    self.last_tick_added_to_buffer = self.env.envs[0].tick
+                        self.last_tick_added_to_buffer = self.env.envs[0].tick
 
         return obs, rewards, dones, infos
 
-    def reset(self):
+    def new_episode(self):
+        """
+        Normally this would go into reset(), but MultiQuadEnv is a multi-agent env that automatically resets.
+        This means that reset() is never actually called externally and we need to take care of starting our new episode.
+        """
         self.last_tick_added_to_buffer = -1e9
         self.episode_checkpoints = deque([], maxlen=self.max_episode_checkpoints_to_keep)
 

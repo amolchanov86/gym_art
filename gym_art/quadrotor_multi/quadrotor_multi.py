@@ -38,7 +38,7 @@ class QuadrotorEnvMulti(gym.Env):
                  adaptive_env=False, obstacle_traj='gravity', local_obs=-1, collision_hitbox_radius=2.0,
                  collision_falloff_radius=2.0, collision_smooth_max_penalty=10.0, collision_vel_penalty_mode='none',
                  collision_smooth_vel_coeff=0.0, collision_vel_penalty_radius=0.0, collision_smooth_vel_max_penalty=10.0,
-                 replay_buffer_sample_prob=0.0):
+                 use_replay_buffer=False):
 
         super().__init__()
 
@@ -190,13 +190,11 @@ class QuadrotorEnvMulti(gym.Env):
 
         # set to true whenever we need to reset the OpenGL scene in render()
         self.reset_scene = False
-        self.deleted_scene = False
 
-        self.use_replay_buffer = replay_buffer_sample_prob > 0
+        self.use_replay_buffer = use_replay_buffer
         self.activate_replay_buffer = False  # only start using the buffer after the drones learn how to fly
         self.saved_in_replay_buffer = False  # since the same collisions happen during replay, we don't want to keep resaving the same event
         self.last_step_unique_collisions = False
-        self.replay_buffer = None
         self.crashes_in_recent_episodes = deque([], maxlen=100)
         self.crashes_last_episode = 0
 
@@ -582,7 +580,8 @@ class QuadrotorEnvMulti(gym.Env):
 
         if self.render_every_nth_frame > 5:
             self.render_every_nth_frame = 5
-            print(f"Rendering cannot keep up! Rendering every {self.render_every_nth_frame} frames")
+            if self.envs[0].tick % 20 == 0:
+                print(f"Rendering cannot keep up! Rendering every {self.render_every_nth_frame} frames")
 
         self.render_skip_frames = self.render_every_nth_frame - 1
         self.frames_since_last_render = 0
@@ -596,7 +595,8 @@ class QuadrotorEnvMulti(gym.Env):
         copied_env = cls.__new__(cls)
         memo[id(self)] = copied_env
 
-        skip_copying = {"scene"}
+        # this will actually break the reward shaping functionality in PBT, but we need to fix it in SampleFactory, not here
+        skip_copying = {"scene", "reward_shaping_interface"}
 
         for k, v in self.__dict__.items():
             if k not in skip_copying:
