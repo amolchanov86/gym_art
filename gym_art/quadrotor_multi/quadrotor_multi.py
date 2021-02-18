@@ -313,8 +313,6 @@ class QuadrotorEnvMulti(gym.Env):
         Here we count the average number of collisions with the walls and ground in the last N episodes
         Returns: True if drones are considered proficient at flying
         """
-        # return True  # TODO: this is for testing only!
-
         res = abs(np.mean(self.crashes_in_recent_episodes)) < 1 and len(self.crashes_in_recent_episodes) >= 10
         return res
 
@@ -508,11 +506,16 @@ class QuadrotorEnvMulti(gym.Env):
         # DONES
         if any(dones):
             for i in range(len(infos)):
-                infos[i]['episode_extra_stats'] = {
-                    'num_collisions': self.collisions_per_episode,
-                    'num_collisions_after_settle': self.collisions_after_settle,
-                    f'num_collisions_{self.scenario.name()}': self.collisions_after_settle,
-                }
+                if self.saved_in_replay_buffer:
+                    infos[i]['episode_extra_stats'] = {
+                        'num_collisions_replay': self.collisions_per_episode,
+                    }
+                else:
+                    infos[i]['episode_extra_stats'] = {
+                        'num_collisions': self.collisions_per_episode,
+                        'num_collisions_after_settle': self.collisions_after_settle,
+                        f'num_collisions_{self.scenario.name()}': self.collisions_after_settle,
+                    }
 
             obs = self.reset()
             dones = [True] * len(dones)  # terminate the episode for all "sub-envs"

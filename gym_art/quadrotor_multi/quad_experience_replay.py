@@ -6,8 +6,15 @@ import gym
 import numpy as np
 
 
+class ReplayBufferEvent:
+    def __init__(self, env, obs):
+        self.env = env
+        self.obs = obs
+        self.num_replayed = 0
+
+
 class ReplayBuffer:
-    def __init__(self, control_frequency, cp_step_size=0.5, buffer_size=20):  # TODO: what is the right buffer size?
+    def __init__(self, control_frequency, cp_step_size=0.5, buffer_size=20):
         self.control_frequency = control_frequency
         self.cp_step_size_sec = cp_step_size  # how often (seconds) a checkpoint is saved
         self.cp_step_size_freq = self.cp_step_size_sec * self.control_frequency
@@ -20,12 +27,11 @@ class ReplayBuffer:
         """
         env.saved_in_replay_buffer = True
 
-        # TODO: here we should delete items from the buffer based on statistics.
         # For example, replace the item with the lowest number of collisions in the last 10 replays
         if len(self.buffer) < self.buffer.maxlen:
             self.buffer.append((env, obs))
         else:
-            self.buffer[self.buffer_idx] = (env, obs)  # override existing event
+            self.buffer[self.buffer_idx] = ReplayBufferEvent(env, obs)
         print(f"Added new collision event to buffer at {self.buffer_idx}")
         self.buffer_idx = (self.buffer_idx + 1) % self.buffer.maxlen
 
@@ -35,14 +41,29 @@ class ReplayBuffer:
         """
         idx = random.randint(0, len(self.buffer) - 1)
         print(f'Replaying event at idx {idx}')
+        self.buffer[idx].num_replayed += 1
         return self.buffer[idx]
+
+    def cleanup(self):
+        new_buffer = deque([], maxlen=self.buffer.maxlen)
+        for event in self.buffer:
+            if event.num_replayed < 10:
+                new_buffer.append(event)
+
+        self.buffer = new_buffer
+
+    def avg_num_replayed(self):
+        replayed_stats = [e.num_replayed for e in self.buffer]
+        if not replayed_stats:
+            return 0
+        return np.mean(replayed_stats)
 
     def __len__(self):
         return len(self.buffer)
 
 
 class ExperienceReplayWrapper(gym.Wrapper):
-    def __init__(self, env, replay_buffer_sample_prob=0.0):  # TODO: change default value
+    def __init__(self, env, replay_buffer_sample_prob=0.0):
         super().__init__(env)
         self.replay_buffer = ReplayBuffer(env.envs[0].control_freq)
         self.replay_buffer_sample_prob = replay_buffer_sample_prob
@@ -74,9 +95,15 @@ class ExperienceReplayWrapper(gym.Wrapper):
         if any(dones):
             obs = self.new_episode()
             for i in range(len(infos)):
-                infos[i]['replay_buffer_stats'] = {
-                    'replay_rate': self.replayed_events / self.episode_counter,
-                    'new_episode_rate': (self.episode_counter - self.replayed_events) / self.episode_counter
+                if not infos[i]["episode_extra_stats"]:
+                    infos[i]["episode_extra_stats"] = dict()
+
+                tag = "replay"
+                infos[i]["episode_extra_stats"] = {
+                    f"{tag}/replay_rate": self.replayed_events / self.episode_counter,
+                    f"{tag}/new_episode_rate": (self.episode_counter - self.replayed_events) / self.episode_counter,
+                    f"{tag}/replay_buffer_size": len(self.replay_buffer),
+                    f"{tag}/avg_replayed": self.replay_buffer.avg_num_replayed(),
                 }
 
         else:
@@ -87,7 +114,7 @@ class ExperienceReplayWrapper(gym.Wrapper):
             if self.env.last_step_unique_collisions.any() and self.env.use_replay_buffer and self.env.activate_replay_buffer \
                     and self.env.envs[0].tick > self.env.collisions_grace_period_seconds * self.env.envs[0].control_freq and not self.saved_in_replay_buffer:
 
-                if self.env.envs[0].tick - self.last_tick_added_to_buffer > 2 * self.env.envs[0].control_freq:
+                if self.env.envs[0].tick - self.last_tick_added_to_buffer > 5 * self.env.envs[0].control_freq:
                     # added this check to avoid adding a lot of collisions from the same episode to the buffer
 
                     steps_ago = int(self.save_time_before_collision_sec / self.replay_buffer.cp_step_size_sec)
@@ -115,11 +142,18 @@ class ExperienceReplayWrapper(gym.Wrapper):
         if np.random.uniform(0, 1) < self.replay_buffer_sample_prob and self.replay_buffer and self.env.activate_replay_buffer \
                 and len(self.replay_buffer) > 0:
             self.replayed_events += 1
-            env, obs = self.replay_buffer.sample_event()
+            event = self.replay_buffer.sample_event()
+            env = event.env
+            obs = event.obs
             replayed_env = deepcopy(env)
             replayed_env.scene = self.env.scene
+
+            # we want to use these for tensorboard, so reset them to zero to get accurate stats
+            replayed_env.collisions_per_episode = replayed_env.collisions_after_settle = 0
             self.env = replayed_env
-            print("Replaying previous episode")
+
+            self.replay_buffer.cleanup()
+
             return obs
         else:
             obs = self.env.reset()
