@@ -447,7 +447,7 @@ class Scenario_dynamic_formations(QuadrotorScenario):
         # if increase_formation_size is True, increase the formation size
         # else, decrease the formation size
         self.increase_formation_size = True
-        # low: change 0.1m/s, high: change 0.2m/s
+        # low: change 0.1m/s, high: change 0.3m/s
         self.control_speed = np.random.uniform(low=1.0, high=3.0)
         self.layer_dist = np.random.uniform(low=self.lowest_formation_size, high=self.highest_formation_size)
 
