@@ -99,12 +99,12 @@ class ExperienceReplayWrapper(gym.Wrapper):
                     infos[i]["episode_extra_stats"] = dict()
 
                 tag = "replay"
-                infos[i]["episode_extra_stats"] = {
+                infos[i]["episode_extra_stats"].update({
                     f"{tag}/replay_rate": self.replayed_events / self.episode_counter,
                     f"{tag}/new_episode_rate": (self.episode_counter - self.replayed_events) / self.episode_counter,
                     f"{tag}/replay_buffer_size": len(self.replay_buffer),
                     f"{tag}/avg_replayed": self.replay_buffer.avg_num_replayed(),
-                }
+                })
 
         else:
             if self.env.use_replay_buffer and self.env.activate_replay_buffer and not self.env.saved_in_replay_buffer \
