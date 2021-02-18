@@ -28,10 +28,11 @@ class ReplayBuffer:
         env.saved_in_replay_buffer = True
 
         # For example, replace the item with the lowest number of collisions in the last 10 replays
+        evt = ReplayBufferEvent(env, obs)
         if len(self.buffer) < self.buffer.maxlen:
-            self.buffer.append((env, obs))
+            self.buffer.append(evt)
         else:
-            self.buffer[self.buffer_idx] = ReplayBufferEvent(env, obs)
+            self.buffer[self.buffer_idx] = evt
         print(f"Added new collision event to buffer at {self.buffer_idx}")
         self.buffer_idx = (self.buffer_idx + 1) % self.buffer.maxlen
 
