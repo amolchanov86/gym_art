@@ -42,8 +42,7 @@ class TestOpt(TestCase):
         start = time.time()
         for i in range(steps):
             obs, rewards, dones, infos = env.step([env.action_space.sample() for _ in range(num_agents)])
-            if all(dones):
-                env.reset()
+            # this env self-resets
 
         elapsed_sec = time.time() - start
         fps = (num_agents * steps) / elapsed_sec
