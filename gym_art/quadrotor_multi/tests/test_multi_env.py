@@ -6,7 +6,7 @@ from gym_art.quadrotor_multi.quad_experience_replay import ExperienceReplayWrapp
 from gym_art.quadrotor_multi.quadrotor_multi import QuadrotorEnvMulti
 
 
-def create_env(num_agents, use_numba=False, use_replay_buffer=False, episode_duration=7):
+def create_env(num_agents, use_numba=False, use_replay_buffer=False, episode_duration=7, local_obs=-1):
     quad = 'Crazyflie'
     dyn_randomize_every = dyn_randomization_ratio = None
 
@@ -16,7 +16,7 @@ def create_env(num_agents, use_numba=False, use_replay_buffer=False, episode_dur
 
     sampler_1 = None
     if dyn_randomization_ratio is not None:
-        sampler_1 = dict(type='RelativeSampler', noise_ratio=dyn_randomization_ratio, sampler='normal')
+        sampler_1 = dict(type="RelativeSampler", noise_ratio=dyn_randomization_ratio, sampler="normal")
 
     sense_noise = 'default'
 
@@ -28,6 +28,8 @@ def create_env(num_agents, use_numba=False, use_replay_buffer=False, episode_dur
         dynamics_randomize_every=dyn_randomize_every, dynamics_change=dynamics_change, dyn_sampler_1=sampler_1,
         sense_noise=sense_noise, init_random_state=True, ep_time=episode_duration, quads_use_numba=use_numba,
         use_replay_buffer=use_replay_buffer,
+        swarm_obs="pos_vel_goals_ndist_gdist",
+        local_obs=local_obs,
     )
     return env
 
@@ -58,7 +60,7 @@ class TestMultiEnv(TestCase):
 
     def test_render(self):
         num_agents = 16
-        env = create_env(num_agents, use_numba=True)
+        env = create_env(num_agents, use_numba=True, local_obs=8)
         env.render_speed = 1.0
 
         env.reset()
@@ -78,7 +80,18 @@ class TestMultiEnv(TestCase):
                 render_start = time.time()
 
         render_took = time.time() - render_start
-        print(f'Rendering of {render_n_frames} frames took {render_took:.3f} sec')
+        print(f"Rendering of {render_n_frames} frames took {render_took:.3f} sec")
+
+        env.close()
+
+    def test_local_info(self):
+        num_agents = 16
+        env = create_env(num_agents, use_numba=False, local_obs=8)
+
+        env.reset()
+
+        for i in range(1000):
+            obs, rewards, dones, infos = env.step([env.action_space.sample() for i in range(num_agents)])
 
         env.close()
 

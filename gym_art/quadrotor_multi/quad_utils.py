@@ -228,6 +228,20 @@ def get_circle_radius(num, dist):
     radius = (0.5 * dist) / np.sin(theta / 2)
     return radius
 
+def get_grid_dim_number(num):
+    assert num > 0
+    sqrt_goal_num = np.sqrt(num)
+    grid_number = int(np.floor(sqrt_goal_num))
+    dim_1 = grid_number
+    while dim_1 > 1:
+        if num % dim_1 == 0:
+            break
+        else:
+            dim_1 -= 1
+
+    dim_2 = num // dim_1
+    return dim_1, dim_2
+
 
 def calculate_collision_matrix(positions, arm, hitbox_radius):
     dist = spatial.distance_matrix(x=positions, y=positions)
@@ -254,30 +268,6 @@ def calculate_drone_proximity_penalties(distance_matrix, arm, dt, penalty_fall_o
     penalties = np.sum(penalties, axis=0)
 
     return dt * penalties  # actual penalties per tick to be added to the overall reward
-
-
-def calculate_drone_proximity_penalties_vel(rel_pos_stack, rel_vel_stack, coeff, mode, dt, penalty_area_radius, max_penalty):
-    rel_dist = np.linalg.norm(rel_pos_stack, axis=2)
-    rel_dist = np.maximum(rel_dist, 1e-2)
-    rel_pos_unit = rel_pos_stack / rel_dist[:, :, None]
-
-    transform_vel = np.sum(rel_pos_unit * rel_vel_stack, axis=2)
-
-    if mode == 'linear':
-        # -coeff * (r-d) * dot(rpos_unit, rvel) / d
-        penalty_denominator = rel_dist
-    elif mode == 'quadratic':
-        # -coeff * (r-d) * dot(rpos_unit, rvel) / (d ** 2)
-        penalty_denominator = rel_dist ** 2
-    else:
-        raise NotImplementedError(f'{mode} not supported!')
-
-    penalty_coeff = np.maximum(0.0, penalty_area_radius - rel_dist)
-    penalties = -coeff * penalty_coeff * transform_vel / penalty_denominator
-    penalties = np.clip(penalties, a_min=0.0, a_max=max_penalty)
-    penalties = np.sum(penalties, axis=1)
-
-    return dt * penalties
 
 
 def compute_col_norm_and_new_velocities(dyn1, dyn2):
