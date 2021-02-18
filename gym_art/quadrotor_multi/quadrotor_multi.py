@@ -14,8 +14,6 @@ from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
 from gym_art.quadrotor_multi.quad_scenarios import create_scenario
-from gym_art.quadrotor_multi.numba_utils import OUNoiseNumba
-from gym_art.quadrotor_multi.quad_utils import OUNoise
 
 EPS = 1E-6
 
@@ -56,7 +54,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.envs = []
         self.adaptive_env = adaptive_env
-        self.quads_view_mode= quads_view_mode
+        self.quads_view_mode = quads_view_mode
 
         for i in range(self.num_agents):
             e = QuadrotorSingle(
@@ -328,13 +326,6 @@ class QuadrotorEnvMulti(gym.Env):
             obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
             render_speed=self.render_speed, formation_size=self.quads_formation_size,
         )
-
-    def reset_thrust_noise(self):
-        for e in self.envs:
-            if e.dynamics.use_numba:
-                e.dynamics.thrust_noise = OUNoiseNumba(4, sigma=0.2 * e.dynamics.thrust_noise_ratio)
-            else:
-                e.dynamics.thrust_noise = OUNoise(4, sigma=0.2 * e.dynamics.thrust_noise_ratio)
 
     def reset(self):
         obs, rewards, dones, infos = [], [], [], []
