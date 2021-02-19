@@ -111,7 +111,6 @@ class Quadrotor3DSceneMulti:
         self.room_dims = room_dims
         self._make_scene()
 
-
     def _remake_arrows(self, cyl_height=0.12):
         self.vec_cyl_transforms, self.vec_cone_transforms = [], []
         for i, model in enumerate(self.models):
@@ -124,14 +123,11 @@ class Quadrotor3DSceneMulti:
             )
 
         bodies = []
-        # bodies['vel_cyls'] = self.vec_cyl_transforms
-        # bodies['vel_cones'] = self.vec_cone_transforms
         bodies.extend(self.vec_cyl_transforms)
         bodies.extend(self.vec_cone_transforms)
         world = r3d.World(bodies)
         batch = r3d.Batch()
         world.build(batch)
-        # self.scene.batches.extend([batch])
 
         if 'arrow' in self.scene.batches.keys():
             self.scene.batches['arrow'].extend([batch])
@@ -139,8 +135,8 @@ class Quadrotor3DSceneMulti:
             self.scene.batches['arrow'] = [batch]
 
     def _reset_arrows(self):
+        # remove arrow object for the scene so that they can be redrawn on the next timestep
         self.scene.batches['arrow'] = []
-
 
     def _make_scene(self):
         self.cam1p = r3d.Camera(fov=90.0)
@@ -323,7 +319,6 @@ class Quadrotor3DSceneMulti:
 
                     self.vec_cyl_transforms[i].set_transform_nocollide(cyl_mat)
                     self.vec_cone_transforms[i].set_transform_nocollide(cone_mat)
-
 
                 matrix = r3d.translate(dyn.pos)
                 if collisions['drone'][i] > 0.0 or collisions['obstacle'][i] > 0.0 or collisions['ground'][i] > 0.0:
