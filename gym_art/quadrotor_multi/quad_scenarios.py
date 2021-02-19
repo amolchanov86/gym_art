@@ -3,8 +3,8 @@ import bezier
 import copy
 
 from gym_art.quadrotor_multi.quad_scenarios_utils import QUADS_PARAMS_DICT, update_formation_and_max_agent_per_layer, \
-    update_layer_dist, get_formation_range, get_goal_by_formation, get_z_value, QUADS_FORMATION_AND_SIZE_DICT, \
-    QUADS_FORMATION_AND_SIZE_DICT_OBST
+    update_layer_dist, get_formation_range, get_goal_by_formation, get_z_value, QUADS_MODE_DICT, \
+    QUADS_MODE_OBSTACLE_DICT
 from gym_art.quadrotor_multi.quad_utils import generate_points, get_grid_dim_number
 
 
@@ -534,6 +534,9 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario):
         self.goal_center_1, self.goal_center_2 = self.formation_centers()
         self.create_formations(self.goal_center_1, self.goal_center_2)
 
+        # This is for initalize the pos for obstacles
+        self.formation_centers = (self.goal_center_1 + self.goal_center_2) / 2
+
     def update_formation_size(self, new_formation_size):
         if new_formation_size != self.formation_size:
             self.formation_size = new_formation_size if new_formation_size > 0.0 else 0.0
@@ -583,9 +586,9 @@ class Scenario_mix(QuadrotorScenario):
         # key: quads_mode
         # value: 0. formation, 1: [formation_low_size, formation_high_size], 2: episode_time
         if self.obst_mode == 'no_obstacles':
-            self.quads_formation_and_size_dict = QUADS_FORMATION_AND_SIZE_DICT
+            self.quads_mode_dict = QUADS_MODE_DICT
         else:
-            self.quads_formation_and_size_dict = QUADS_FORMATION_AND_SIZE_DICT_OBST
+            self.quads_mode_dict = QUADS_MODE_OBSTACLE_DICT
 
         # actual scenario being used
         self.scenario = None
@@ -598,17 +601,20 @@ class Scenario_mix(QuadrotorScenario):
 
     def step(self, infos, rewards, pos):
         infos, rewards = self.scenario.step(infos=infos, rewards=rewards, pos=pos)
+        # This is set for obstacle mode
+        self.goals = self.scenario.goals
+        self.formation_size = self.scenario.formation_size
         return infos, rewards
 
     def reset(self):
         # reset mode
         mode_dict_prob = np.random.uniform(low=0, high=1)
         if mode_dict_prob <= 0.2:
-            mode_dict = QUADS_MODE_DICT["fix_size"]
+            mode_dict = self.quads_mode_dict["fix_size"]
         elif 0.2 < mode_dict_prob <= 0.3:
-            mode_dict = QUADS_MODE_DICT["dynamic_size"]
+            mode_dict = self.quads_mode_dict["dynamic_size"]
         else:
-            mode_dict = QUADS_MODE_DICT["swap_goals"]
+            mode_dict = self.quads_mode_dict["swap_goals"]
 
         mode_index = np.random.randint(low=0, high=len(mode_dict))
         mode = mode_dict[mode_index]
@@ -620,7 +626,7 @@ class Scenario_mix(QuadrotorScenario):
 
         self.scenario.reset()
         self.goals = self.scenario.goals
-        self.formation_size = self.scenario.goals
+        self.formation_size = self.scenario.formation_size
 
         if self.obst_mode != 'no_obstacles':
             # reset obstacle mode and number
