@@ -111,12 +111,6 @@ class Quadrotor3DSceneMulti:
         self.room_dims = room_dims
         self._make_scene()
 
-    @staticmethod
-    def dict_vals_to_list(d):
-        l = []
-        for v in d.values():
-            l.append(v)
-        return l
 
     def _remake_arrows(self, cyl_height=0.12):
         self.vec_cyl_transforms, self.vec_cone_transforms = [], []
@@ -154,7 +148,6 @@ class Quadrotor3DSceneMulti:
 
         self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms,\
         self.obstacle_transforms, self.vec_cyl_transforms, self.vec_cone_transforms = [], [], [], [], [], [], []
-        self.vec_arrow_transforms = []
 
         for i, model in enumerate(self.models):
             if model is not None:
@@ -168,6 +161,9 @@ class Quadrotor3DSceneMulti:
             )
             self.collision_transforms.append(
                 r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), r3d.sphere(0.75 * self.diameter, 32))
+            )
+            self.vec_arrow_transforms.append(
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.arrow(0.002, 0.12, 32))
             )
 
             self.vec_cyl_transforms.append(
@@ -189,6 +185,7 @@ class Quadrotor3DSceneMulti:
         bodies = [r3d.BackToFront([floor, st]) for st in self.shadow_transforms]
         bodies.extend(self.goal_transforms)
         bodies.extend(self.quad_transforms)
+        bodies.extend(self.vec_arrow_transforms)
         # visualize walls of the room if True
         if self.visible:
             room = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25), r3d.envBox(*self.room_dims))

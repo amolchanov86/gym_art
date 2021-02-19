@@ -4,9 +4,9 @@ EPS = 1e-6
 GRAV = 9.81  # default gravitational constant
 
 
-class SingleObstacle():
-    def __init__(self, max_init_vel=1., init_box=2.0, mode='no_obstacles',
-                 type='sphere', size=0.0, quad_size=0.04, dt=0.05, traj='gravity'):
+class SingleObstacle:
+    def __init__(self, max_init_vel=1., init_box=2.0, mode='no_obstacles', type='sphere', size=0.0, quad_size=0.04,
+                 dt=0.05, traj='gravity'):
         self.max_init_vel = max_init_vel
         self.init_box = init_box  # means the size of initial space that the obstacles spawn at
         self.mode = mode
@@ -15,7 +15,7 @@ class SingleObstacle():
         self.quad_size = quad_size
         self.dt = dt
         self.traj = traj
-        self.pos = np.array([100., 100., -100.])
+        self.pos = np.array([5., 5., -5.])
         self.vel = np.array([0., 0., 0.])
         self.formation_size = 0.0
         self.goal_central = np.array([0., 0., 2.])
@@ -27,11 +27,17 @@ class SingleObstacle():
             if self.mode == 'static':
                 self.static_obstacle()
             elif self.mode == 'dynamic':
+                # Try 1 + 3 times, make sure initial vel, both vx and vy < 5.0
                 self.dynamic_obstacle()
+                for _ in range(3):
+                    if abs(self.vel[0]) > 5.0 or abs(self.vel[1]) > 5.0:
+                        self.dynamic_obstacle()
+                    else:
+                        break
             else:
-                pass
+                raise NotImplementedError(f'{self.mode} not supported!')
         else:
-            self.pos = np.array([100., 100., -100.])
+            self.pos = np.array([5., 5., -5.])
             self.vel = np.array([0., 0., 0.])
 
     def static_obstacle(self):
@@ -41,17 +47,21 @@ class SingleObstacle():
         # Init position for an obstacle
         x, y = np.random.uniform(-2 * self.init_box, 2 * self.init_box, size=(2,))
         z = np.random.uniform(-self.init_box, self.init_box) + self.goal_central[2]
-        z = max(0.5, z)
+        z = max(self.size + 0.5, z)
+        diff_z = z - self.goal_central[2]
+        if abs(diff_z) <= 0.5:
+            z = z + np.sign(diff_z) * 0.5
+
         # Make the position of obstacles out of the space of goals
         formation_range = self.formation_size + self.size
         rel_x = abs(x) - formation_range
         rel_y = abs(y) - formation_range
         if rel_x <= 0:
-            x += np.sign(x) * np.random.uniform(low=formation_range + 0.5 * self.init_box,
-                                                high=formation_range + self.init_box)
+            x += np.sign(x) * np.random.uniform(low=abs(rel_x) + 0.1,
+                                                high=abs(rel_x) + 0.3)
         if rel_y <= 0:
-            y += np.sign(y) * np.random.uniform(low=formation_range + 0.5 * self.init_box,
-                                                high=formation_range + self.init_box)
+            y += np.sign(y) * np.random.uniform(low=abs(rel_y) + 0.1,
+                                                high=abs(rel_y) + 0.3)
         self.pos = np.array([x, y, z])
 
         # Init velocity for an obstacle
@@ -68,7 +78,7 @@ class SingleObstacle():
         # 1. Below the center of goals (dz > 0). Then, there are two trajectories.
         # 2. Equal or above the center of goals (dz <= 0). Then, there is only one trajectory.
         # More details, look at: https://drive.google.com/file/d/1Vp0TaiQ_4vN9pH-Z3uGR54gNx6jh9thP/view
-        target_noise = np.random.uniform(-0.5 * self.formation_size, 0.5 * self.formation_size, size=(3,))
+        target_noise = np.random.uniform(-0.2, 0.2, size=(3,))
         target_pos = self.goal_central + target_noise
         dx, dy, dz = target_pos - self.pos
 
