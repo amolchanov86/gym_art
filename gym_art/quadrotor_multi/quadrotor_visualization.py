@@ -140,7 +140,7 @@ def quadrotor_3dmodel(model, quad_id=0):
         links.append(link_transf)
 
     ## ARROWS
-    arrow = r3d.Color((0.2, 0.3, 0.9), r3d.arrow(0.12 * prop_r, 2.5 * prop_r, 16))
+    arrow = r3d.Color((0.2, 0.3, 0.9), r3d.arrow(0.05 * prop_r, 1.5 * prop_r, 16))
     links.append(arrow)
 
     return r3d.Transform(np.eye(4), links)

@@ -37,7 +37,7 @@ class Quadrotor3DSceneMulti:
             self, w, h,
             quad_arm=None, models=None, obstacles=None, visible=True, resizable=True, goal_diameter=None,
             viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8,
-            render_speed=1.0, formation_size=-1.0,
+            render_speed=1.0, formation_size=-1.0, vector_render_type='acceleration'
     ):
         if obs_hw is None:
             obs_hw = [64, 64]
@@ -92,6 +92,9 @@ class Quadrotor3DSceneMulti:
         self.camera_zoom_step_size = 0.1 * speed_ratio
         self.camera_mov_step_size = 0.1 * speed_ratio
         self.formation_size = formation_size
+        self.vector_render_type = vector_render_type
+        self.vector_array = [[] for _ in range(num_agents)]
+
 
     def update_goal_diameter(self):
         if self.quad_arm is not None:
@@ -112,7 +115,8 @@ class Quadrotor3DSceneMulti:
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
 
-        self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms, self.obstacle_transforms = [], [], [], [], []
+        self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms,\
+        self.obstacle_transforms, self.vec_cyl_transforms, self.vec_cone_transforms = [], [], [], [], [], [], []
 
         for i, model in enumerate(self.models):
             if model is not None:
@@ -127,6 +131,12 @@ class Quadrotor3DSceneMulti:
             self.collision_transforms.append(
                 r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), r3d.sphere(0.75 * self.diameter, 32))
             )
+            self.vec_cyl_transforms.append(
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cylinder(0.002, 0.12, 32))
+            )
+            self.vec_cone_transforms.append(
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cone(0.02, 0.12, 32))
+            )
 
         # TODO make floor size or walls to indicate world_box
         floor = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25),
@@ -139,6 +149,8 @@ class Quadrotor3DSceneMulti:
         bodies = [r3d.BackToFront([floor, st]) for st in self.shadow_transforms]
         bodies.extend(self.goal_transforms)
         bodies.extend(self.quad_transforms)
+        bodies.extend(self.vec_cyl_transforms)
+        bodies.extend(self.vec_cone_transforms)
         # visualize walls of the room if True
         if self.visible:
             room = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25), r3d.envBox(*self.room_dims))
@@ -203,6 +215,7 @@ class Quadrotor3DSceneMulti:
     def reset(self, goals, dynamics, obstacles, collisions):
         self.goals = goals
         self.dynamics = dynamics
+        self.vector_array = [[] for _ in range(self.num_agents)]
 
         if self.viewpoint == 'global':
             goal = np.mean(goals, axis=0)
@@ -242,6 +255,40 @@ class Quadrotor3DSceneMulti:
                 shadow_pos[2] = 0.001  # avoid z-fighting
                 matrix = r3d.translate(shadow_pos)
                 self.shadow_transforms[i].set_transform_nocollide(matrix)
+
+                if self.vector_render_type:
+                    if len(self.vector_array[i]) > 10:
+                        self.vector_array[i].pop(0)
+
+                    if self.vector_render_type == 'acceleration':
+                        self.vector_array[i].append(dyn.acc)
+                    elif self.vector_render_type == 'velocity':
+                        self.vector_array[i].append(dyn.vel)
+                    else:
+                        raise NotImplementedError
+
+                    # Get average of the vectors
+                    avg_of_vecs = np.mean(self.vector_array[i], axis=0)
+
+                    # Calculate direction
+                    vector_dir = np.diag(np.sign(avg_of_vecs))
+
+                    # Calculate magnitude and divide by 5 (rough estimate)
+                    vector_mag = np.linalg.norm(avg_of_vecs) / 5
+
+                    # Update directions with magnitude only in the z direction as we need only the length to change
+                    vector_dir[2][2] = vector_dir[2][2] * vector_mag
+
+                    # Calculate the transform of the Cylinder
+                    vel_mat = r3d.trans_and_rot(dyn.pos, vector_dir@dyn.rot)
+                    self.vec_cyl_transforms[i].set_transform_nocollide(vel_mat)
+
+                    # Calculate change of pos for cone
+                    # Mistake is somewhere here for Cone position update, not sure how to get the updated value
+                    cone_pos = copy.deepcopy(dyn.pos)
+                    cone_pos[2] += (vector_dir[2][2] - cone_pos[2])
+                    vel_cone_mat = r3d.trans_and_rot(cone_pos, dyn.rot)
+                    self.vec_cone_transforms[i].set_transform_nocollide(vel_cone_mat)
 
                 matrix = r3d.translate(dyn.pos)
                 if collisions['drone'][i] > 0.0 or collisions['obstacle'][i] > 0.0 or collisions['ground'][i] > 0.0:
