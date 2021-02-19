@@ -194,7 +194,7 @@ class Quadrotor3DSceneMulti:
         world = r3d.World(bodies)
         batch = r3d.Batch()
         world.build(batch)
-        self.scene = r3d.Scene(batches={'generic': [batch]}, bgcolor=(0, 0, 0))
+        self.scene = r3d.Scene(batches={'static': [batch]}, bgcolor=(0, 0, 0))
         self.scene.initialize()
 
         # Collision spheres have to be added in the ending after everything has been rendered, as it transparent
@@ -203,7 +203,7 @@ class Quadrotor3DSceneMulti:
         world = r3d.World(bodies)
         batch = r3d.Batch()
         world.build(batch)
-        self.scene.batches['generic'].extend([batch])
+        self.scene.batches['static'].extend([batch])
 
     def create_obstacles(self):
         for item in self.obstacles.obstacles:
