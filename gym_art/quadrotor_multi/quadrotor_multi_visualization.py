@@ -111,6 +111,43 @@ class Quadrotor3DSceneMulti:
         self.room_dims = room_dims
         self._make_scene()
 
+    @staticmethod
+    def dict_vals_to_list(d):
+        l = []
+        for v in d.values():
+            l.append(v)
+        return l
+
+    def _remake_arrows(self, cyl_height=0.12):
+        self.vec_cyl_transforms, self.vec_cone_transforms = [], []
+        for i, model in enumerate(self.models):
+            self.vec_cyl_transforms.append(
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cylinder(0.005, cyl_height, 32))
+            )
+
+            self.vec_cone_transforms.append(
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cone(0.01, 0.04, 32))
+            )
+
+        bodies = []
+        # bodies['vel_cyls'] = self.vec_cyl_transforms
+        # bodies['vel_cones'] = self.vec_cone_transforms
+        bodies.extend(self.vec_cyl_transforms)
+        bodies.extend(self.vec_cone_transforms)
+        world = r3d.World(bodies)
+        batch = r3d.Batch()
+        world.build(batch)
+        # self.scene.batches.extend([batch])
+
+        if 'arrow' in self.scene.batches.keys():
+            self.scene.batches['arrow'].extend([batch])
+        else:
+            self.scene.batches['arrow'] = [batch]
+
+    def _reset_arrows(self):
+        self.scene.batches['arrow'] = []
+
+
     def _make_scene(self):
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
@@ -133,8 +170,12 @@ class Quadrotor3DSceneMulti:
                 r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), r3d.sphere(0.75 * self.diameter, 32))
             )
 
-            self.vec_arrow_transforms.append(
-                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.arrow(0.01, 0.12, 32))
+            self.vec_cyl_transforms.append(
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cylinder(0.01, 0.12, 32))
+            )
+
+            self.vec_cone_transforms.append(
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cone(0.01, 0.12, 32))
             )
 
         # TODO make floor size or walls to indicate world_box
@@ -148,7 +189,6 @@ class Quadrotor3DSceneMulti:
         bodies = [r3d.BackToFront([floor, st]) for st in self.shadow_transforms]
         bodies.extend(self.goal_transforms)
         bodies.extend(self.quad_transforms)
-        bodies.extend(self.vec_arrow_transforms)
         # visualize walls of the room if True
         if self.visible:
             room = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25), r3d.envBox(*self.room_dims))
@@ -161,7 +201,7 @@ class Quadrotor3DSceneMulti:
         world = r3d.World(bodies)
         batch = r3d.Batch()
         world.build(batch)
-        self.scene = r3d.Scene(batches=[batch], bgcolor=(0, 0, 0))
+        self.scene = r3d.Scene(batches={'generic': [batch]}, bgcolor=(0, 0, 0))
         self.scene.initialize()
 
         # Collision spheres have to be added in the ending after everything has been rendered, as it transparent
@@ -170,7 +210,7 @@ class Quadrotor3DSceneMulti:
         world = r3d.World(bodies)
         batch = r3d.Batch()
         world.build(batch)
-        self.scene.batches.extend([batch])
+        self.scene.batches['generic'].extend([batch])
 
     def create_obstacles(self):
         for item in self.obstacles.obstacles:
@@ -226,6 +266,7 @@ class Quadrotor3DSceneMulti:
         self.update_state(dynamics, goals, obstacles, collisions)
 
     def update_state(self, all_dynamics, goals, obstacles, collisions):
+        self._reset_arrows()
         if self.scene:
             if self.viewpoint == 'global':
                 goal = np.mean(goals, axis=0)
@@ -269,15 +310,22 @@ class Quadrotor3DSceneMulti:
 
                     vector_dir = np.diag(np.sign(avg_of_vecs))
 
-                    vector_mag = np.linalg.norm(avg_of_vecs) / 5
+                    vector_mag = np.linalg.norm(avg_of_vecs)
 
-                    s = np.diag(list(abs(np.diag(vector_dir) * vector_mag)) + [1.0])
+                    cyl_height = 0.12 * vector_mag / 2
 
-                    # Update directions with magnitude only in the z direction as we need only the length to change
-                    vector_dir[2][2] = vector_dir[2][2] * vector_mag
+                    self._remake_arrows(cyl_height)
 
-                    vel_arrow_mat = r3d.trans_and_rot(dyn.pos, vector_dir @ dyn.rot) @ s
-                    self.vec_arrow_transforms[i].set_transform_nocollide(vel_arrow_mat)
+                    cyl_mat = r3d.trans_and_rot(dyn.pos, vector_dir @ dyn.rot)
+
+                    cone_mat = r3d.trans_and_rot(dyn.pos, vector_dir @ dyn.rot)
+
+                    shift = r3d.translate(np.array([0, 0, cyl_height]))
+
+                    cone_mat = cone_mat @ shift
+
+                    self.vec_cyl_transforms[i].set_transform_nocollide(cyl_mat)
+                    self.vec_cone_transforms[i].set_transform_nocollide(cone_mat)
 
 
                 matrix = r3d.translate(dyn.pos)

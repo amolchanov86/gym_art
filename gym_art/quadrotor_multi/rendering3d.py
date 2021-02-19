@@ -204,6 +204,11 @@ class Scene(object):
             glLightfv(GL_LIGHT0 + i, GL_SPECULAR, (GLfloat * 4)(spec, spec, spec, 1))
             glEnable(GL_LIGHT0 + i)
 
+def dict_vals_to_list(d):
+    l = []
+    for v in d.values():
+        l.extend(v)
+    return l
 
 def draw(scene, camera, target):
 
@@ -223,7 +228,8 @@ def draw(scene, camera, target):
     #glGetFloatv(GL_MODELVIEW_MATRIX, view)
     #view = np.array(view).reshape((4,4)).T
 
-    for batch in scene.batches:
+    batches = dict_vals_to_list(scene.batches)
+    for batch in batches:
         batch.draw()
 
     target.finish()
@@ -643,6 +649,10 @@ def arrow(radius, height, sections):
     v, n = arrow_strip(radius, height, sections)
     return TriStrip(v, n)
 
+def vel_arrow(radius, height, sections):
+    v, n = arrow_strip_velocity(radius, height, sections)
+    return TriStrip(v, n)
+
 # sphere centered on origin, n tris will be about TODO * facets
 def sphere(radius, facets):
     v, n = sphere_strip(radius, facets)
@@ -792,6 +802,20 @@ def arrow_strip(radius, height, facets):
     cone_h = height - cyl_h
     cone_half_angle = np.radians(30)
     cone_r = 1.5 * cone_h * np.tan(cone_half_angle)
+    vcyl, ncyl = cylinder_strip(cyl_r, cyl_h, facets)
+    vcone, ncone = cone_strip(cone_r, cone_h, facets)
+    vcone[:,2] += cyl_h
+    v = np.vstack([vcyl, vcone])
+    n = np.vstack([ncyl, ncone])
+    return v, n
+
+# arrow sitting on x-y plane
+def arrow_strip_velocity(radius, height, facets):
+    cyl_r = radius
+    cyl_h = 0.75 * height
+    cone_h = height - 0.1
+    cone_half_angle = np.radians(30)
+    cone_r = 1.5 * 0.03 * np.tan(cone_half_angle)
     vcyl, ncyl = cylinder_strip(cyl_r, cyl_h, facets)
     vcone, ncone = cone_strip(cone_r, cone_h, facets)
     vcone[:,2] += cyl_h
