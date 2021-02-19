@@ -791,7 +791,7 @@ def arrow_strip(radius, height, facets):
     cyl_h = 0.75 * height
     cone_h = height - cyl_h
     cone_half_angle = np.radians(30)
-    cone_r = cone_h * np.tan(cone_half_angle)
+    cone_r = 1.5 * cone_h * np.tan(cone_half_angle)
     vcyl, ncyl = cylinder_strip(cyl_r, cyl_h, facets)
     vcone, ncone = cone_strip(cone_r, cone_h, facets)
     vcone[:,2] += cyl_h
