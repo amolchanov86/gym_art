@@ -116,7 +116,7 @@ class Quadrotor3DSceneMulti:
         self.cam3p = r3d.Camera(fov=45.0)
 
         self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms,\
-        self.obstacle_transforms, self.vec_arrow_transforms = [], [], [], [], [], []
+        self.obstacle_transforms, self.vec_arrow_transforms, self.vec_cyl_transforms, self.vec_cone_transforms = [], [], [], [], [], [], [], []
 
         for i, model in enumerate(self.models):
             if model is not None:
@@ -134,6 +134,12 @@ class Quadrotor3DSceneMulti:
             self.vec_arrow_transforms.append(
                 r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.arrow(0.002, 0.12, 32))
             )
+            self.vec_cyl_transforms.append(
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cylinder(0.005, 0.12, 32))
+            )
+            self.vec_cone_transforms.append(
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cone(0.01, 0.04, 32))
+            )
 
         # TODO make floor size or walls to indicate world_box
         floor = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25),
@@ -146,6 +152,8 @@ class Quadrotor3DSceneMulti:
         bodies = [r3d.BackToFront([floor, st]) for st in self.shadow_transforms]
         bodies.extend(self.goal_transforms)
         bodies.extend(self.quad_transforms)
+        bodies.extend(self.vec_cyl_transforms)
+        bodies.extend(self.vec_cone_transforms)
         bodies.extend(self.vec_arrow_transforms)
         # visualize walls of the room if True
         if self.visible:
@@ -269,17 +277,21 @@ class Quadrotor3DSceneMulti:
                     # Calculate direction
                     vector_dir = np.diag(np.sign(avg_of_vecs))
 
-                    # Calculate magnitude and divide by 5 (rough estimate)
-                    vector_mag = np.linalg.norm(avg_of_vecs) / 5
+                    # Calculate magnitude and divide by 3 (for aesthetics)
+                    vector_mag = np.linalg.norm(avg_of_vecs) / 3
 
-                    s = np.diag(list(abs(np.diag(vector_dir))) + [1.0])
+                    s = np.diag([1.0, 1.0, vector_mag, 1.0])
 
-                    # Update directions with magnitude only in the z direction as we need only the length to change
-                    vector_dir[2][2] = vector_dir[2][2] * vector_mag
+                    cone_trans = np.eye(4)
+                    cone_trans[:3, 3] = [0.0, 0.0, 0.12 * vector_mag]
 
-                    # Calculate the transform of the Cylinder
-                    vel_arrow_mat = r3d.trans_and_rot(dyn.pos, vector_dir @ dyn.rot) @ s
-                    self.vec_arrow_transforms[i].set_transform_nocollide(vel_arrow_mat)
+                    cyl_mat = r3d.trans_and_rot(dyn.pos, vector_dir @ dyn.rot) @ s
+
+                    cone_mat = r3d.trans_and_rot(dyn.pos, vector_dir @ dyn.rot) @ cone_trans
+
+                    self.vec_cyl_transforms[i].set_transform_nocollide(cyl_mat)
+                    self.vec_cone_transforms[i].set_transform_nocollide(cone_mat)
+
 
                 matrix = r3d.translate(dyn.pos)
                 if collisions['drone'][i] > 0.0 or collisions['obstacle'][i] > 0.0 or collisions['ground'][i] > 0.0:
