@@ -146,7 +146,7 @@ class QuadrotorEnvMulti(gym.Env):
             dt = 1.0 / sim_freq
             self.set_obstacles = np.zeros(self.obstacle_num, dtype=bool)
             self.obstacle_settle_count = np.zeros(self.num_agents)
-            self.metric_dist_quads_settle_with_obstacle = 4000.0 * self.quad_arm
+            self.metric_dist_quads_settle_with_obstacle = 4.0 * self.quad_arm
             self.obstacle_type = quads_obstacle_type
             self.multi_obstacles = MultiObstacles(
                 mode=self.obstacle_mode, num_obstacles=self.obstacle_num, max_init_vel=obstacle_max_init_vel,
