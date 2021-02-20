@@ -116,7 +116,7 @@ class Quadrotor3DSceneMulti:
         self.cam3p = r3d.Camera(fov=45.0)
 
         self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms,\
-        self.obstacle_transforms, self.vec_arrow_transforms, self.vec_cyl_transforms, self.vec_cone_transforms = [], [], [], [], [], [], [], []
+        self.obstacle_transforms, self.vec_cyl_transforms, self.vec_cone_transforms = [], [], [], [], [], [], []
 
         for i, model in enumerate(self.models):
             if model is not None:
@@ -130,9 +130,6 @@ class Quadrotor3DSceneMulti:
             )
             self.collision_transforms.append(
                 r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), r3d.sphere(0.75 * self.diameter, 32))
-            )
-            self.vec_arrow_transforms.append(
-                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.arrow(0.002, 0.12, 32))
             )
             self.vec_cyl_transforms.append(
                 r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cylinder(0.005, 0.12, 32))
@@ -154,7 +151,6 @@ class Quadrotor3DSceneMulti:
         bodies.extend(self.quad_transforms)
         bodies.extend(self.vec_cyl_transforms)
         bodies.extend(self.vec_cone_transforms)
-        bodies.extend(self.vec_arrow_transforms)
         # visualize walls of the room if True
         if self.visible:
             room = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25), r3d.envBox(*self.room_dims))
