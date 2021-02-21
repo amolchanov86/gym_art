@@ -1,18 +1,18 @@
 import numpy as np
 
-from gym_art.quadrotor_multi.quad_obstacle_utils import OBSTACLES_TYPE_LIST
+from gym_art.quadrotor_multi.quad_obstacle_utils import OBSTACLES_SHAPE_LIST
 
 EPS = 1e-6
 GRAV = 9.81  # default gravitational constant
 
 
 class SingleObstacle:
-    def __init__(self, max_init_vel=1., init_box=2.0, mode='no_obstacles', type='sphere', size=0.0, quad_size=0.04,
+    def __init__(self, max_init_vel=1., init_box=2.0, mode='no_obstacles', shape='sphere', size=0.0, quad_size=0.04,
                  dt=0.05, traj='gravity'):
         self.max_init_vel = max_init_vel
         self.init_box = init_box  # means the size of initial space that the obstacles spawn at
         self.mode = mode
-        self.type = type
+        self.shape = shape
         self.size = size  # sphere: diameter, cube: edge length
         self.quad_size = quad_size
         self.dt = dt
@@ -21,17 +21,17 @@ class SingleObstacle:
         self.vel = np.array([0., 0., 0.])
         self.formation_size = 0.0
         self.goal_central = np.array([0., 0., 2.])
-        self.type_list = OBSTACLES_TYPE_LIST
+        self.shape_list = OBSTACLES_SHAPE_LIST
 
-    def reset(self, set_obstacle=None, formation_size=0.0, goal_central=np.array([0., 0., 2.]), type='sphere', quads_pos=None, quads_vel=None):
+    def reset(self, set_obstacle=None, formation_size=0.0, goal_central=np.array([0., 0., 2.]), shape='sphere', quads_pos=None, quads_vel=None):
         if set_obstacle is None:
             raise ValueError('set_obstacle is None')
 
         self.formation_size = formation_size
         self.goal_central = goal_central
 
-        # Reset type and size
-        self.type = type
+        # Reset shape and size
+        self.shape = shape
         self.size = np.random.uniform(low=0.15, high=0.5)
 
         if set_obstacle:
@@ -129,13 +129,13 @@ class SingleObstacle:
         return vel
 
     def update_obs(self, quads_pos=None, quads_vel=None):
-        # Add rel_pos, rel_vel, size, type to obs, shape: num_agents * 10
+        # Add rel_pos, rel_vel, size, shape to obs, shape: num_agents * 10
         rel_pos = self.pos - quads_pos
         rel_vel = self.vel - quads_vel
         # obst_size: in xyz axis: radius for sphere, half edge length for cube
         obst_size = (self.size / 2) * np.ones((len(quads_pos), 3))
-        obst_type = self.type_list.index(self.type) * np.ones((len(quads_pos), 1))
-        obs = np.concatenate((rel_pos, rel_vel, obst_size, obst_type), axis=1)
+        obst_shape = self.shape_list.index(self.shape) * np.ones((len(quads_pos), 1))
+        obs = np.concatenate((rel_pos, rel_vel, obst_size, obst_shape), axis=1)
 
         return obs
 
@@ -205,9 +205,9 @@ class SingleObstacle:
         return collision_arr
 
     def collision_detection(self, pos_quads=None):
-        if self.type == 'cube':
+        if self.shape == 'cube':
             collision_arr = self.cube_detection(pos_quads)
-        elif self.type == 'sphere':
+        elif self.shape == 'sphere':
             collision_arr = self.sphere_detection(pos_quads)
         else:
             raise NotImplementedError()

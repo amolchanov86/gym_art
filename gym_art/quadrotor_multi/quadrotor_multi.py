@@ -14,7 +14,7 @@ from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
 from gym_art.quadrotor_multi.quadrotor_multi_visualization import Quadrotor3DSceneMulti
 from gym_art.quadrotor_multi.quad_scenarios import create_scenario
-from gym_art.quadrotor_multi.quad_obstacle_utils import OBSTACLES_TYPE_LIST
+from gym_art.quadrotor_multi.quad_obstacle_utils import OBSTACLES_SHAPE_LIST
 
 EPS = 1E-6
 
@@ -148,10 +148,10 @@ class QuadrotorEnvMulti(gym.Env):
             self.set_obstacles = np.zeros(self.obstacle_num, dtype=bool)
             self.obstacle_settle_count = np.zeros(self.num_agents)
             self.metric_dist_quads_settle_with_obstacle = 4.0 * self.quad_arm
-            self.obstacle_type = quads_obstacle_type
+            self.obstacle_shape = quads_obstacle_type
             self.multi_obstacles = MultiObstacles(
                 mode=self.obstacle_mode, num_obstacles=self.obstacle_num, max_init_vel=obstacle_max_init_vel,
-                init_box=obstacle_init_box, dt=dt, quad_size=self.quad_arm, type=quads_obstacle_type,
+                init_box=obstacle_init_box, dt=dt, quad_size=self.quad_arm, shape=self.obstacle_shape,
                 size=quads_obstacle_size, traj=obstacle_traj
             )
 
@@ -506,13 +506,13 @@ class QuadrotorEnvMulti(gym.Env):
                         self.set_obstacles[obst_i] = False
                         self.quads_formation_size = self.scenario.formation_size
                         self.goal_central = np.mean(self.scenario.goals, axis=0)
-                        obst_type = obstacle.type
-                        if self.obstacle_type == 'random':
-                            obst_type_id = np.random.randint(low=0, high=len(OBSTACLES_TYPE_LIST))
-                            obst_type = OBSTACLES_TYPE_LIST[obst_type_id]
+                        obst_shape = obstacle.shape
+                        if self.obstacle_shape == 'random':
+                            obst_shape_id = np.random.randint(low=0, high=len(OBSTACLES_SHAPE_LIST))
+                            obst_shape = OBSTACLES_SHAPE_LIST[obst_shape_id]
 
                         obstacle.reset(set_obstacle=False, formation_size=self.quads_formation_size,
-                                       goal_central=self.goal_central, type=obst_type, quads_pos=self.pos,
+                                       goal_central=self.goal_central, shape=obst_shape, quads_pos=self.pos,
                                        quads_vel=quads_vel)
 
                 # If all drones hit the floor, we should reset the counter,

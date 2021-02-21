@@ -177,9 +177,9 @@ class Quadrotor3DSceneMulti:
     def create_obstacles(self):
         for item in self.multi_obstacles.obstacles:
             color = quad_color[14]
-            if item.type == 'cube':
+            if item.shape == 'cube':
                 obstacle_transform = r3d.transform_and_color(np.eye(4), color, r3d.box(item.size, item.size, item.size))
-            elif item.type == 'sphere':
+            elif item.shape == 'sphere':
                 obstacle_transform = r3d.transform_and_color(np.eye(4), color, r3d.sphere(item.size / 2, 18))
             else:
                 raise NotImplementedError()
