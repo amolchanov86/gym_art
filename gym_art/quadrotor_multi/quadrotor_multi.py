@@ -427,7 +427,7 @@ class QuadrotorEnvMulti(gym.Env):
 
             rew_obst_quad_collisions_raw = np.zeros(self.num_agents)
             if obst_quad_last_step_unique_collisions.any():
-                # We assign penalize to the drones collide with obstacles
+                # We assign penalties to the drones which collide with the obstacles
                 # In obst_quad_last_step_unique_collisions, 2*i is quad_id, 2*i+1 is obstacle_id, i >= 0
                 # and we only penalize drones
                 for i in range(len(obst_quad_last_step_unique_collisions) // 2):
