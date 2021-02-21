@@ -444,22 +444,25 @@ class QuadrotorEnvMulti(gym.Env):
                 num_agents=self.num_agents,
                 obstacles_radius=obstacles_radius
             )
+        else:
+            obst_quad_col_matrix = np.zeros((self.num_agents, self.obstacle_num))
+            curr_obst_quad_collisions = []
+            rew_obst_quad_collisions_raw = np.zeros(self.num_agents)
+            rew_collisions_obst_quad = np.zeros(self.num_agents)
+            rew_obst_quad_proximity = np.zeros(self.num_agents)
 
         # Collisions with ground
         ground_collisions = [1.0 if pos[2] < 0.25 else 0.0 for pos in self.pos]
 
         self.all_collisions = {'drone': np.sum(drone_col_matrix, axis=1), 'ground': ground_collisions,
-                               'obstacle': np.zeros(self.num_agents)}
-        if self.use_obstacles:
-            self.all_collisions['obstacle'] = np.sum(obst_quad_col_matrix, axis=1)
+                               'obstacle': np.sum(obst_quad_col_matrix, axis=1)}
 
         # Applying random forces for all collisions between drones and obstacles
         if self.apply_collision_force:
             for val in self.curr_drone_collisions:
                 perform_collision_between_drones(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
-            if self.use_obstacles:
-                for val in curr_obst_quad_collisions:
-                    perform_collision_with_obstacle(self.envs[val[0]].dynamics, self.multi_obstacles.obstacles[val[1]])
+            for val in curr_obst_quad_collisions:
+                perform_collision_with_obstacle(self.envs[val[0]].dynamics, self.multi_obstacles.obstacles[val[1]])
 
         for i in range(self.num_agents):
             rewards[i] += rew_collisions[i]
