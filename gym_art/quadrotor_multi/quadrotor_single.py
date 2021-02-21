@@ -883,10 +883,6 @@ class QuadrotorSingle:
         self.ep_time = ep_time
         self.ep_len = int(self.ep_time / (self.dt * self.sim_steps))
 
-    def reset_obstacle_mode(self, obstacle_mode, obstacle_num):
-        self.obstacle_mode = obstacle_mode
-        self.obstacle_num = obstacle_num
-
     def save_dyn_params(self, filename):
         import yaml
         with open(filename, 'w') as yaml_file:
@@ -985,6 +981,8 @@ class QuadrotorSingle:
             "rvxyz": [-2.0 * self.dynamics.vxyz_max * np.ones(3), 2.0 * self.dynamics.vxyz_max * np.ones(3)], # rvxyz stands for relative velocity between quadrotors
             "roxyz": [-room_range, room_range], # roxyz stands for relative pos between quadrotor and obstacle
             "rovxyz": [-20.0 * np.ones(3), 20.0 * np.ones(3)], # rovxyz stands for relative velocity between quadrotor and obstacle
+            "osize": [np.zeros(3), 20.0 * np.ones(3)],  # obstacle size, [[0., 0., 0.], [20., 20., 20.]]
+            "otype": [np.zeros(1), 20.0 * np.ones(1)],  # obstacle type, [[0.], [20.]], which means we can support 21 types of obstacles
             "goal": [-room_range, room_range],
             "nbr_dist": [np.zeros(1), room_max_dist],
             "nbr_goal_dist": [np.zeros(1), room_max_dist],
@@ -1001,7 +999,7 @@ class QuadrotorSingle:
         elif self.swarm_obs == 'pos_vel_goals_ndist_gdist' and self.num_agents > 1:
             obs_comps = obs_comps + (['rxyz'] + ['rvxyz'] + ['goal'] + ['nbr_dist'] + ['nbr_goal_dist']) * self.num_use_neighbor_obs
         if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
-            obs_comps = obs_comps + (['roxyz'] + ['rovxyz']) * (self.obstacle_num)
+            obs_comps = obs_comps + (['roxyz'] + ['rovxyz'] + ['osize'] + ['otype']) * self.obstacle_num
 
         print("Observation components:", obs_comps)
         obs_low, obs_high = [], []

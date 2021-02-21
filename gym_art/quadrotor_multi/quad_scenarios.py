@@ -279,7 +279,7 @@ class Scenario_ep_lissajous3D(QuadrotorScenario):
         x, y, z = self.lissajous3D(tick)
         goal_x, goal_y, goal_z = self.goals[0]
         x_new, y_new, z_new = x + goal_x, y + goal_y, z + goal_z
-        self.goals = np.array([[x_new, y_new, z_new] for i in range(self.num_agents)])
+        self.goals = np.array([[x_new, y_new, z_new] for _ in range(self.num_agents)])
 
         for i, env in enumerate(self.envs):
             env.goal = self.goals[i]
@@ -534,8 +534,8 @@ class Scenario_swarm_vs_swarm(QuadrotorScenario):
         self.goal_center_1, self.goal_center_2 = self.formation_centers()
         self.create_formations(self.goal_center_1, self.goal_center_2)
 
-        # This is for initalize the pos for obstacles
-        self.formation_centers = (self.goal_center_1 + self.goal_center_2) / 2
+        # This is for initialize the pos for obstacles
+        self.formation_center = (self.goal_center_1 + self.goal_center_2) / 2
 
     def update_formation_size(self, new_formation_size):
         if new_formation_size != self.formation_size:
@@ -579,13 +579,12 @@ class Scenario_mix(QuadrotorScenario):
         super().__init__(quads_mode, envs, num_agents, room_dims, room_dims_callback, rew_coeff, quads_formation, quads_formation_size)
         self.room_dims_callback = room_dims_callback
 
-        self.obst_mode = self.envs[0].obstacle_mode
-        self.obst_num = self.envs[0].obstacle_num
+        obst_mode = self.envs[0].obstacle_mode
 
         # Once change the parameter here, should also update QUADS_PARAMS_DICT to make sure it is same as run a single scenario
         # key: quads_mode
         # value: 0. formation, 1: [formation_low_size, formation_high_size], 2: episode_time
-        if self.obst_mode == 'no_obstacles':
+        if obst_mode == 'no_obstacles':
             self.quads_mode_dict = QUADS_MODE_DICT
         else:
             self.quads_mode_dict = QUADS_MODE_OBSTACLE_DICT
@@ -627,8 +626,3 @@ class Scenario_mix(QuadrotorScenario):
         self.scenario.reset()
         self.goals = self.scenario.goals
         self.formation_size = self.scenario.formation_size
-
-        if self.obst_mode != 'no_obstacles':
-            # reset obstacle mode and number
-            for env in self.envs:
-                env.reset_obstacle_mode(obstacle_mode=self.obst_mode, obstacle_num=self.obst_num)
