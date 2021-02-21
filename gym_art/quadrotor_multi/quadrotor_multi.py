@@ -8,7 +8,8 @@ import gym
 from copy import deepcopy
 
 from gym_art.quadrotor_multi.quad_utils import perform_collision_between_drones, perform_collision_with_obstacle, \
-    calculate_collision_matrix, calculate_drone_proximity_penalties, calculate_obst_drone_proximity_penalties
+    calculate_collision_matrix, calculate_drone_proximity_penalties, calculate_obst_drone_proximity_penalties, \
+    get_sphere_radius
 
 from gym_art.quadrotor_multi.quadrotor_multi_obstacles import MultiObstacles
 from gym_art.quadrotor_multi.quadrotor_single import GRAV, QuadrotorSingle
@@ -147,7 +148,15 @@ class QuadrotorEnvMulti(gym.Env):
             dt = 1.0 / sim_freq
             self.set_obstacles = np.zeros(self.obstacle_num, dtype=bool)
             self.obstacle_settle_count = np.zeros(self.num_agents)
-            self.metric_dist_quads_settle_with_obstacle = 4.0 * self.quad_arm
+            metric_dist_throw_obst = collision_falloff_radius * self.quad_arm
+            self.metric_dist_quads_settle_with_obstacle = {
+                'static_same_goal': get_sphere_radius(num=self.num_agents, dist=metric_dist_throw_obst + self.quad_arm),
+                'static_diff_goal': metric_dist_throw_obst,
+                'swarm_vs_swarm': metric_dist_throw_obst,
+                'swap_goals': metric_dist_throw_obst,
+                'dynamic_formations': metric_dist_throw_obst,
+                'circular_config': metric_dist_throw_obst,
+            }
             self.obstacle_shape = quads_obstacle_type
             self.multi_obstacles = MultiObstacles(
                 mode=self.obstacle_mode, num_obstacles=self.obstacle_num, max_init_vel=obstacle_max_init_vel,
@@ -525,7 +534,8 @@ class QuadrotorEnvMulti(gym.Env):
             if not self.set_obstacles.all():
                 for i, e in enumerate(self.envs):
                     dis = np.linalg.norm(self.pos[i] - e.goal)
-                    if abs(dis) < self.metric_dist_quads_settle_with_obstacle:
+                    scenario_name = self.scenario.quads_mode if self.quads_mode != 'mix' else self.scenario.scenario.quads_mode
+                    if abs(dis) < self.metric_dist_quads_settle_with_obstacle[scenario_name]:
                         self.obstacle_settle_count[i] += 1
                     else:
                         self.obstacle_settle_count = np.zeros(self.num_agents)
