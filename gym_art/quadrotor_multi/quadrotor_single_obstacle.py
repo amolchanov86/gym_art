@@ -1,5 +1,7 @@
 import numpy as np
 
+from gym_art.quadrotor_multi.quad_obstacle_utils import OBSTACLES_TYPE_LIST
+
 EPS = 1e-6
 GRAV = 9.81  # default gravitational constant
 
@@ -11,7 +13,7 @@ class SingleObstacle:
         self.init_box = init_box  # means the size of initial space that the obstacles spawn at
         self.mode = mode
         self.type = type
-        self.size = size
+        self.size = size  # sphere: diameter, cube: edge length
         self.quad_size = quad_size
         self.dt = dt
         self.traj = traj
@@ -19,10 +21,19 @@ class SingleObstacle:
         self.vel = np.array([0., 0., 0.])
         self.formation_size = 0.0
         self.goal_central = np.array([0., 0., 2.])
+        self.type_list = OBSTACLES_TYPE_LIST
 
-    def reset(self, set_obstacle=False, formation_size=0.0, goal_central=np.array([0., 0., 2.])):
+    def reset(self, set_obstacle=None, formation_size=0.0, goal_central=np.array([0., 0., 2.]), type='sphere', quads_pos=None, quads_vel=None):
+        if set_obstacle is None:
+            raise ValueError('set_obstacle is None')
+
         self.formation_size = formation_size
         self.goal_central = goal_central
+
+        # Reset type and size
+        self.type = type
+        self.size = np.random.uniform(low=0.15, high=0.5)
+
         if set_obstacle:
             if self.mode == 'static':
                 self.static_obstacle()
@@ -40,6 +51,9 @@ class SingleObstacle:
             self.pos = np.array([5., 5., -5.])
             self.vel = np.array([0., 0., 0.])
 
+        obs = self.update_obs(quads_pos=quads_pos, quads_vel=quads_vel)
+        return obs
+
     def static_obstacle(self):
         pass
 
@@ -47,13 +61,13 @@ class SingleObstacle:
         # Init position for an obstacle
         x, y = np.random.uniform(-2 * self.init_box, 2 * self.init_box, size=(2,))
         z = np.random.uniform(-self.init_box, self.init_box) + self.goal_central[2]
-        z = max(self.size + 0.5, z)
+        z = max(self.size / 2 + 0.5, z)
         diff_z = z - self.goal_central[2]
         if abs(diff_z) <= 0.5:
             z = z + np.sign(diff_z) * 0.5
 
         # Make the position of obstacles out of the space of goals
-        formation_range = self.formation_size + self.size
+        formation_range = self.formation_size + self.size / 2
         rel_x = abs(x) - formation_range
         rel_y = abs(y) - formation_range
         if rel_x <= 0:
@@ -114,28 +128,35 @@ class SingleObstacle:
         vel = vel_magn * vel_direct / (np.linalg.norm(vel_direct) + EPS)
         return vel
 
-    def update_obs(self, obs=None, quads_pos=None, quads_vel=None):
-        # The pos and vel of the obstacle give by the agents
+    def update_obs(self, quads_pos=None, quads_vel=None):
+        # Add rel_pos, rel_vel, size, type to obs, shape: num_agents * 10
         rel_pos = self.pos - quads_pos
         rel_vel = self.vel - quads_vel
-        obs = np.concatenate((obs, rel_pos, rel_vel), axis=1)
+        # obst_size: in xyz axis: radius for sphere, half edge length for cube
+        obst_size = (self.size / 2) * np.ones((len(quads_pos), 3))
+        obst_type = self.type_list.index(self.type) * np.ones((len(quads_pos), 1))
+        obs = np.concatenate((rel_pos, rel_vel, obst_size, obst_type), axis=1)
+
         return obs
 
-    def step(self, obs=None, quads_pos=None, quads_vel=None, set_obstacles=False):
-        if not set_obstacles:
-            obs = self.update_obs(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel)
+    def step(self, quads_pos=None, quads_vel=None, set_obstacle=None):
+        if set_obstacle is None:
+            raise ValueError('set_obstacle is None')
+
+        if not set_obstacle:
+            obs = self.update_obs(quads_pos=quads_pos, quads_vel=quads_vel)
             return obs
 
         if self.traj == 'electron':
-            obs = self.step_electron(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel)
+            obs = self.step_electron(quads_pos=quads_pos, quads_vel=quads_vel)
             return obs
         elif self.traj == 'gravity':
-            obs = self.step_gravity(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel)
+            obs = self.step_gravity(quads_pos=quads_pos, quads_vel=quads_vel)
             return obs
         else:
             raise NotImplementedError()
 
-    def step_electron(self, obs=None, quads_pos=None, quads_vel=None):
+    def step_electron(self, quads_pos=None, quads_vel=None):
         # Generate force, mimic force between electron, F = k*q1*q2 / r^2,
         # Here, F = r^2, k = 1, q1 = q2 = 1
         force_pos = 2 * self.goal_central - self.pos
@@ -154,16 +175,16 @@ class SingleObstacle:
         self.vel += self.dt * acc
         self.pos += self.dt * self.vel
 
-        obs = self.update_obs(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel)
+        obs = self.update_obs(quads_pos=quads_pos, quads_vel=quads_vel)
         return obs
 
-    def step_gravity(self, obs=None, quads_pos=None, quads_vel=None):
+    def step_gravity(self, quads_pos=None, quads_vel=None):
         acc = np.array([0., 0., -GRAV])  # 9.81
         # Calculate velocity
         self.vel += self.dt * acc
         self.pos += self.dt * self.vel
 
-        obs = self.update_obs(obs=obs, quads_pos=quads_pos, quads_vel=quads_vel)
+        obs = self.update_obs(quads_pos=quads_pos, quads_vel=quads_vel)
         return obs
 
     def cube_detection(self, pos_quads=None):
