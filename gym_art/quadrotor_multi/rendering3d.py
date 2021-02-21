@@ -204,11 +204,6 @@ class Scene(object):
             glLightfv(GL_LIGHT0 + i, GL_SPECULAR, (GLfloat * 4)(spec, spec, spec, 1))
             glEnable(GL_LIGHT0 + i)
 
-def dict_vals_to_list(d):
-    l = []
-    for v in d.values():
-        l.extend(v)
-    return l
 
 def draw(scene, camera, target):
 
@@ -228,8 +223,7 @@ def draw(scene, camera, target):
     #glGetFloatv(GL_MODELVIEW_MATRIX, view)
     #view = np.array(view).reshape((4,4)).T
 
-    batches = dict_vals_to_list(scene.batches)
-    for batch in batches:
+    for batch in scene.batches:
         batch.draw()
 
     target.finish()
