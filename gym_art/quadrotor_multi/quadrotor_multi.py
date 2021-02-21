@@ -138,7 +138,8 @@ class QuadrotorEnvMulti(gym.Env):
         self.multi_obstacles = None
         self.obstacle_mode = quads_obstacle_mode
         self.obstacle_num = quads_obstacle_num
-        if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
+        self.use_obstacles = self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0
+        if self.use_obstacles:
             obstacle_max_init_vel = 4.0 * self.envs[0].max_init_vel
             obstacle_init_box = self.envs[0].box  # box of env is: 2 meters
             # This parameter is used to judge whether obstacles are out of room, and then, we can reset the obstacles
@@ -348,7 +349,7 @@ class QuadrotorEnvMulti(gym.Env):
         obs = self.add_neighborhood_obs(obs)
 
         # Reset Obstacles
-        if self.obstacle_mode !="no_obstacles" and self.obstacle_num > 0:
+        if self.use_obstacles:
             self.set_obstacles = np.zeros(self.obstacle_num, dtype=bool)
             self.obstacle_settle_count = np.zeros(self.num_agents)
             quads_pos = np.array([e.dynamics.pos for e in self.envs])
@@ -417,7 +418,7 @@ class QuadrotorEnvMulti(gym.Env):
         )
 
         # COLLISION BETWEEN QUAD AND OBSTACLE(S)
-        if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
+        if self.use_obstacles:
             obst_quad_col_matrix, curr_obst_quad_collisions, obst_quad_distance_matrix \
                 = self.multi_obstacles.collision_detection(pos_quads=self.pos, set_obstacles=self.set_obstacles)
             obst_quad_last_step_unique_collisions = np.setdiff1d(curr_obst_quad_collisions, self.prev_obst_quad_collisions)
@@ -426,6 +427,9 @@ class QuadrotorEnvMulti(gym.Env):
 
             rew_obst_quad_collisions_raw = np.zeros(self.num_agents)
             if obst_quad_last_step_unique_collisions.any():
+                # We assign penalize to the drones collide with obstacles
+                # In obst_quad_last_step_unique_collisions, 2*i is quad_id, 2*i+1 is obstacle_id, i >= 0
+                # and we only penalize drones
                 for i in range(len(obst_quad_last_step_unique_collisions) // 2):
                     quad_id = int(2 * i)
                     rew_obst_quad_collisions_raw[quad_id] = -1.0
@@ -446,14 +450,14 @@ class QuadrotorEnvMulti(gym.Env):
 
         self.all_collisions = {'drone': np.sum(drone_col_matrix, axis=1), 'ground': ground_collisions,
                                'obstacle': np.zeros(self.num_agents)}
-        if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
+        if self.use_obstacles:
             self.all_collisions['obstacle'] = np.sum(obst_quad_col_matrix, axis=1)
 
         # Applying random forces for all collisions between drones and obstacles
         if self.apply_collision_force:
             for val in self.curr_drone_collisions:
                 perform_collision_between_drones(self.envs[val[0]].dynamics, self.envs[val[1]].dynamics)
-            if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
+            if self.use_obstacles:
                 for val in curr_obst_quad_collisions:
                     perform_collision_with_obstacle(self.envs[val[0]].dynamics, self.multi_obstacles.obstacles[val[1]])
 
@@ -465,7 +469,7 @@ class QuadrotorEnvMulti(gym.Env):
             rewards[i] += rew_proximity[i]
             infos[i]["rewards"]["rew_proximity"] = rew_proximity[i]
 
-            if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
+            if self.use_obstacles:
                 rewards[i] += rew_collisions_obst_quad[i]
                 infos[i]["rewards"]["rew_quadcol_obstacle"] = rew_collisions_obst_quad[i]
                 infos[i]["rewards"]["rewraw_quadcol_obstacle"] = rew_obst_quad_collisions_raw[i]
@@ -555,7 +559,7 @@ class QuadrotorEnvMulti(gym.Env):
                         'num_collisions_after_settle': self.collisions_after_settle,
                         f'num_collisions_{self.scenario.name()}': self.collisions_after_settle,
                     }
-                    if self.obstacle_mode != 'no_obstacles' and self.obstacle_num > 0:
+                    if self.use_obstacles:
                         infos[i]['episode_extra_stats']['num_collisions_obst_quad'] = self.obst_quad_collisions_per_episode
 
             obs = self.reset()
