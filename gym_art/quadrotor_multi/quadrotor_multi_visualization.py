@@ -143,9 +143,9 @@ class Quadrotor3DSceneMulti:
             )
             color = quad_color[i % len(quad_color)] + (0.2,)
             for j in range(self.path_length):
-                # self.path_transforms[i].append(r3d.transform_and_color(np.eye(4), color,
-                #                                                        r3d.sphere(0.1 * self.diameter, 32)))
-                self.path_transforms[i].append(quad_transform)
+                self.path_transforms[i].append(r3d.transform_and_color(np.eye(4), color,
+                                                                       r3d.sphere(0.1 * self.diameter, 32)))
+                # self.path_transforms[i].append(quad_transform)
 
 
 
