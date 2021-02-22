@@ -94,9 +94,9 @@ class Quadrotor3DSceneMulti:
         self.formation_size = formation_size
         self.vector_render_type = vector_render_type
         self.vector_array = [[] for _ in range(num_agents)]
-        self.store_path_every_n = 10
+        self.store_path_every_n = 1
         self.store_path_count = 0
-        self.path_length = 10
+        self.path_length = 25
         self.path_store = [[] for _ in range(num_agents)]
 
     def update_goal_diameter(self):
@@ -273,7 +273,7 @@ class Quadrotor3DSceneMulti:
                     color = quad_color[i % len(quad_color)]
                     path_storage_length = len(self.path_store[i])
                     for k in range(path_storage_length):
-                        color_wa = color + (k/path_storage_length, )
+                        color_wa = color + (k/path_storage_length + 0.3, )
                         self.path_transforms[i][k].set_transform_and_color(self.path_store[i][k], color_wa)
                 shadow_pos = 0 + dyn.pos
                 shadow_pos[2] = 0.001  # avoid z-fighting
