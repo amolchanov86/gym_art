@@ -35,7 +35,7 @@ class QuadrotorEnvMulti(gym.Env):
                  quads_obstacle_num=0, quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True,
                  adaptive_env=False, obstacle_traj='gravity', local_obs=-1, collision_hitbox_radius=2.0,
                  collision_falloff_radius=2.0, collision_smooth_max_penalty=10.0,
-                 local_metric='dist', local_coeff=0.0, use_replay_buffer=False, viz_vector_type=None,
+                 local_metric='dist', local_coeff=0.0, use_replay_buffer=False, vis_acc_arrows=False,
                  viz_traces=0, viz_trace_nth_step=1):
 
         super().__init__()
@@ -195,7 +195,7 @@ class QuadrotorEnvMulti(gym.Env):
 
         # set to true whenever we need to reset the OpenGL scene in render()
         self.reset_scene = False
-        self.viz_vector_type = viz_vector_type
+        self.vis_acc_arrows = vis_acc_arrows
         self.viz_traces = viz_traces
         self.viz_trace_nth_step = viz_trace_nth_step
 
@@ -330,7 +330,7 @@ class QuadrotorEnvMulti(gym.Env):
             w=640, h=480, resizable=True, multi_obstacles=self.multi_obstacles, viewpoint=self.envs[0].viewpoint,
             obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
             render_speed=self.render_speed, formation_size=self.quads_formation_size,
-            viz_vector_type=self.viz_vector_type, viz_traces=self.viz_traces, viz_trace_nth_step=self.viz_trace_nth_step
+            vis_acc_arrows=self.vis_acc_arrows, viz_traces=self.viz_traces, viz_trace_nth_step=self.viz_trace_nth_step
         )
 
     def reset(self):

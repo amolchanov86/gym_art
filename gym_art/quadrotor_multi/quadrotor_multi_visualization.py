@@ -35,7 +35,7 @@ class Quadrotor3DSceneMulti:
             self, w, h,
             quad_arm=None, models=None, multi_obstacles=None, visible=True, resizable=True, goal_diameter=None,
             viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8,
-            render_speed=1.0, formation_size=-1.0, viz_vector_type=None, viz_traces=False, viz_trace_nth_step=1
+            render_speed=1.0, formation_size=-1.0, vis_acc_arrows=None, viz_traces=False, viz_trace_nth_step=1
     ):
         if obs_hw is None:
             obs_hw = [64, 64]
@@ -90,7 +90,7 @@ class Quadrotor3DSceneMulti:
         self.camera_zoom_step_size = 0.1 * speed_ratio
         self.camera_mov_step_size = 0.1 * speed_ratio
         self.formation_size = formation_size
-        self.viz_vector_type = viz_vector_type
+        self.vis_acc_arrows = vis_acc_arrows
         self.viz_traces = viz_traces
         self.vector_array = [[] for _ in range(num_agents)]
         self.viz_trace_nth_step = viz_trace_nth_step
@@ -140,7 +140,7 @@ class Quadrotor3DSceneMulti:
             self.collision_transforms.append(
                 r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), collision_sphere)
             )
-            if self.viz_vector_type:
+            if self.vis_acc_arrows:
                 self.vec_cyl_transforms.append(
                     r3d.transform_and_color(np.eye(4), (1, 1, 1), arrow_cylinder)
                 )
@@ -167,8 +167,8 @@ class Quadrotor3DSceneMulti:
         bodies = [r3d.BackToFront([floor, st]) for st in self.shadow_transforms]
         bodies.extend(self.goal_transforms)
         bodies.extend(self.quad_transforms)
-        bodies.extend(self.vec_cyl_transforms) if self.viz_vector_type else bodies
-        bodies.extend(self.vec_cone_transforms) if self.viz_vector_type else bodies
+        bodies.extend(self.vec_cyl_transforms) if self.vis_acc_arrows else bodies
+        bodies.extend(self.vec_cone_transforms) if self.vis_acc_arrows else bodies
         if self.viz_traces:
             for path in self.path_transforms:
                 bodies.extend(path)
@@ -288,16 +288,11 @@ class Quadrotor3DSceneMulti:
                 matrix = r3d.translate(shadow_pos)
                 self.shadow_transforms[i].set_transform_nocollide(matrix)
 
-                if self.viz_vector_type:
+                if self.vis_acc_arrows:
                     if len(self.vector_array[i]) > 10:
                         self.vector_array[i].pop(0)
 
-                    if self.viz_vector_type == 'acceleration':
-                        self.vector_array[i].append(dyn.acc)
-                    elif self.viz_vector_type == 'velocity':
-                        self.vector_array[i].append(dyn.vel)
-                    else:
-                        raise NotImplementedError
+                    self.vector_array[i].append(dyn.acc)
 
                     # Get average of the vectors
                     avg_of_vecs = np.mean(self.vector_array[i], axis=0)
