@@ -35,7 +35,7 @@ class Quadrotor3DSceneMulti:
             self, w, h,
             quad_arm=None, models=None, multi_obstacles=None, visible=True, resizable=True, goal_diameter=None,
             viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8,
-            render_speed=1.0, formation_size=-1.0, viz_vector_type=None, viz_traces=False
+            render_speed=1.0, formation_size=-1.0, viz_vector_type=None, viz_traces=False, viz_trace_nth_step=1
     ):
         if obs_hw is None:
             obs_hw = [64, 64]
@@ -93,7 +93,7 @@ class Quadrotor3DSceneMulti:
         self.viz_vector_type = viz_vector_type
         self.viz_traces = viz_traces
         self.vector_array = [[] for _ in range(num_agents)]
-        self.store_path_every_n = 1
+        self.viz_trace_nth_step = viz_trace_nth_step
         self.store_path_count = 0
         self.path_store = [[] for _ in range(num_agents)]
 
@@ -274,7 +274,7 @@ class Quadrotor3DSceneMulti:
                 matrix = r3d.trans_and_rot(dyn.pos, dyn.rot)
                 self.quad_transforms[i].set_transform_nocollide(matrix)
 
-                if self.viz_traces and self.store_path_count % self.store_path_every_n == 0:
+                if self.viz_traces and self.store_path_count % self.viz_trace_nth_step == 0:
                     if len(self.path_store[i]) >= self.viz_traces:
                         self.path_store[i].pop(0)
                     self.path_store[i].append(matrix)

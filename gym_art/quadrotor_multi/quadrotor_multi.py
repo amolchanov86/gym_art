@@ -36,7 +36,7 @@ class QuadrotorEnvMulti(gym.Env):
                  adaptive_env=False, obstacle_traj='gravity', local_obs=-1, collision_hitbox_radius=2.0,
                  collision_falloff_radius=2.0, collision_smooth_max_penalty=10.0,
                  local_metric='dist', local_coeff=0.0, use_replay_buffer=False, viz_vector_type=None,
-                 viz_traces=25):
+                 viz_traces=25, viz_trace_nth_step=5):
 
         super().__init__()
 
@@ -197,6 +197,7 @@ class QuadrotorEnvMulti(gym.Env):
         self.reset_scene = False
         self.viz_vector_type = viz_vector_type
         self.viz_traces = viz_traces
+        self.viz_trace_nth_step = viz_trace_nth_step
 
         self.use_replay_buffer = use_replay_buffer
         self.activate_replay_buffer = False  # only start using the buffer after the drones learn how to fly
@@ -329,7 +330,7 @@ class QuadrotorEnvMulti(gym.Env):
             w=640, h=480, resizable=True, multi_obstacles=self.multi_obstacles, viewpoint=self.envs[0].viewpoint,
             obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
             render_speed=self.render_speed, formation_size=self.quads_formation_size,
-            viz_vector_type=self.viz_vector_type, viz_traces=self.viz_traces
+            viz_vector_type=self.viz_vector_type, viz_traces=self.viz_traces, viz_trace_nth_step=self.viz_trace_nth_step
         )
 
     def reset(self):
