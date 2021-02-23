@@ -60,7 +60,7 @@ class TestMultiEnv(TestCase):
 
     def test_render(self):
         num_agents = 16
-        env = create_env(num_agents, use_numba=True, local_obs=8)
+        env = create_env(num_agents, use_numba=False, local_obs=8)
         env.render_speed = 1.0
 
         env.reset()

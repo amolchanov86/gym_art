@@ -1,10 +1,10 @@
-import numpy as np
-from numpy.linalg import norm
 import copy
 
-import gym_art.quadrotor_multi.rendering3d as r3d
-from gym_art.quadrotor_multi.quad_utils import *
+from numpy.linalg import norm
+
 from gym_art.quadrotor_multi.params import quad_color
+from gym_art.quadrotor_multi.quad_utils import *
+
 
 # for visualization.
 # a rough attempt at a reasonable third-person camera
@@ -89,6 +89,8 @@ class SideCamera(object):
 
 
 def quadrotor_3dmodel(model, quad_id=0):
+    import gym_art.quadrotor_multi.rendering3d as r3d
+
     # params["body"] = {"l": 0.03, "w": 0.03, "h": 0.004, "m": 0.005}
     # params["payload"] = {"l": 0.035, "w": 0.02, "h": 0.008, "m": 0.01}
     # params["arms"] = {"l": 0.022, "w":0.005, "h":0.005, "m":0.001}
@@ -147,6 +149,8 @@ def quadrotor_3dmodel(model, quad_id=0):
 
 
 def quadrotor_simple_3dmodel(diam):
+    import gym_art.quadrotor_multi.rendering3d as r3d
+
     r = diam / 2
     prop_r = 0.3 * diam
     prop_h = prop_r / 15.0
@@ -178,12 +182,16 @@ def quadrotor_simple_3dmodel(diam):
 
 # using our rendering3d.py to draw the scene in 3D.
 # this class deals both with map and mapless cases.
-class Quadrotor3DScene(object):
+class Quadrotor3DScene:
     def __init__(self, w, h,
-        quad_arm=None, model=None, obstacles=True, visible=True, resizable=True, goal_diameter=None, viewpoint='chase', obs_hw=[64,64]):
+                 quad_arm=None, model=None, obstacles=True, visible=True, resizable=True, goal_diameter=None,
+                 viewpoint='chase', obs_hw=(64, 64)):
+
+        gym_art_module = __import__('gym_art.quadrotor_multi.rendering3d')
+        self.r3d = gym_art_module.quadrotor_multi.rendering3d
 
         self.window_target = None
-        self.window_w, self.window_h = w , h
+        self.window_w, self.window_h = w, h
         self.resizable = resizable
         self.viepoint = viewpoint
         self.obs_hw = copy.deepcopy(obs_hw)
@@ -220,8 +228,9 @@ class Quadrotor3DScene(object):
         else:
             self.goal_diameter = self.diameter
 
-
     def _make_scene(self):
+        r3d = self.r3d
+
         # if target is None:
         #     self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
         #     self.obs_target = r3d.FBOTarget(self.obs_hw[0], self.obs_hw[1])
@@ -251,8 +260,6 @@ class Quadrotor3DScene(object):
         bodies = [r3d.BackToFront([floor, self.shadow_transform]),
             self.goal_transform, self.quad_transform] + self.goal_arrows
         
-            
-
         if self.obstacles:
             bodies += self.obstacles.bodies
 
@@ -264,6 +271,8 @@ class Quadrotor3DScene(object):
         self.scene.initialize()
 
     def create_goal(self, goal):
+        r3d = self.r3d
+
         ## Goal
         self.goal_transform = r3d.transform_and_color(np.eye(4),
             (0.85, 0.55, 0), r3d.sphere(self.goal_diameter/2, 18))
@@ -287,6 +296,8 @@ class Quadrotor3DScene(object):
             (0., 0., 1.), r3d.arrow(goal_arr_r, goal_arr_len, goal_arr_sect)))
 
     def update_goal(self, goal):
+        r3d = self.r3d
+
         self.goal_transform.set_transform(r3d.translate(goal[0:3]))
 
         self.goal_arrows[0].set_transform(r3d.trans_and_rot(goal[0:3], self.goal_arrows_rot[0]))
@@ -311,6 +322,8 @@ class Quadrotor3DScene(object):
         self.update_state(dynamics, goal)
 
     def update_state(self, dynamics, goal):
+        r3d = self.r3d
+
         if self.scene:
             self.chase_cam.step(dynamics.pos, dynamics.vel)
             self.have_state = True
@@ -327,6 +340,8 @@ class Quadrotor3DScene(object):
             self.shadow_transform.set_transform_nocollide(matrix)
 
     def render_chase(self, dynamics, goal, mode="human"):
+        r3d = self.r3d
+
         if mode == "human":
             if self.window_target is None: 
                 self.window_target = r3d.WindowTarget(self.window_w, self.window_h, resizable=self.resizable)
@@ -345,6 +360,8 @@ class Quadrotor3DScene(object):
             return np.flipud(self.video_target.read())
 
     def render_obs(self, dynamics, goal):
+        r3d = self.r3d
+
         if self.obs_target is None: 
             self.obs_target = r3d.FBOTarget(self.obs_hw[0], self.obs_hw[1])
             self._make_scene()
