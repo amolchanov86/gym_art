@@ -19,8 +19,7 @@ if "Apple" in sys.version:
 from gym import error
 import matplotlib.pyplot as plt
 
-for i in range(1000):
-    print('IMPORTING RENDERING 3D')
+print('IMPORTING OPENGL RENDERING MODULE. THIS SHOULD NOT BE IMPORTED IN HEADLESS MODE!')
 
 try:
     import pyglet
