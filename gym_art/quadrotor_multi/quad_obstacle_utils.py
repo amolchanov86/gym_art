@@ -1,1 +1,1 @@
-OBSTACLES_TYPE_LIST = ['sphere', 'cube']
+OBSTACLES_SHAPE_LIST = ['sphere', 'cube']
