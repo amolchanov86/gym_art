@@ -35,7 +35,8 @@ class QuadrotorEnvMulti(gym.Env):
                  quads_obstacle_num=0, quads_obstacle_type='sphere', quads_obstacle_size=0.0, collision_force=True,
                  adaptive_env=False, obstacle_traj='gravity', local_obs=-1, collision_hitbox_radius=2.0,
                  collision_falloff_radius=2.0, collision_smooth_max_penalty=10.0,
-                 local_metric='dist', local_coeff=0.0, use_replay_buffer=False, vector_render_type='acceleration'):
+                 local_metric='dist', local_coeff=0.0, use_replay_buffer=False, viz_vector_render_type='acceleration',
+                 viz_draw_paths=True):
 
         super().__init__()
 
@@ -194,7 +195,8 @@ class QuadrotorEnvMulti(gym.Env):
 
         # set to true whenever we need to reset the OpenGL scene in render()
         self.reset_scene = False
-        self.vector_render_type = vector_render_type
+        self.viz_vector_render_type = viz_vector_render_type
+        self.viz_draw_paths = viz_draw_paths
 
         self.use_replay_buffer = use_replay_buffer
         self.activate_replay_buffer = False  # only start using the buffer after the drones learn how to fly
@@ -327,6 +329,7 @@ class QuadrotorEnvMulti(gym.Env):
             w=640, h=480, resizable=True, multi_obstacles=self.multi_obstacles, viewpoint=self.envs[0].viewpoint,
             obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
             render_speed=self.render_speed, formation_size=self.quads_formation_size,
+            viz_vector_render_type=self.viz_vector_render_type, viz_draw_paths=self.viz_draw_paths
         )
 
     def reset(self):
