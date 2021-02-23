@@ -127,7 +127,7 @@ def quadrotor_3dmodel(model, quad_id=0):
         elif link.type == "cylinder":
             # print("Type: Cylinder")
             link_transf = r3d.transform_and_color(r3d.translate(xyz), color,
-                                                  r3d.cylinder(link.r, link.h, 32))
+                                                  r3d.cylinder(link.r, link.h, 16))
         elif link.type == "rod":
             # print("Type: Rod")
             R_y = np.eye(4)
@@ -135,12 +135,12 @@ def quadrotor_3dmodel(model, quad_id=0):
             xyz[0] = -link.l / 2
             link_transf = r3d.transform_and_color(
                 np.matmul(rot, np.matmul(r3d.translate(xyz), R_y)), color,
-                r3d.rod(link.r, link.l, 32))
+                r3d.rod(link.r, link.l, 16))
 
         links.append(link_transf)
 
     ## ARROWS
-    arrow = r3d.Color((0.2, 0.3, 0.9), r3d.arrow(0.05 * prop_r, 1.5 * prop_r, 16))
+    arrow = r3d.Color((0.2, 0.3, 0.9), r3d.arrow(0.05 * prop_r, 1.5 * prop_r, 8))
     links.append(arrow)
 
     return r3d.Transform(np.eye(4), links)
