@@ -36,7 +36,7 @@ class QuadrotorEnvMulti(gym.Env):
                  adaptive_env=False, obstacle_traj='gravity', local_obs=-1, collision_hitbox_radius=2.0,
                  collision_falloff_radius=2.0, collision_smooth_max_penalty=10.0,
                  local_metric='dist', local_coeff=0.0, use_replay_buffer=False, viz_vector_type=None,
-                 viz_traces=25, viz_trace_nth_step=5):
+                 viz_traces=0, viz_trace_nth_step=1):
 
         super().__init__()
 
