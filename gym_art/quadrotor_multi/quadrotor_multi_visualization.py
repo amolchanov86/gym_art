@@ -94,7 +94,10 @@ class Quadrotor3DSceneMulti:
         self.formation_size = formation_size
         self.vector_render_type = vector_render_type
         self.vector_array = [[] for _ in range(num_agents)]
-
+        self.store_path_every_n = 1
+        self.store_path_count = 0
+        self.path_length = 25
+        self.path_store = [[] for _ in range(num_agents)]
 
     def update_goal_diameter(self):
         if self.quad_arm is not None:
@@ -117,6 +120,7 @@ class Quadrotor3DSceneMulti:
 
         self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms,\
         self.obstacle_transforms, self.vec_cyl_transforms, self.vec_cone_transforms = [], [], [], [], [], [], []
+        self.path_transforms = [[] for _ in range(self.num_agents)]
 
         for i, model in enumerate(self.models):
             if model is not None:
@@ -137,6 +141,13 @@ class Quadrotor3DSceneMulti:
             self.vec_cone_transforms.append(
                 r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cone(0.01, 0.04, 32))
             )
+            color = quad_color[i % len(quad_color)] + (0.2,)
+            for j in range(self.path_length):
+                self.path_transforms[i].append(r3d.transform_and_color(np.eye(4), color,
+                                                                       r3d.sphere(0.1 * self.diameter, 32)))
+                # self.path_transforms[i].append(quad_transform)
+
+
 
         # TODO make floor size or walls to indicate world_box
         floor = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25),
@@ -151,6 +162,8 @@ class Quadrotor3DSceneMulti:
         bodies.extend(self.quad_transforms)
         bodies.extend(self.vec_cyl_transforms)
         bodies.extend(self.vec_cone_transforms)
+        for path in self.path_transforms:
+            bodies.extend(path)
         # visualize walls of the room if True
         if self.visible:
             room = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25), r3d.envBox(*self.room_dims))
@@ -216,6 +229,7 @@ class Quadrotor3DSceneMulti:
         self.goals = goals
         self.dynamics = dynamics
         self.vector_array = [[] for _ in range(self.num_agents)]
+        self.path_store = [[] for _ in range(self.num_agents)]
 
         if self.viewpoint == 'global':
             goal = np.mean(goals, axis=0)
@@ -243,7 +257,7 @@ class Quadrotor3DSceneMulti:
             # batch = r3d.Batch()
             # world.build(batch)
             # self.scene.batches.extend([batch])
-
+            self.store_path_count += 1
             self.update_goals(goals=goals)
             if self.obstacle_mode != 'no_obstacles':
                 self.update_obstacles(multi_obstacles=multi_obstacles)
@@ -252,6 +266,15 @@ class Quadrotor3DSceneMulti:
                 matrix = r3d.trans_and_rot(dyn.pos, dyn.rot)
                 self.quad_transforms[i].set_transform_nocollide(matrix)
 
+                if self.store_path_count % self.store_path_every_n == 0:
+                    if len(self.path_store[i]) >= self.path_length:
+                        self.path_store[i].pop(0)
+                    self.path_store[i].append(matrix)
+                    color = quad_color[i % len(quad_color)]
+                    path_storage_length = len(self.path_store[i])
+                    for k in range(path_storage_length):
+                        color_wa = color + (k/path_storage_length + 0.3, )
+                        self.path_transforms[i][k].set_transform_and_color(self.path_store[i][k], color_wa)
                 shadow_pos = 0 + dyn.pos
                 shadow_pos[2] = 0.001  # avoid z-fighting
                 matrix = r3d.translate(shadow_pos)
