@@ -118,9 +118,16 @@ class Quadrotor3DSceneMulti:
         self.cam1p = r3d.Camera(fov=90.0)
         self.cam3p = r3d.Camera(fov=45.0)
 
-        self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms,\
-        self.obstacle_transforms, self.vec_cyl_transforms, self.vec_cone_transforms = [], [], [], [], [], [], []
+        self.quad_transforms, self.shadow_transforms, self.goal_transforms, self.collision_transforms = [], [], [], []
+        self.obstacle_transforms, self.vec_cyl_transforms, self.vec_cone_transforms = [], [], []
         self.path_transforms = [[] for _ in range(self.num_agents)]
+
+        shadow_circle = r3d.circle(0.75 * self.diameter, 32)
+        collision_sphere = r3d.sphere(0.75 * self.diameter, 32)
+
+        arrow_cylinder = r3d.cylinder(0.005, 0.12, 16)
+        arrow_cone = r3d.cone(0.01, 0.04, 16)
+        path_sphere = r3d.sphere(0.1 * self.diameter, 16)
 
         for i, model in enumerate(self.models):
             if model is not None:
@@ -130,21 +137,20 @@ class Quadrotor3DSceneMulti:
             self.quad_transforms.append(quad_transform)
 
             self.shadow_transforms.append(
-                r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.4), r3d.circle(0.75 * self.diameter, 32))
+                r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.4), shadow_circle)
             )
             self.collision_transforms.append(
-                r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), r3d.sphere(0.75 * self.diameter, 32))
+                r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), collision_sphere)
             )
             self.vec_cyl_transforms.append(
-                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cylinder(0.005, 0.12, 32))
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), arrow_cylinder)
             )
             self.vec_cone_transforms.append(
-                r3d.transform_and_color(np.eye(4), (1, 1, 1), r3d.cone(0.01, 0.04, 32))
+                r3d.transform_and_color(np.eye(4), (1, 1, 1), arrow_cone)
             )
             color = quad_color[i % len(quad_color)] + (0.2,)
             for j in range(self.path_length):
-                self.path_transforms[i].append(r3d.transform_and_color(np.eye(4), color,
-                                                                       r3d.sphere(0.1 * self.diameter, 32)))
+                self.path_transforms[i].append(r3d.transform_and_color(np.eye(4), color, path_sphere))
                 # self.path_transforms[i].append(quad_transform)
 
 
