@@ -112,7 +112,6 @@ class VerticalControl(object):
             raise ValueError('QuadEnv: Unknown dimensionality mode %s' % self.dim_mode)
         self.step_func = self.step
 
-
     def action_space(self, dynamics):
         if not self.zero_action_middle:
             # Range of actions 0 .. 1
