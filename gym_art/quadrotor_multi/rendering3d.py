@@ -114,7 +114,9 @@ class FBOTarget(object):
 class WindowTarget(object):
     def __init__(self, width, height, display=None, resizable=True):
 
-        config=Config(double_buffer=True, depth_size=16)
+        antialiasing_x = 4
+
+        config = Config(double_buffer=True, depth_size=16, sample_buffers=1, samples=antialiasing_x)
         display = get_display(display)
         # vsync is set to false to speed up FBO-only renders, we enable before draw
         self.window = pyglet.window.Window(display=display,

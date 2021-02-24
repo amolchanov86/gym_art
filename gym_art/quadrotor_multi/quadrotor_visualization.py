@@ -184,7 +184,7 @@ def quadrotor_simple_3dmodel(diam):
 # this class deals both with map and mapless cases.
 class Quadrotor3DScene:
     def __init__(self, w, h,
-                 quad_arm=None, model=None, obstacles=True, visible=True, resizable=True, goal_diameter=None,
+                 quad_arm=None, model=None, obstacles=True, resizable=True, goal_diameter=None,
                  viewpoint='chase', obs_hw=(64, 64)):
 
         gym_art_module = __import__('gym_art.quadrotor_multi.rendering3d')
