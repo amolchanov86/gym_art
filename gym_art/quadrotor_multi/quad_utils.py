@@ -328,6 +328,31 @@ def perform_collision_between_drones(dyn1, dyn2):
 
 
 def perform_collision_with_obstacle(drone_dyn, obstacle_dyn, quad_arm):
+    v1new, v2new, collision_norm = compute_col_norm_and_new_velocities(obstacle_dyn, drone_dyn)
+    drone_dyn.vel += (v1new - v2new) * collision_norm
+
+    # Now adding two different random components,
+    # One that preserves momentum in opposite directions
+    # Second that does not preserve momentum
+    cons_rand_val = np.random.normal(0, 0.8, 3)
+    drone_dyn.vel += cons_rand_val + np.random.normal(0, 0.15, 3)
+
+    # Random forces for omega
+    omega_max = 20 * np.pi  # this will amount to max 3.5 revolutions per second
+    eps = 1e-5
+    new_omega = np.random.uniform(low=-1, high=1, size=(3,)) + eps  # random direction in 3D space
+
+    new_omega /= np.linalg.norm(new_omega) + eps  # normalize
+
+    new_omega_magn = np.random.uniform(low=omega_max / 2, high=omega_max)  # random magnitude of the force
+    new_omega *= new_omega_magn
+
+    # add the disturbance to drone's angular velocities while preserving angular momentum
+    # Currently, our obstacle doesn't support omega / angle velocity, we only change omega of drone
+    drone_dyn.omega += new_omega
+
+
+def perform_collision_with_obstacle_v2(drone_dyn, obstacle_dyn, quad_arm=0.046):
     v1new, v2new, collision_norm = compute_col_norm_and_new_velocities(drone_dyn, obstacle_dyn)
     # The change value of velocity should given by the mass, which is determined by the volume
     # We assume the mass of obstacle equal to the drone, then the variation quantity of velocity should be decided by the
