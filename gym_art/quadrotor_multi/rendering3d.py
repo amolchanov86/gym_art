@@ -114,9 +114,14 @@ class FBOTarget(object):
 class WindowTarget(object):
     def __init__(self, width, height, display=None, resizable=True):
 
-        antialiasing_x = 4
+        is_travis = 'TRAVIS' in os.environ
+        if is_travis:
+            # quick hack to hopefully fix a crash in Travis CI
+            config = Config(double_buffer=True, depth_size=16)
+        else:
+            antialiasing_x = 4
+            config = Config(double_buffer=True, depth_size=16, sample_buffers=1, samples=antialiasing_x)
 
-        config = Config(double_buffer=True, depth_size=16, sample_buffers=1, samples=antialiasing_x)
         display = get_display(display)
         # vsync is set to false to speed up FBO-only renders, we enable before draw
         self.window = pyglet.window.Window(display=display,
