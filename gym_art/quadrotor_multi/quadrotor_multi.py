@@ -322,8 +322,8 @@ class QuadrotorEnvMulti(gym.Env):
             models=models,
             w=640, h=480, resizable=True, multi_obstacles=self.multi_obstacles, viewpoint=self.envs[0].viewpoint,
             obstacle_mode=self.obstacle_mode, room_dims=self.room_dims, num_agents=self.num_agents,
-            render_speed=self.render_speed, formation_size=self.quads_formation_size, vis_acc_arrows=None,
-            viz_traces=False, viz_trace_nth_step=1
+            render_speed=self.render_speed, formation_size=self.quads_formation_size,
+            vis_acc_arrows=self.vis_acc_arrows, viz_traces=self.viz_traces, viz_trace_nth_step=self.viz_trace_nth_step,
         )
 
     def reset(self):
