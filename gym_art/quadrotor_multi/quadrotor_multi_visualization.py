@@ -202,8 +202,6 @@ class Quadrotor3DSceneMulti:
             if item.shape == 'cube':
                 obstacle_transform = r3d.transform_and_color(np.eye(4), color, r3d.box(item.size, item.size, item.size))
             elif item.shape == 'sphere':
-                obstacle_transform = r3d.transform_and_color(np.eye(4), color, r3d.sphere(item.size / 2, 18))
-            elif item.shape == 'textured_sphere':
                 num_facets = 18
                 facet_split_value = 10
                 facet_range_1, facet_range_2 = (0, num_facets-facet_split_value),\

@@ -251,7 +251,7 @@ class SingleObstacle:
     def collision_detection(self, pos_quads=None):
         if self.shape == 'cube':
             collision_arr = self.cube_detection(pos_quads)
-        elif self.shape.endswith('sphere'):
+        elif self.shape == 'sphere':
             collision_arr = self.sphere_detection(pos_quads)
         else:
             raise NotImplementedError()
