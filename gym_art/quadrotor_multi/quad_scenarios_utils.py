@@ -31,6 +31,7 @@ QUADS_PARAMS_DICT = {
                 'swap_goals': [QUADS_FORMATION_LIST, [8 * quad_arm_size, 16 * quad_arm_size], duration],
                 'dynamic_formations': [QUADS_FORMATION_LIST, [0.0, 20 * quad_arm_size], duration],
                 'circular_config': [QUADS_FORMATION_LIST, [5 * quad_arm_size, 10 * quad_arm_size], duration],
+                'run_away': [QUADS_FORMATION_LIST, [5 * quad_arm_size, 10 * quad_arm_size], duration],  # [36, 72] centimeters
 }
 
 
