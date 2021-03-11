@@ -317,6 +317,9 @@ class Color(SceneNode):
 def transform_and_color(transform, color, children):
     return Transform(transform, Color(color, children))
 
+def transform_and_dual_color(transform, color_1, color_2, children_1, children_2):
+    return Transform(transform, [Color(color_1, children_1), Color(color_2, children_2)])
+
 TEX_CHECKER = 0
 TEX_XOR = 1
 TEX_NOISE_GAUSSIAN = 2
@@ -653,8 +656,8 @@ def arrow(radius, height, sections):
     return TriStrip(v, n)
 
 # sphere centered on origin, n tris will be about TODO * facets
-def sphere(radius, facets):
-    v, n = sphere_strip(radius, facets)
+def sphere(radius, facets, facet_range=None):
+    v, n = sphere_strip(radius, facets, facet_range)
     collider = SphereCollision(radius)
     return TriStrip(v, n, collider=collider)
 
@@ -768,12 +771,13 @@ def cone_strip(radius, height, sections):
     return np.vstack([vside, vbase]), np.vstack([nside, nbase])
 
 # sphere centered on origin
-def sphere_strip(radius, resolution):
+def sphere_strip(radius, resolution, resolution_range=None):
     t = np.linspace(-1, 1, resolution)
     u, v = np.meshgrid(t, t)
     vtx = []
     panel = np.zeros((resolution, resolution, 3))
     inds = list(range(3))
+    res_range = (0, resolution-1) if not resolution_range else resolution_range
     for i in range(3):
         panel[:,:,inds[0]] = u
         panel[:,:,inds[1]] = v
@@ -781,7 +785,7 @@ def sphere_strip(radius, resolution):
         norms = np.linalg.norm(panel, axis=2)
         panel = panel / norms[:,:,None]
         for _ in range(2):
-            for j in range(resolution - 1):
+            for j in range(res_range[0], res_range[1]):
                 strip = deepcopy(panel[[j,j+1],:,:].transpose([1,0,2]).reshape((-1,3)))
                 degen0 = deepcopy(strip[0,:])
                 degen1 = deepcopy(strip[-1,:])

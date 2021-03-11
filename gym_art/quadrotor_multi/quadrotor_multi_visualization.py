@@ -32,7 +32,7 @@ class Quadrotor3DSceneMulti:
             self, w, h,
             quad_arm=None, models=None, multi_obstacles=None, walls_visible=True, resizable=True, goal_diameter=None,
             viewpoint='chase', obs_hw=None, obstacle_mode='no_obstacles', room_dims=(10, 10, 10), num_agents=8,
-            render_speed=1.0, formation_size=-1.0, vector_render_type='acceleration'
+            render_speed=1.0, formation_size=-1.0, vis_acc_arrows=None, viz_traces=False, viz_trace_nth_step=1
     ):
         self.pygl_window = __import__('pyglet.window', fromlist=['key'])
         self.keys = None  # keypress handler, initialized later
@@ -90,11 +90,12 @@ class Quadrotor3DSceneMulti:
         self.camera_zoom_step_size = 0.1 * speed_ratio
         self.camera_mov_step_size = 0.1 * speed_ratio
         self.formation_size = formation_size
-        self.vector_render_type = vector_render_type
+        self.vis_acc_arrows = vis_acc_arrows
+        self.viz_traces = viz_traces
+        self.viz_trace_nth_step = viz_trace_nth_step
         self.vector_array = [[] for _ in range(num_agents)]
         self.store_path_every_n = 1
         self.store_path_count = 0
-        self.path_length = 30
         self.path_store = [[] for _ in range(num_agents)]
 
     def update_goal_diameter(self):
@@ -142,16 +143,18 @@ class Quadrotor3DSceneMulti:
             self.collision_transforms.append(
                 r3d.transform_and_color(np.eye(4), (0, 0, 0, 0.0), collision_sphere)
             )
-            self.vec_cyl_transforms.append(
-                r3d.transform_and_color(np.eye(4), (1, 1, 1), arrow_cylinder)
-            )
-            self.vec_cone_transforms.append(
-                r3d.transform_and_color(np.eye(4), (1, 1, 1), arrow_cone)
-            )
-            color = quad_color[i % len(quad_color)] + (0.2,)
-            for j in range(self.path_length):
-                self.path_transforms[i].append(r3d.transform_and_color(np.eye(4), color, path_sphere))
-                # self.path_transforms[i].append(quad_transform)
+            if self.vis_acc_arrows:
+                self.vec_cyl_transforms.append(
+                    r3d.transform_and_color(np.eye(4), (1, 1, 1), arrow_cylinder)
+                )
+                self.vec_cone_transforms.append(
+                    r3d.transform_and_color(np.eye(4), (1, 1, 1), arrow_cone)
+                )
+
+            if self.viz_traces:
+                color = quad_color[i % len(quad_color)] + (1.0,)
+                for j in range(self.viz_traces):
+                    self.path_transforms[i].append(r3d.transform_and_color(np.eye(4), color, path_sphere))
 
         # TODO make floor size or walls to indicate world_box
         floor = r3d.ProceduralTexture(r3d.random_textype(), (0.15, 0.25),
@@ -199,7 +202,13 @@ class Quadrotor3DSceneMulti:
             if item.shape == 'cube':
                 obstacle_transform = r3d.transform_and_color(np.eye(4), color, r3d.box(item.size, item.size, item.size))
             elif item.shape == 'sphere':
-                obstacle_transform = r3d.transform_and_color(np.eye(4), color, r3d.sphere(item.size / 2, 18))
+                num_facets = 18
+                facet_split_value = 10
+                facet_range_1, facet_range_2 = (0, num_facets-facet_split_value),\
+                                               (num_facets-facet_split_value, num_facets-1)
+                obstacle_transform = r3d.transform_and_dual_color(np.eye(4), (0, 0, 1), (1, 1, 0),
+                                                                  r3d.sphere(item.size / 2, 18, facet_range_1),
+                                                                  r3d.sphere(item.size / 2, 18, facet_range_2))
             else:
                 raise NotImplementedError()
 
@@ -281,8 +290,8 @@ class Quadrotor3DSceneMulti:
 
                 translation = r3d.translate(dyn.pos)
 
-                if self.store_path_count % self.store_path_every_n == 0:
-                    if len(self.path_store[i]) >= self.path_length:
+                if self.viz_traces and self.store_path_count % self.viz_trace_nth_step == 0:
+                    if len(self.path_store[i]) >= self.viz_traces:
                         self.path_store[i].pop(0)
 
                     self.path_store[i].append(translation)
@@ -298,16 +307,11 @@ class Quadrotor3DSceneMulti:
                 matrix = r3d.translate(shadow_pos)
                 self.shadow_transforms[i].set_transform_nocollide(matrix)
 
-                if self.vector_render_type:
+                if self.vis_acc_arrows:
                     if len(self.vector_array[i]) > 10:
                         self.vector_array[i].pop(0)
 
-                    if self.vector_render_type == 'acceleration':
-                        self.vector_array[i].append(dyn.acc)
-                    elif self.vector_render_type == 'velocity':
-                        self.vector_array[i].append(dyn.vel)
-                    else:
-                        raise NotImplementedError
+                    self.vector_array[i].append(dyn.acc)
 
                     # Get average of the vectors
                     avg_of_vecs = np.mean(self.vector_array[i], axis=0)
